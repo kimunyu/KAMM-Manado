@@ -1,0 +1,109 @@
+{
+  "entities": {
+    "users": {
+      "title": "Users",
+      "description": "User accounts and roles for authentication and RBAC",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "username": { "type": "string" },
+        "nama": { "type": "string" },
+        "role": { "type": "string" },
+        "kd_ao": { "type": "string" },
+        "kd_cabang": { "type": "string" },
+        "kd_posko": { "type": "string" },
+        "status": { "type": "string" },
+        "email": { "type": "string" },
+        "password": { "type": "string" },
+        "must_change_password": { "type": "boolean" },
+        "last_password_change": { "type": "string" }
+      },
+      "required": ["id", "username", "nama", "role", "status"]
+    },
+    "cabang": {
+      "title": "Cabang",
+      "description": "Branch offices",
+      "type": "object",
+      "properties": {
+        "kd_cabang": { "type": "string" },
+        "nama_cabang": { "type": "string" },
+        "wilayah": { "type": "string" }
+      },
+      "required": ["kd_cabang", "nama_cabang"]
+    },
+    "posko": {
+      "title": "Posko",
+      "description": "Operational sub-branches / poskos",
+      "type": "object",
+      "properties": {
+        "kd_posko": { "type": "string" },
+        "nama_posko": { "type": "string" },
+        "kd_cabang": { "type": "string" }
+      },
+      "required": ["kd_posko", "nama_posko", "kd_cabang"]
+    },
+    "mediators": {
+      "title": "Mediators",
+      "description": "Mediator contract profiles and statuses",
+      "type": "object",
+      "properties": {
+        "kd_med": { "type": "string" },
+        "temp_id": { "type": "string" },
+        "nama_mediator": { "type": "string" },
+        "no_tlpn": { "type": "string" },
+        "kd_cabang": { "type": "string" },
+        "kd_posko": { "type": "string" },
+        "kd_ao": { "type": "string" },
+        "status": { "type": "string" },
+        "tgl_akhir_fu": { "type": "string" },
+        "created_at": { "type": "string" },
+        "created_by_user": { "type": "string" },
+        "created_by_role": { "type": "string" },
+        "catatan_admin": { "type": "string" },
+        "validated_at": { "type": "string" },
+        "validated_by": { "type": "string" }
+      },
+      "required": ["kd_med", "nama_mediator", "no_tlpn", "status", "kd_cabang"]
+    },
+    "fu_logs": {
+      "title": "FollowUpLogs",
+      "description": "Logs of follow up interactions with mediators",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "kd_med": { "type": "string" },
+        "nama_mediator": { "type": "string" },
+        "tgl_fu": { "type": "string" },
+        "hasil_fu": { "type": "string" },
+        "catatan_fu": { "type": "string" },
+        "user_fu": { "type": "string" },
+        "kd_ao": { "type": "string" },
+        "kd_posko": { "type": "string" },
+        "kd_cabang": { "type": "string" }
+      },
+      "required": ["id", "kd_med", "tgl_fu", "hasil_fu", "user_fu"]
+    }
+  },
+  "firestore": {
+    "users": {
+      "entity": "users",
+      "description": "User accounts collection"
+    },
+    "cabang": {
+      "entity": "cabang",
+      "description": "Cabang collection"
+    },
+    "posko": {
+      "entity": "posko",
+      "description": "Posko collection"
+    },
+    "mediators": {
+      "entity": "mediators",
+      "description": "Mediators collection"
+    },
+    "fu_logs": {
+      "entity": "fu_logs",
+      "description": "Follow up logs collection"
+    }
+  }
+}
