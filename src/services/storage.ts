@@ -2170,7 +2170,7 @@ export const DatabaseService = {
     localStorage.setItem(STORAGE_KEYS.FU_LOGS, JSON.stringify(INITIAL_FU_LOGS));
     localStorage.setItem(STORAGE_KEYS.EX_CUSTOMERS, JSON.stringify(INITIAL_EX_CUSTOMERS));
     localStorage.setItem(STORAGE_KEYS.EX_CUSTOMER_FU_LOGS, JSON.stringify(INITIAL_EX_CUSTOMER_FU_LOGS));
-    localStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(INITIAL_USERS[0]));
+    localStorage.removeItem(STORAGE_KEYS.CURRENT_USER);
     notifyAllListeners();
   }
 };

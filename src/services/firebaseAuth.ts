@@ -48,15 +48,15 @@ export function mapFirebaseAuthError(error: unknown): string {
     case 'auth/wrong-password':
       return 'Password yang Anda masukkan salah.';
     case 'auth/invalid-credential':
-      return 'Kombinasi username/email atau password salah.';
+      return 'Email/username atau password salah.';
     case 'auth/user-disabled':
-      return 'Akun telah dinonaktifkan oleh administrator.';
+      return 'Akun Firebase dinonaktifkan.';
     case 'auth/too-many-requests':
       return 'Terlalu banyak percobaan login gagal. Silakan tunggu beberapa saat sebelum mencoba lagi.';
     case 'auth/network-request-failed':
-      return 'Koneksi jaringan terputus. Pastikan perangkat terhubung ke internet.';
+      return 'Tidak dapat menghubungi Firebase Authentication.';
     case 'auth/operation-not-allowed':
-      return 'Metode autentikasi ini sedang tidak diaktifkan pada sistem.';
+      return 'Metode autentikasi Email/Password belum diaktifkan pada Firebase Authentication.';
     case 'auth/weak-password':
       return 'Password terlalu lemah. Gunakan minimal 6 karakter.';
     default:

@@ -9,6 +9,11 @@ let auth: Auth | null = null;
 
 try {
   if (firebaseConfigData && firebaseConfigData.projectId) {
+    console.log("[AUTH-CONFIG]", {
+      projectId: firebaseConfigData.projectId,
+      authDomain: firebaseConfigData.authDomain
+    });
+
     if (!getApps().length) {
       app = initializeApp(firebaseConfigData);
     } else {
