@@ -1,12 +1,13 @@
 import { User } from '../types';
 import { DatabaseService } from './storage';
 import { UserAuthMappingService } from './userAuthMapping';
+import { getFirebaseAuthIdentifierFromUsername } from './firebaseAuth';
 
 export type FirebaseMigrationStatus = 
   | 'MIGRATED'         // Has firebase_uid linked
-  | 'READY'            // Has valid email, ready to be provisioned
-  | 'EMAIL_REQUIRED'   // Missing email in user profile
-  | 'CONFLICT'         // Duplicate email across different Firestore users
+  | 'READY'            // Has valid identifier/email, ready to be provisioned
+  | 'EMAIL_REQUIRED'   // Missing username/email in user profile
+  | 'CONFLICT'         // Duplicate identifier across different Firestore users
   | 'ERROR';           // Invalid format or other error
 
 export interface UserMigrationSummary {
@@ -23,6 +24,7 @@ export interface UserProvisioningStatus {
   statusMessage: string;
   hasFirebaseUid: boolean;
   hasEmail: boolean;
+  firebaseIdentifier?: string;
   duplicateWithUserId?: string;
 }
 
@@ -36,8 +38,10 @@ export const UserProvisioningService = {
    */
   evaluateUserStatus(user: User, allUsers: User[]): UserProvisioningStatus {
     const hasUid = !!(user.firebase_uid && user.firebase_uid.trim().length > 0);
+    const cleanUsername = user.username ? user.username.trim().toLowerCase() : '';
     const cleanEmail = user.email ? user.email.trim().toLowerCase() : '';
-    const hasEmail = cleanEmail.length > 0;
+    const derivedIdentifier = cleanUsername ? getFirebaseAuthIdentifierFromUsername(cleanUsername) : (cleanEmail || '');
+    const hasIdentifier = derivedIdentifier.length > 0;
 
     // 1. Check if already migrated with Firebase UID
     if (hasUid) {
@@ -46,56 +50,50 @@ export const UserProvisioningService = {
         status: 'MIGRATED',
         statusMessage: 'Sudah terhubung ke Firebase Authentication.',
         hasFirebaseUid: true,
-        hasEmail
+        hasEmail: !!cleanEmail,
+        firebaseIdentifier: derivedIdentifier
       };
     }
 
-    // 2. Check if email is missing
-    if (!hasEmail) {
+    // 2. Check if username/identifier is missing
+    if (!hasIdentifier) {
       return {
         user,
         status: 'EMAIL_REQUIRED',
-        statusMessage: 'Email belum terisi. Diperlukan email untuk Firebase Authentication.',
+        statusMessage: 'Username belum terisi. Diperlukan username untuk identitas Firebase Authentication.',
         hasFirebaseUid: false,
         hasEmail: false
       };
     }
 
-    // 3. Simple email format validation
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(cleanEmail)) {
-      return {
-        user,
-        status: 'ERROR',
-        statusMessage: 'Format email tidak valid.',
-        hasFirebaseUid: false,
-        hasEmail: true
-      };
-    }
-
-    // 4. Duplicate Check: Ensure no other Firestore user uses the exact same email
+    // 3. Duplicate Check: Ensure no other Firestore user uses the exact same username/derived identifier
     const duplicateUser = allUsers.find(
-      u => u.id !== user.id && u.email && u.email.trim().toLowerCase() === cleanEmail
+      u => u.id !== user.id && (
+        (u.username && u.username.trim().toLowerCase() === cleanUsername) ||
+        (cleanEmail && u.email && u.email.trim().toLowerCase() === cleanEmail)
+      )
     );
 
     if (duplicateUser) {
       return {
         user,
         status: 'CONFLICT',
-        statusMessage: `Konflik email! Email sama digunakan oleh akun "${duplicateUser.nama}" (@${duplicateUser.username}).`,
+        statusMessage: `Konflik kredensial! Identitas sama digunakan oleh akun "${duplicateUser.nama}" (@${duplicateUser.username}).`,
         hasFirebaseUid: false,
-        hasEmail: true,
+        hasEmail: !!cleanEmail,
+        firebaseIdentifier: derivedIdentifier,
         duplicateWithUserId: duplicateUser.id
       };
     }
 
-    // 5. Ready for provisioning
+    // 4. Ready for provisioning
     return {
       user,
       status: 'READY',
-      statusMessage: 'Email valid & siap diprovisioning ke Firebase Authentication.',
+      statusMessage: `Siap diprovisioning ke Firebase Authentication (${derivedIdentifier}).`,
       hasFirebaseUid: false,
-      hasEmail: true
+      hasEmail: !!cleanEmail,
+      firebaseIdentifier: derivedIdentifier
     };
   },
 

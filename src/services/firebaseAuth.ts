@@ -19,14 +19,36 @@ export interface FirebaseAuthResult {
 }
 
 /**
+ * Deterministically derives the Firebase Auth internal email identifier from a username.
+ * Example: 'superadmin' -> 'superadmin@kamm-manado.internal'
+ *
+ * Requirements:
+ * - trim
+ * - lowercase
+ * - normalize characters (only alphanumeric, dot, underscore, dash)
+ * - deterministic (same username always yields same identifier)
+ * - does not accept arbitrary email input when username is entered
+ * - never uses password as part of identifier
+ */
+export function getFirebaseAuthIdentifierFromUsername(username: string): string {
+  if (!username) return 'user@kamm-manado.internal';
+  // Strip any existing domain if user entered full email/symbols, extract username prefix
+  const rawPrefix = username.includes('@') ? username.split('@')[0] : username;
+  const clean = rawPrefix.trim().toLowerCase().replace(/[^a-z0-9_.-]/g, '');
+  return `${clean || 'user'}@kamm-manado.internal`;
+}
+
+/**
  * Derives a valid unique internal email address for Firebase Auth if user email is missing.
  */
 export function getFirebaseCompatibleEmail(user: User): string {
+  if (user.username) {
+    return getFirebaseAuthIdentifierFromUsername(user.username);
+  }
   if (user.email && user.email.includes('@')) {
     return user.email.trim().toLowerCase();
   }
-  const cleanUsername = user.username.trim().toLowerCase().replace(/[^a-z0-9]/g, '');
-  return `${cleanUsername || 'user'}@kamm-manado.internal`;
+  return 'user@kamm-manado.internal';
 }
 
 /**
@@ -42,17 +64,17 @@ export function mapFirebaseAuthError(error: unknown): string {
 
   switch (code) {
     case 'auth/invalid-email':
-      return 'Format email atau username tidak valid.';
+      return 'Format username atau kredensial tidak valid.';
     case 'auth/user-not-found':
-      return 'Pengguna tidak ditemukan dalam sistem autentikasi Firebase.';
+      return 'Username atau password salah.';
     case 'auth/wrong-password':
-      return 'Password yang Anda masukkan salah.';
+      return 'Username atau password salah.';
     case 'auth/invalid-credential':
-      return 'Email/username atau password salah.';
+      return 'Username atau password salah.';
     case 'auth/user-disabled':
       return 'Akun Firebase dinonaktifkan.';
     case 'auth/too-many-requests':
-      return 'Terlalu banyak percobaan login gagal. Silakan tunggu beberapa saat sebelum mencoba lagi.';
+      return 'Terlalu banyak percobaan login gagal. Silakan tunggu beberapa saat.';
     case 'auth/network-request-failed':
       return 'Tidak dapat menghubungi Firebase Authentication.';
     case 'auth/operation-not-allowed':

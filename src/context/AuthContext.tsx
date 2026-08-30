@@ -10,7 +10,8 @@ import {
   subscribeToFirebaseAuth,
   getCurrentFirebaseUser,
   getFirebaseUID,
-  getFirebaseCompatibleEmail
+  getFirebaseCompatibleEmail,
+  getFirebaseAuthIdentifierFromUsername
 } from '../services/firebaseAuth';
 import { UserAuthMappingService } from '../services/userAuthMapping';
 
@@ -180,37 +181,41 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [firebaseUser?.uid, firebaseAuthStatus, currentUser?.id, currentUser?.role, currentUser?.status]);
 
-  // Authenticated Login: Solely driven by Firebase Authentication with strict Mapping
+  // Authenticated Login: Solely driven by Firebase Authentication with deterministic username resolution
   const login = async (username: string, password?: string): Promise<{ success: boolean; message: string }> => {
-    const rawUser = username.trim();
+    const rawInput = (username || '').trim();
     const enteredPassword = password || '';
 
-    if (!rawUser) {
-      return { success: false, message: 'Username atau email wajib diisi!' };
+    if (!rawInput) {
+      return { success: false, message: 'Username wajib diisi!' };
     }
 
     if (!enteredPassword) {
       return { success: false, message: 'Password wajib diisi!' };
     }
 
-    // 1. Resolve target email address for Firebase Auth
-    let targetEmail = '';
-    if (rawUser.includes('@')) {
-      targetEmail = rawUser.toLowerCase();
-    } else {
-      const cleanUsername = rawUser.toLowerCase();
+    // 1. Normalize username (extract clean username identifier, lowercase)
+    const cleanUsername = (rawInput.includes('@') ? rawInput.split('@')[0] : rawInput).trim().toLowerCase();
+    
+    // 2. Derive deterministic Firebase Auth identifier (e.g. superadmin@kamm-manado.internal)
+    const primaryIdentifier = getFirebaseAuthIdentifierFromUsername(cleanUsername);
+
+    // 3. Attempt primary Firebase Auth sign-in
+    let authRes = await signInWithFirebaseAuth(primaryIdentifier, enteredPassword);
+
+    // 4. Safe Migration Compatibility: If primary identifier fails and user has legacy custom email in profile
+    if (!authRes.success && (authRes.errorCode === 'auth/invalid-credential' || authRes.errorCode === 'auth/user-not-found')) {
       const currentUsers = allUsers.length > 0 ? allUsers : DatabaseService.getUsers();
-      const matchedLocalUser = currentUsers.find(u => u.username.toLowerCase() === cleanUsername);
-      if (matchedLocalUser) {
-        targetEmail = getFirebaseCompatibleEmail(matchedLocalUser);
-      } else {
-        const cleanSanitized = cleanUsername.replace(/[^a-z0-9]/g, '');
-        targetEmail = `${cleanSanitized || 'user'}@kamm-manado.internal`;
+      const matchedProfile = currentUsers.find(u => u.username.toLowerCase() === cleanUsername);
+      if (matchedProfile && matchedProfile.email && matchedProfile.email.toLowerCase() !== primaryIdentifier.toLowerCase()) {
+        const secondaryRes = await signInWithFirebaseAuth(matchedProfile.email, enteredPassword);
+        if (secondaryRes.success) {
+          authRes = secondaryRes;
+        }
       }
     }
 
-    // 2. Perform direct Firebase Authentication (Sole Gate - No fallback credentials)
-    const authRes = await signInWithFirebaseAuth(targetEmail, enteredPassword);
+    // If Firebase Auth rejects credentials, fail immediately with zero local bypass
     if (!authRes.success || !authRes.user) {
       console.log('[LOGIN-RESULT]', { 
         firebaseAuth: 'FAILED', 
@@ -228,14 +233,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setFirebaseUser(fbUser);
     setFirebaseAuthStatus('AUTHENTICATED');
 
-    // 3. Resolve user profile via Single Source of Truth Mapping (user_auth/{uid} -> users/{user_id})
+    // 5. Resolve user profile via Single Source of Truth Mapping (user_auth/{uid} -> users/{user_id})
     let matchedUser = await UserAuthMappingService.getUserProfileByFirebaseUid(fbUser.uid);
     if (!matchedUser) {
       const currentUsers = allUsers.length > 0 ? allUsers : DatabaseService.getUsers();
       matchedUser = currentUsers.find(
         u => (u.firebase_uid && u.firebase_uid === fbUser.uid) ||
-             (u.email && fbUser.email && u.email.toLowerCase() === fbUser.email.toLowerCase()) ||
-             (fbUser.email && u.username && u.username.toLowerCase() === fbUser.email.split('@')[0].toLowerCase())
+             (u.username && u.username.toLowerCase() === cleanUsername) ||
+             (u.email && fbUser.email && u.email.toLowerCase() === fbUser.email.toLowerCase())
       ) || null;
 
       if (matchedUser && !matchedUser.firebase_uid) {
@@ -255,7 +260,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await signOutFirebaseAuth();
       return { 
         success: false, 
-        message: 'Autentikasi Firebase berhasil, namun akun belum terhubung dengan profil pengguna dalam sistem database. Hubungi Administrator.' 
+        message: 'Akun Firebase belum terhubung dengan profil pengguna sistem. Hubungi Administrator.' 
       };
     }
 

@@ -105,7 +105,12 @@ export interface User {
   kd_cabang?: string;
   status: 'AKTIF' | 'NONAKTIF';
   email?: string;
-  password: string;
+  /**
+   * @deprecated LEGACY FIELD: Kept solely for schema backwards compatibility.
+   * NEVER used for credential validation or authentication runtime.
+   * Authentication is enforced exclusively by Firebase Authentication.
+   */
+  password?: string;
   must_change_password?: boolean;
   last_password_change?: string;
   firebase_uid?: string;
