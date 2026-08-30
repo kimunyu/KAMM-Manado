@@ -44,7 +44,6 @@ export function getInitialOrStored<T>(key: string, fallback: T): T {
   try {
     const item = localStorage.getItem(key);
     if (!item) {
-      localStorage.setItem(key, JSON.stringify(fallback));
       return fallback;
     }
     return JSON.parse(item);
@@ -170,142 +169,33 @@ export function startFirebaseSync(currentUser: User | null = null, authenticated
     // 1. Sync Users
     console.log(`[FS-SYNC-DEBUG] collection=users operation=onSnapshot firebaseAuthUid=${currentAuthUid} businessUserId=${currentUser.id} role=${currentUser.role} status=${currentUser.status} activeSyncKey=${syncKey}`);
     const usersCol = collection(db, 'users');
-    const unsubUsers = onSnapshot(usersCol, async (snapshot) => {
-      try {
-        if (snapshot.empty) {
-          const allUsers = [...INITIAL_USERS, ...DatabaseService.getUsers()];
-          const userMap = new Map<string, User>();
-          allUsers.forEach(u => userMap.set(u.id, u));
-          const usersToSeed = Array.from(userMap.values());
-          
-          const batch = writeBatch(db!);
-          usersToSeed.forEach((u) => {
-            batch.set(doc(db!, 'users', sanitizeDocId(u.id)), cleanForFirestore(u));
-          });
-          await batch.commit();
-        } else {
-          const cloudUsers: User[] = [];
-          snapshot.forEach((docSnap) => {
-            cloudUsers.push(docSnap.data() as User);
-          });
-          
-          if (cloudUsers.length > 0) {
-            const cloudUserIds = new Set(cloudUsers.map(u => u.id));
-            const allLocalAndSeed = [...INITIAL_USERS, ...DatabaseService.getUsers()];
-            const userMap = new Map<string, User>();
-            allLocalAndSeed.forEach(u => userMap.set(u.id, u));
-            const missingInCloud = Array.from(userMap.values()).filter(u => !cloudUserIds.has(u.id));
-
-            if (missingInCloud.length > 0) {
-              const batch = writeBatch(db!);
-              missingInCloud.forEach(u => {
-                batch.set(doc(db!, 'users', sanitizeDocId(u.id)), cleanForFirestore(u));
-                cloudUsers.push(u);
-              });
-              batch.commit().catch(e => console.warn('Syncing missing users to cloud:', e));
-            }
-
-            saveToStorage(STORAGE_KEYS.USERS, cloudUsers);
-            notifyAllListeners();
-          }
-        }
-      } catch (err) {
-        console.warn('[FS-SYNC-ERROR] collection=users handler error:', err);
-      }
+    const unsubUsers = onSnapshot(usersCol, (snapshot) => {
+      console.log(`[FS-SNAPSHOT] collection=users documentCount=${snapshot.size}`);
+      const cloudUsers: User[] = snapshot.docs.map(docSnap => docSnap.data() as User);
+      saveToStorage(STORAGE_KEYS.USERS, cloudUsers);
+      notifyAllListeners();
     }, (err) => console.warn('[FS-SYNC-ERROR] collection=users onSnapshot error:', err));
     activeSyncUnsubscribers.push(unsubUsers);
 
     // 2. Sync Cabang
     console.log(`[FS-SYNC-DEBUG] collection=cabang operation=onSnapshot firebaseAuthUid=${currentAuthUid} businessUserId=${currentUser.id} role=${currentUser.role} status=${currentUser.status} activeSyncKey=${syncKey}`);
     const cabangCol = collection(db, 'cabang');
-    const unsubCabang = onSnapshot(cabangCol, async (snapshot) => {
-      try {
-        if (snapshot.empty) {
-          const allCabang = [...INITIAL_CABANG, ...DatabaseService.getCabangList()];
-          const cMap = new Map<string, Cabang>();
-          allCabang.forEach(c => cMap.set(c.kd_cabang, c));
-          const cabangToSeed = Array.from(cMap.values());
-
-          const batch = writeBatch(db!);
-          cabangToSeed.forEach((c) => {
-            batch.set(doc(db!, 'cabang', sanitizeDocId(c.kd_cabang)), cleanForFirestore(c));
-          });
-          await batch.commit();
-        } else {
-          const cloudCabang: Cabang[] = [];
-          snapshot.forEach((docSnap) => {
-            cloudCabang.push(docSnap.data() as Cabang);
-          });
-          if (cloudCabang.length > 0) {
-            const cloudCabangIds = new Set(cloudCabang.map(c => c.kd_cabang));
-            const allCabang = [...INITIAL_CABANG, ...DatabaseService.getCabangList()];
-            const cMap = new Map<string, Cabang>();
-            allCabang.forEach(c => cMap.set(c.kd_cabang, c));
-            const missingInCloud = Array.from(cMap.values()).filter(c => !cloudCabangIds.has(c.kd_cabang));
-
-            if (missingInCloud.length > 0) {
-              const batch = writeBatch(db!);
-              missingInCloud.forEach(c => {
-                batch.set(doc(db!, 'cabang', sanitizeDocId(c.kd_cabang)), cleanForFirestore(c));
-                cloudCabang.push(c);
-              });
-              batch.commit().catch(e => console.warn('Syncing missing cabang to cloud:', e));
-            }
-
-            saveToStorage(STORAGE_KEYS.CABANG, cloudCabang);
-            notifyAllListeners();
-          }
-        }
-      } catch (err) {
-        console.warn('[FS-SYNC-ERROR] collection=cabang handler error:', err);
-      }
+    const unsubCabang = onSnapshot(cabangCol, (snapshot) => {
+      console.log(`[FS-SNAPSHOT] collection=cabang documentCount=${snapshot.size}`);
+      const cloudCabang: Cabang[] = snapshot.docs.map(docSnap => docSnap.data() as Cabang);
+      saveToStorage(STORAGE_KEYS.CABANG, cloudCabang);
+      notifyAllListeners();
     }, (err) => console.warn('[FS-SYNC-ERROR] collection=cabang onSnapshot error:', err));
     activeSyncUnsubscribers.push(unsubCabang);
 
     // 3. Sync Posko
     console.log(`[FS-SYNC-DEBUG] collection=posko operation=onSnapshot firebaseAuthUid=${currentAuthUid} businessUserId=${currentUser.id} role=${currentUser.role} status=${currentUser.status} activeSyncKey=${syncKey}`);
     const poskoCol = collection(db, 'posko');
-    const unsubPosko = onSnapshot(poskoCol, async (snapshot) => {
-      try {
-        if (snapshot.empty) {
-          const allPosko = [...INITIAL_POSKO, ...DatabaseService.getPoskoList()];
-          const pMap = new Map<string, Posko>();
-          allPosko.forEach(p => pMap.set(p.kd_posko, p));
-          const poskoToSeed = Array.from(pMap.values());
-
-          const batch = writeBatch(db!);
-          poskoToSeed.forEach((p) => {
-            batch.set(doc(db!, 'posko', sanitizeDocId(p.kd_posko)), cleanForFirestore(p));
-          });
-          await batch.commit();
-        } else {
-          const cloudPosko: Posko[] = [];
-          snapshot.forEach((docSnap) => {
-            cloudPosko.push(docSnap.data() as Posko);
-          });
-          if (cloudPosko.length > 0) {
-            const cloudPoskoIds = new Set(cloudPosko.map(p => p.kd_posko));
-            const allPosko = [...INITIAL_POSKO, ...DatabaseService.getPoskoList()];
-            const pMap = new Map<string, Posko>();
-            allPosko.forEach(p => pMap.set(p.kd_posko, p));
-            const missingInCloud = Array.from(pMap.values()).filter(p => !cloudPoskoIds.has(p.kd_posko));
-
-            if (missingInCloud.length > 0) {
-              const batch = writeBatch(db!);
-              missingInCloud.forEach(p => {
-                batch.set(doc(db!, 'posko', sanitizeDocId(p.kd_posko)), cleanForFirestore(p));
-                cloudPosko.push(p);
-              });
-              batch.commit().catch(e => console.warn('Syncing missing posko to cloud:', e));
-            }
-
-            saveToStorage(STORAGE_KEYS.POSKO, cloudPosko);
-            notifyAllListeners();
-          }
-        }
-      } catch (err) {
-        console.warn('[FS-SYNC-ERROR] collection=posko handler error:', err);
-      }
+    const unsubPosko = onSnapshot(poskoCol, (snapshot) => {
+      console.log(`[FS-SNAPSHOT] collection=posko documentCount=${snapshot.size}`);
+      const cloudPosko: Posko[] = snapshot.docs.map(docSnap => docSnap.data() as Posko);
+      saveToStorage(STORAGE_KEYS.POSKO, cloudPosko);
+      notifyAllListeners();
     }, (err) => console.warn('[FS-SYNC-ERROR] collection=posko onSnapshot error:', err));
     activeSyncUnsubscribers.push(unsubPosko);
 
@@ -322,66 +212,22 @@ export function startFirebaseSync(currentUser: User | null = null, authenticated
       );
       console.log(`[FS-SYNC-DEBUG] collection=mediators operation=onSnapshot firebaseAuthUid=${currentAuthUid} businessUserId=${currentUser.id} role=${currentUser.role} status=${currentUser.status} activeSyncKey=${syncKey}`);
       const mediatorsCol = collection(db, 'mediators');
-      const unsubMediators = onSnapshot(mediatorsCol, async (snapshot) => {
+      const unsubMediators = onSnapshot(mediatorsCol, (snapshot) => {
+        console.log(`[FS-SNAPSHOT] collection=mediators documentCount=${snapshot.size}`);
         console.log(
           "[FIRESTORE-SNAPSHOT]",
           {
             collection: "mediators",
             documentCount: snapshot.size,
-            documents: snapshot.docs.map(doc => ({
-              id: doc.id,
-              ...doc.data()
+            documents: snapshot.docs.map(docSnap => ({
+              id: docSnap.id,
+              ...docSnap.data()
             }))
           }
         );
-        try {
-          if (snapshot.empty) {
-            const allMeds = [...INITIAL_MEDIATORS, ...DatabaseService.getMediators()];
-            const mMap = new Map<string, MediatorKontrak>();
-            allMeds.forEach(m => mMap.set(m.kd_med || m.temp_id, m));
-            const medsToSeed = Array.from(mMap.values());
-
-            for (let i = 0; i < medsToSeed.length; i += 400) {
-              const chunk = medsToSeed.slice(i, i + 400);
-              const batch = writeBatch(db!);
-              chunk.forEach((m) => {
-                const docId = m.kd_med || m.temp_id || `MED-${Date.now()}`;
-                batch.set(doc(db!, 'mediators', sanitizeDocId(docId)), cleanForFirestore(m));
-              });
-              await batch.commit();
-            }
-          } else {
-            const cloudMediators: MediatorKontrak[] = [];
-            snapshot.forEach((docSnap) => {
-              cloudMediators.push(docSnap.data() as MediatorKontrak);
-            });
-            if (cloudMediators.length > 0) {
-              const cloudMedIds = new Set(cloudMediators.map(m => m.kd_med || m.temp_id));
-              const allMeds = [...INITIAL_MEDIATORS, ...DatabaseService.getMediators()];
-              const mMap = new Map<string, MediatorKontrak>();
-              allMeds.forEach(m => mMap.set(m.kd_med || m.temp_id, m));
-              const missingInCloud = Array.from(mMap.values()).filter(m => !cloudMedIds.has(m.kd_med || m.temp_id));
-
-              if (missingInCloud.length > 0) {
-                for (let i = 0; i < missingInCloud.length; i += 400) {
-                  const chunk = missingInCloud.slice(i, i + 400);
-                  const batch = writeBatch(db!);
-                  chunk.forEach(m => {
-                    const docId = m.kd_med || m.temp_id || `MED-${Date.now()}`;
-                    batch.set(doc(db!, 'mediators', sanitizeDocId(docId)), cleanForFirestore(m));
-                    cloudMediators.push(m);
-                  });
-                  await batch.commit().catch(e => console.warn('Syncing missing mediators to cloud:', e));
-                }
-              }
-
-              saveToStorage(STORAGE_KEYS.MEDIATORS, cloudMediators);
-              notifyAllListeners();
-            }
-          }
-        } catch (err) {
-          console.warn('[FS-SYNC-ERROR] collection=mediators handler error:', err);
-        }
+        const cloudMediators: MediatorKontrak[] = snapshot.docs.map(docSnap => docSnap.data() as MediatorKontrak);
+        saveToStorage(STORAGE_KEYS.MEDIATORS, cloudMediators);
+        notifyAllListeners();
       }, (err) => {
         console.error(
           "[FIRESTORE-SNAPSHOT-ERROR]",
@@ -393,29 +239,11 @@ export function startFirebaseSync(currentUser: User | null = null, authenticated
       // 5. Sync FU Logs (Isolated: ADMIN_BPKB is forbidden from fu_logs collection)
       console.log(`[FS-SYNC-DEBUG] collection=fu_logs operation=onSnapshot firebaseAuthUid=${currentAuthUid} businessUserId=${currentUser.id} role=${currentUser.role} status=${currentUser.status} activeSyncKey=${syncKey}`);
       const fuLogsCol = collection(db, 'fu_logs');
-      const unsubFuLogs = onSnapshot(fuLogsCol, async (snapshot) => {
-        try {
-          if (snapshot.empty) {
-            const localLogs = DatabaseService.getFULogs();
-            const logsToSeed = localLogs.length > 0 ? localLogs : INITIAL_FU_LOGS;
-            const batch = writeBatch(db!);
-            logsToSeed.forEach((f) => {
-              batch.set(doc(db!, 'fu_logs', sanitizeDocId(f.id)), cleanForFirestore(f));
-            });
-            await batch.commit();
-          } else {
-            const cloudLogs: FULog[] = [];
-            snapshot.forEach((docSnap) => {
-              cloudLogs.push(docSnap.data() as FULog);
-            });
-            if (cloudLogs.length > 0) {
-              saveToStorage(STORAGE_KEYS.FU_LOGS, cloudLogs);
-              notifyAllListeners();
-            }
-          }
-        } catch (err) {
-          console.warn('[FS-SYNC-ERROR] collection=fu_logs handler error:', err);
-        }
+      const unsubFuLogs = onSnapshot(fuLogsCol, (snapshot) => {
+        console.log(`[FS-SNAPSHOT] collection=fu_logs documentCount=${snapshot.size}`);
+        const cloudLogs: FULog[] = snapshot.docs.map(docSnap => docSnap.data() as FULog);
+        saveToStorage(STORAGE_KEYS.FU_LOGS, cloudLogs);
+        notifyAllListeners();
       }, (err) => console.warn('[FS-SYNC-ERROR] collection=fu_logs onSnapshot error:', err));
       activeSyncUnsubscribers.push(unsubFuLogs);
     }
@@ -423,58 +251,22 @@ export function startFirebaseSync(currentUser: User | null = null, authenticated
     // 6. Sync Ex-Customers
     console.log(`[FS-SYNC-DEBUG] collection=ex_customers operation=onSnapshot firebaseAuthUid=${currentAuthUid} businessUserId=${currentUser.id} role=${currentUser.role} status=${currentUser.status} activeSyncKey=${syncKey}`);
     const exCustCol = collection(db, 'ex_customers');
-    const unsubExCust = onSnapshot(exCustCol, async (snapshot) => {
-      try {
-        if (snapshot.empty) {
-          const localEx = DatabaseService.getExCustomers();
-          const exToSeed = localEx.length > 0 ? localEx : INITIAL_EX_CUSTOMERS;
-          const batch = writeBatch(db!);
-          exToSeed.forEach((c) => {
-            batch.set(doc(db!, 'ex_customers', sanitizeDocId(c.no_psb)), cleanForFirestore(c));
-          });
-          await batch.commit();
-        } else {
-          const cloudEx: ExCustomer[] = [];
-          snapshot.forEach((docSnap) => {
-            cloudEx.push(docSnap.data() as ExCustomer);
-          });
-          if (cloudEx.length > 0) {
-            saveToStorage(STORAGE_KEYS.EX_CUSTOMERS, cloudEx);
-            notifyAllListeners();
-          }
-        }
-      } catch (err) {
-        console.warn('[FS-SYNC-ERROR] collection=ex_customers handler error:', err);
-      }
+    const unsubExCust = onSnapshot(exCustCol, (snapshot) => {
+      console.log(`[FS-SNAPSHOT] collection=ex_customers documentCount=${snapshot.size}`);
+      const cloudEx: ExCustomer[] = snapshot.docs.map(docSnap => docSnap.data() as ExCustomer);
+      saveToStorage(STORAGE_KEYS.EX_CUSTOMERS, cloudEx);
+      notifyAllListeners();
     }, (err) => console.warn('[FS-SYNC-ERROR] collection=ex_customers onSnapshot error:', err));
     activeSyncUnsubscribers.push(unsubExCust);
 
     // 7. Sync Ex-Customer FU Logs
     console.log(`[FS-SYNC-DEBUG] collection=ex_customer_fu_logs operation=onSnapshot firebaseAuthUid=${currentAuthUid} businessUserId=${currentUser.id} role=${currentUser.role} status=${currentUser.status} activeSyncKey=${syncKey}`);
     const exLogsCol = collection(db, 'ex_customer_fu_logs');
-    const unsubExLogs = onSnapshot(exLogsCol, async (snapshot) => {
-      try {
-        if (snapshot.empty) {
-          const localExLogs = DatabaseService.getExCustomerFULogs();
-          const logsToSeed = localExLogs.length > 0 ? localExLogs : INITIAL_EX_CUSTOMER_FU_LOGS;
-          const batch = writeBatch(db!);
-          logsToSeed.forEach((l) => {
-            batch.set(doc(db!, 'ex_customer_fu_logs', sanitizeDocId(l.id)), cleanForFirestore(l));
-          });
-          await batch.commit();
-        } else {
-          const cloudExLogs: ExCustomerFULog[] = [];
-          snapshot.forEach((docSnap) => {
-            cloudExLogs.push(docSnap.data() as ExCustomerFULog);
-          });
-          if (cloudExLogs.length > 0) {
-            saveToStorage(STORAGE_KEYS.EX_CUSTOMER_FU_LOGS, cloudExLogs);
-            notifyAllListeners();
-          }
-        }
-      } catch (err) {
-        console.warn('[FS-SYNC-ERROR] collection=ex_customer_fu_logs handler error:', err);
-      }
+    const unsubExLogs = onSnapshot(exLogsCol, (snapshot) => {
+      console.log(`[FS-SNAPSHOT] collection=ex_customer_fu_logs documentCount=${snapshot.size}`);
+      const cloudExLogs: ExCustomerFULog[] = snapshot.docs.map(docSnap => docSnap.data() as ExCustomerFULog);
+      saveToStorage(STORAGE_KEYS.EX_CUSTOMER_FU_LOGS, cloudExLogs);
+      notifyAllListeners();
     }, (err) => console.warn('[FS-SYNC-ERROR] collection=ex_customer_fu_logs onSnapshot error:', err));
     activeSyncUnsubscribers.push(unsubExLogs);
 

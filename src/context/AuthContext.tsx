@@ -1,16 +1,16 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { User, UserRole, Cabang, Posko, MediatorStatus } from '../types';
-import { DatabaseService, getInitialOrStored, saveToStorage, startFirebaseSync, stopFirebaseSync } from '../services/storage';
+import { DatabaseService, saveToStorage, startFirebaseSync, stopFirebaseSync } from '../services/storage';
 import { User as FirebaseUser } from 'firebase/auth';
 import { auth } from '../services/firebase';
 import { 
   FirebaseAuthStatus, 
   signInWithFirebaseAuth, 
-  signInOrProvisionFirebaseAuth,
   signOutFirebaseAuth, 
   subscribeToFirebaseAuth,
   getCurrentFirebaseUser,
-  getFirebaseUID
+  getFirebaseUID,
+  getFirebaseCompatibleEmail
 } from '../services/firebaseAuth';
 import { UserAuthMappingService } from '../services/userAuthMapping';
 
@@ -52,15 +52,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [allUsers, setAllUsers] = useState<User[]>([]);
   const [allCabang, setAllCabang] = useState<Cabang[]>([]);
   const [allPosko, setAllPosko] = useState<Posko[]>([]);
-  const [currentUser, setCurrentUser] = useState<User | null>(() => {
-    return getInitialOrStored<User | null>('med_control_auth_user_v2', null);
-  });
-  const [isSuperAdminSession, setIsSuperAdminSession] = useState<boolean>(() => {
-    const stored = getInitialOrStored<User | null>('med_control_auth_user_v2', null);
-    return stored?.role === 'SUPER_ADMIN';
-  });
+  
+  // Cold start state: Authenticated state must be verified strictly by Firebase Auth gate
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [isSuperAdminSession, setIsSuperAdminSession] = useState<boolean>(false);
 
-  // Firebase Auth State (P0-2A Foundation)
+  // Firebase Auth State
   const [firebaseUser, setFirebaseUser] = useState<FirebaseUser | null>(getCurrentFirebaseUser());
   const [firebaseAuthStatus, setFirebaseAuthStatus] = useState<FirebaseAuthStatus>('LOADING');
 
@@ -72,76 +69,82 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setAllCabang(cabang);
     setAllPosko(posko);
 
-    const storedUser = getInitialOrStored<User | null>('med_control_auth_user_v2', null);
-    if (storedUser) {
-      const live = users.find(
-        u => u.id === storedUser.id || 
-        (u.username && storedUser.username && u.username.toLowerCase() === storedUser.username.toLowerCase()) ||
-        (storedUser.firebase_uid && u.firebase_uid === storedUser.firebase_uid)
-      );
-      if (live) {
+    // If an active authenticated Firebase user exists, synchronize profile data
+    if (auth?.currentUser && currentUser) {
+      const live = users.find(u => u.id === currentUser.id || u.firebase_uid === auth?.currentUser?.uid);
+      if (live && live.status === 'AKTIF') {
         setCurrentUser(live);
         setIsSuperAdminSession(live.role === 'SUPER_ADMIN');
         saveToStorage('med_control_auth_user_v2', live);
-      } else if (users.length === 0) {
-        // Retain session while offline/loading
-        setCurrentUser(storedUser);
-        setIsSuperAdminSession(storedUser.role === 'SUPER_ADMIN');
-      } else if (storedUser.role === 'SUPER_ADMIN' || storedUser.username === 'superadmin') {
-        // Always preserve Super Admin session
-        setCurrentUser(storedUser);
-        setIsSuperAdminSession(true);
-      } else {
-        // User was removed by admin
+        saveToStorage('med_control_is_super_admin_session_v2', live.role === 'SUPER_ADMIN');
+      } else if (live && live.status !== 'AKTIF') {
         setCurrentUser(null);
         setIsSuperAdminSession(false);
         localStorage.removeItem('med_control_auth_user_v2');
         localStorage.removeItem('med_control_is_super_admin_session_v2');
+        stopFirebaseSync();
       }
-    } else {
-      setCurrentUser(null);
-      setIsSuperAdminSession(false);
     }
   };
 
   useEffect(() => {
     loadData();
 
-    // Subscribe to Firebase Auth state changes (P0-2A & P0-2C.2)
+    // Subscribe to Firebase Auth state changes (Single Source of Truth)
     const unsubscribeFirebaseAuth = subscribeToFirebaseAuth(async (fbUser, status) => {
       setFirebaseUser(fbUser);
       setFirebaseAuthStatus(status);
 
+      if (!fbUser || status !== 'AUTHENTICATED') {
+        // Unauthenticated in Firebase: revoke application access unconditionally
+        setCurrentUser(null);
+        setIsSuperAdminSession(false);
+        localStorage.removeItem('med_control_auth_user_v2');
+        localStorage.removeItem('med_control_is_super_admin_session_v2');
+        stopFirebaseSync();
+        console.log('[AUTH-GATE]', { firebaseUid: null, businessUserId: null, role: null, status: null, authorized: false });
+        return;
+      }
+
       // If user is authenticated via Firebase Auth, resolve profile through single-source-of-truth mapping
-      if (fbUser) {
-        // 1. Resolve through primary UID mapping service
-        let matchedUser = await UserAuthMappingService.getUserProfileByFirebaseUid(fbUser.uid);
+      let matchedUser = await UserAuthMappingService.getUserProfileByFirebaseUid(fbUser.uid);
 
-        // 2. Safe fallback lookup in local cached users by email or username if mapping doc is transitioning
-        if (!matchedUser) {
-          const users = DatabaseService.getUsers();
-          matchedUser = users.find(
-            u => (u.firebase_uid && u.firebase_uid === fbUser.uid) ||
-                 (u.email && fbUser.email && u.email.toLowerCase() === fbUser.email.toLowerCase()) ||
-                 (fbUser.email && u.username && u.username.toLowerCase() === fbUser.email.split('@')[0].toLowerCase())
-          ) || null;
-        }
+      // Fallback lookup in local cached users by email or username if mapping doc is transitioning
+      if (!matchedUser) {
+        const users = DatabaseService.getUsers();
+        matchedUser = users.find(
+          u => (u.firebase_uid && u.firebase_uid === fbUser.uid) ||
+               (u.email && fbUser.email && u.email.toLowerCase() === fbUser.email.toLowerCase()) ||
+               (fbUser.email && u.username && u.username.toLowerCase() === fbUser.email.split('@')[0].toLowerCase())
+        ) || null;
+      }
 
-        // Strict Enforcement:
-        // - Only activate session if matched user is explicitly AKTIF
-        // - If matchedUser is NONAKTIF, preserve inactive state and do not allow authenticated session
-        // - If unmapped (null), NEVER escalate to SUPER_ADMIN
-        if (matchedUser && matchedUser.status === 'AKTIF') {
-          setCurrentUser(matchedUser);
-          setIsSuperAdminSession(matchedUser.role === 'SUPER_ADMIN');
-          saveToStorage('med_control_auth_user_v2', matchedUser);
-          saveToStorage('med_control_is_super_admin_session_v2', matchedUser.role === 'SUPER_ADMIN');
-        } else if (matchedUser && matchedUser.status === 'NONAKTIF') {
-          setCurrentUser(null);
-          setIsSuperAdminSession(false);
-          localStorage.removeItem('med_control_auth_user_v2');
-          localStorage.removeItem('med_control_is_super_admin_session_v2');
-        }
+      if (matchedUser && matchedUser.status === 'AKTIF') {
+        const activeUser: User = { ...matchedUser, firebase_uid: fbUser.uid };
+        setCurrentUser(activeUser);
+        setIsSuperAdminSession(activeUser.role === 'SUPER_ADMIN');
+        saveToStorage('med_control_auth_user_v2', activeUser);
+        saveToStorage('med_control_is_super_admin_session_v2', activeUser.role === 'SUPER_ADMIN');
+        console.log('[AUTH-GATE]', { 
+          firebaseUid: fbUser.uid, 
+          businessUserId: activeUser.id, 
+          role: activeUser.role, 
+          status: activeUser.status, 
+          authorized: true 
+        });
+      } else {
+        setCurrentUser(null);
+        setIsSuperAdminSession(false);
+        localStorage.removeItem('med_control_auth_user_v2');
+        localStorage.removeItem('med_control_is_super_admin_session_v2');
+        stopFirebaseSync();
+        console.log('[AUTH-GATE]', { 
+          firebaseUid: fbUser.uid, 
+          businessUserId: matchedUser?.id || null, 
+          role: matchedUser?.role || null, 
+          status: matchedUser?.status || null, 
+          authorized: false 
+        });
       }
     });
 
@@ -177,88 +180,64 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [firebaseUser?.uid, firebaseAuthStatus, currentUser?.id, currentUser?.role, currentUser?.status]);
 
-  // Authenticated Login with Firebase Auth and Single Source of Truth Mapping
+  // Authenticated Login: Solely driven by Firebase Authentication with strict Mapping
   const login = async (username: string, password?: string): Promise<{ success: boolean; message: string }> => {
-    const cleanUsername = username.toLowerCase().trim();
-    const currentUsers = allUsers.length > 0 ? allUsers : DatabaseService.getUsers();
-    const user = currentUsers.find(u => u.username.toLowerCase() === cleanUsername);
-
-    if (!user) {
-      return { success: false, message: `Username "${username}" tidak ditemukan dalam sistem!` };
-    }
-
-    if (user.status !== 'AKTIF') {
-      return { success: false, message: 'Akun Anda sedang dinonaktifkan oleh Administrator.' };
-    }
-
-    // Check password
+    const rawUser = username.trim();
     const enteredPassword = password || '';
-    if (user.password && user.password !== enteredPassword) {
+
+    if (!rawUser) {
+      return { success: false, message: 'Username atau email wajib diisi!' };
+    }
+
+    if (!enteredPassword) {
+      return { success: false, message: 'Password wajib diisi!' };
+    }
+
+    // 1. Resolve target email address for Firebase Auth
+    let targetEmail = '';
+    if (rawUser.includes('@')) {
+      targetEmail = rawUser.toLowerCase();
+    } else {
+      const cleanUsername = rawUser.toLowerCase();
+      const currentUsers = allUsers.length > 0 ? allUsers : DatabaseService.getUsers();
+      const matchedLocalUser = currentUsers.find(u => u.username.toLowerCase() === cleanUsername);
+      if (matchedLocalUser) {
+        targetEmail = getFirebaseCompatibleEmail(matchedLocalUser);
+      } else {
+        const cleanSanitized = cleanUsername.replace(/[^a-z0-9]/g, '');
+        targetEmail = `${cleanSanitized || 'user'}@kamm-manado.internal`;
+      }
+    }
+
+    // 2. Perform direct Firebase Authentication (Sole Gate - No fallback credentials)
+    const authRes = await signInWithFirebaseAuth(targetEmail, enteredPassword);
+    if (!authRes.success || !authRes.user) {
+      console.log('[LOGIN-RESULT]', { 
+        firebaseAuth: 'FAILED', 
+        mapping: 'N/A', 
+        profile: 'N/A', 
+        finalResult: 'REJECTED' 
+      });
       return { 
         success: false, 
-        message: 'Password yang Anda masukkan salah. Jika lupa password, hubungi Super Admin untuk mereset ke 1234.' 
+        message: authRes.message 
       };
     }
 
-    // 1. Authenticate with official Firebase Auth
-    let fbUid: string | null = null;
-    try {
-      const fbResult = await signInOrProvisionFirebaseAuth(user, enteredPassword);
-      if (fbResult.success && fbResult.user) {
-        fbUid = fbResult.user.uid;
-        setFirebaseUser(fbResult.user);
-        setFirebaseAuthStatus('AUTHENTICATED');
+    const fbUser = authRes.user;
+    setFirebaseUser(fbUser);
+    setFirebaseAuthStatus('AUTHENTICATED');
 
-        // 2. Establish / Verify user_auth/{uid} and users/{user_id} mapping
-        await UserAuthMappingService.linkUserToFirebaseUid(
-          user.id,
-          fbResult.user.uid,
-          fbResult.user.email || undefined,
-          user.role === 'SUPER_ADMIN' ? 'SUPER_ADMIN' : 'SYSTEM_AUTH'
-        );
-      }
-    } catch (authErr) {
-      console.warn('Firebase Auth linking during login notice:', authErr);
-    }
-
-    const activeUser: User = fbUid ? { ...user, firebase_uid: fbUid } : user;
-    const isSA = activeUser.role === 'SUPER_ADMIN';
-
-    setCurrentUser(activeUser);
-    setIsSuperAdminSession(isSA);
-    saveToStorage('med_control_auth_user_v2', activeUser);
-    saveToStorage('med_control_is_super_admin_session_v2', isSA);
-
-    // 3. Start Firestore sync for this user session immediately
-    if (fbUid) {
-      startFirebaseSync(activeUser, fbUid);
-    }
-
-    return { success: true, message: 'Login berhasil!' };
-  };
-
-  // Firebase Auth Login method for P0-2A / P0-2C.2 transition
-  const loginFirebaseAuth = async (email: string, password: string): Promise<{ success: boolean; message: string }> => {
-    const result = await signInWithFirebaseAuth(email, password);
-    if (!result.success || !result.user) {
-      return { success: false, message: result.message };
-    }
-
-    const fbUser = result.user;
-
-    // 1. Resolve through primary UID mapping service
+    // 3. Resolve user profile via Single Source of Truth Mapping (user_auth/{uid} -> users/{user_id})
     let matchedUser = await UserAuthMappingService.getUserProfileByFirebaseUid(fbUser.uid);
-
-    // 2. Safe fallback lookup in local cached users by email or username
     if (!matchedUser) {
-      const users = DatabaseService.getUsers();
-      matchedUser = users.find(
+      const currentUsers = allUsers.length > 0 ? allUsers : DatabaseService.getUsers();
+      matchedUser = currentUsers.find(
         u => (u.firebase_uid && u.firebase_uid === fbUser.uid) ||
              (u.email && fbUser.email && u.email.toLowerCase() === fbUser.email.toLowerCase()) ||
              (fbUser.email && u.username && u.username.toLowerCase() === fbUser.email.split('@')[0].toLowerCase())
       ) || null;
 
-      // If resolved via email and has no firebase_uid yet, establish mapping
       if (matchedUser && !matchedUser.firebase_uid) {
         UserAuthMappingService.linkUserToFirebaseUid(matchedUser.id, fbUser.uid, fbUser.email || undefined).catch(err => {
           console.warn('Auto-linking user to Firebase UID on login error:', err);
@@ -267,26 +246,63 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
 
     if (!matchedUser) {
+      console.log('[LOGIN-RESULT]', { 
+        firebaseAuth: 'SUCCESS', 
+        mapping: 'UNMAPPED', 
+        profile: 'NOT_FOUND', 
+        finalResult: 'REJECTED' 
+      });
+      await signOutFirebaseAuth();
       return { 
         success: false, 
-        message: `Autentikasi Firebase berhasil, namun akun belum terhubung dengan profil pengguna (UID: ${fbUser.uid}). Hubungi Super Admin.` 
+        message: 'Autentikasi Firebase berhasil, namun akun belum terhubung dengan profil pengguna dalam sistem database. Hubungi Administrator.' 
       };
     }
 
     if (matchedUser.status !== 'AKTIF') {
-      return { success: false, message: 'Akun Anda sedang dinonaktifkan oleh Administrator.' };
+      console.log('[LOGIN-RESULT]', { 
+        firebaseAuth: 'SUCCESS', 
+        mapping: 'MAPPED', 
+        profile: matchedUser.id, 
+        status: matchedUser.status, 
+        finalResult: 'REJECTED' 
+      });
+      await signOutFirebaseAuth();
+      return { 
+        success: false, 
+        message: 'Akun Anda sedang dinonaktifkan oleh Administrator.' 
+      };
     }
 
-    const isSA = matchedUser.role === 'SUPER_ADMIN';
-    setCurrentUser(matchedUser);
+    const activeUser: User = { ...matchedUser, firebase_uid: fbUser.uid };
+    const isSA = activeUser.role === 'SUPER_ADMIN';
+
+    setCurrentUser(activeUser);
     setIsSuperAdminSession(isSA);
-    saveToStorage('med_control_auth_user_v2', matchedUser);
+    saveToStorage('med_control_auth_user_v2', activeUser);
     saveToStorage('med_control_is_super_admin_session_v2', isSA);
 
-    return { success: true, message: 'Login Firebase berhasil!' };
+    console.log('[LOGIN-RESULT]', { 
+      firebaseAuth: 'SUCCESS', 
+      mapping: 'MAPPED', 
+      profile: activeUser.id, 
+      role: activeUser.role, 
+      status: activeUser.status, 
+      finalResult: 'AUTHORIZED' 
+    });
+
+    // Start Firestore sync for this user session immediately
+    startFirebaseSync(activeUser, fbUser.uid);
+
+    return { success: true, message: 'Login berhasil!' };
   };
 
-  // Unified Logout: Cleans both legacy localStorage session and Firebase Auth session
+  // Firebase Auth Login method for P0-2A / P0-2C.2 transition
+  const loginFirebaseAuth = async (email: string, password: string): Promise<{ success: boolean; message: string }> => {
+    return login(email, password);
+  };
+
+  // Unified Logout: Cleans both local cache and Firebase Auth session
   const logout = () => {
     stopFirebaseSync();
     setCurrentUser(null);

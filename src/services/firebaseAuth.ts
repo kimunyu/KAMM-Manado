@@ -19,17 +19,6 @@ export interface FirebaseAuthResult {
 }
 
 /**
- * Ensures password meets Firebase Auth minimum 6-character length constraint.
- */
-export function getFirebaseCompatiblePassword(rawPassword?: string): string {
-  const pwd = rawPassword || '1234';
-  if (pwd.length < 6) {
-    return pwd.padEnd(6, '0');
-  }
-  return pwd;
-}
-
-/**
  * Derives a valid unique internal email address for Firebase Auth if user email is missing.
  */
 export function getFirebaseCompatibleEmail(user: User): string {
@@ -53,13 +42,13 @@ export function mapFirebaseAuthError(error: unknown): string {
 
   switch (code) {
     case 'auth/invalid-email':
-      return 'Format email tidak valid.';
+      return 'Format email atau username tidak valid.';
     case 'auth/user-not-found':
-      return 'Pengguna dengan email ini tidak ditemukan.';
+      return 'Pengguna tidak ditemukan dalam sistem autentikasi Firebase.';
     case 'auth/wrong-password':
-      return 'Password yang dimasukkan salah.';
+      return 'Password yang Anda masukkan salah.';
     case 'auth/invalid-credential':
-      return 'Kombinasi email atau password salah.';
+      return 'Kombinasi username/email atau password salah.';
     case 'auth/user-disabled':
       return 'Akun telah dinonaktifkan oleh administrator.';
     case 'auth/too-many-requests':
@@ -98,6 +87,7 @@ export function getFirebaseUID(): string | null {
 
 /**
  * Sign in using official Firebase Authentication with Email & Password.
+ * Direct authentication gate: NO fallback passwords, NO auto-retry with secondary credentials.
  */
 export async function signInWithFirebaseAuth(email: string, password: string): Promise<FirebaseAuthResult> {
   if (!auth) {
@@ -125,72 +115,29 @@ export async function signInWithFirebaseAuth(email: string, password: string): P
 }
 
 /**
- * Signs in the user or provisions their Firebase Auth account automatically on login.
- * This guarantees auth.currentUser is always populated for Firestore operations.
+ * Creates a new Firebase Auth account explicitly (Administrative / Provisioning action only).
+ * Normal user login MUST NOT call this method.
  */
-export async function signInOrProvisionFirebaseAuth(user: User, rawPassword?: string): Promise<FirebaseAuthResult> {
+export async function createFirebaseAuthAccount(email: string, password: string): Promise<FirebaseAuthResult> {
   if (!auth) {
     return {
-      success: true, // Offline mode fallback
-      message: 'Firebase Auth tidak aktif (mode lokal).'
+      success: false,
+      message: 'Firebase Auth belum terinisialisasi.'
     };
   }
 
-  const email = getFirebaseCompatibleEmail(user);
-  const password = getFirebaseCompatiblePassword(rawPassword || user.password);
-
   try {
-    // 1. Attempt standard sign-in
-    const userCredential = await signInWithEmailAndPassword(auth, email, password);
+    const credential = await createUserWithEmailAndPassword(auth, email.trim(), password);
     return {
       success: true,
-      user: userCredential.user,
-      message: 'Autentikasi Firebase berhasil.'
+      user: credential.user,
+      message: 'Akun Firebase Auth berhasil dibuat.'
     };
-  } catch (err: any) {
-    const errCode = err?.code;
-
-    // 2. If user doesn't exist yet in Firebase Auth, create account automatically
-    if (errCode === 'auth/user-not-found' || errCode === 'auth/invalid-credential') {
-      try {
-        const newCredential = await createUserWithEmailAndPassword(auth, email, password);
-        return {
-          success: true,
-          user: newCredential.user,
-          message: 'Akun Firebase Auth berhasil dibuat dan diotentikasi.'
-        };
-      } catch (createErr: any) {
-        // If email already in use (e.g. password mismatch), attempt fallback with default password
-        if (createErr?.code === 'auth/email-already-in-use') {
-          const fallbackPassword = getFirebaseCompatiblePassword('1234');
-          try {
-            const fbCred = await signInWithEmailAndPassword(auth, email, fallbackPassword);
-            return {
-              success: true,
-              user: fbCred.user,
-              message: 'Autentikasi Firebase berhasil menggunakan kredensial default.'
-            };
-          } catch (fbErr: any) {
-            console.warn('Fallback Firebase sign-in failed:', fbErr);
-          }
-        }
-        console.warn('Firebase createUser error:', createErr);
-      }
-    }
-
-    // Return current user if already signed in matching UID
-    if (auth.currentUser) {
-      return {
-        success: true,
-        user: auth.currentUser,
-        message: 'Menggunakan sesi Firebase Auth yang sedang aktif.'
-      };
-    }
-
+  } catch (error: any) {
     return {
       success: false,
-      message: mapFirebaseAuthError(err),
-      errorCode: errCode
+      message: mapFirebaseAuthError(error),
+      errorCode: error?.code
     };
   }
 }
