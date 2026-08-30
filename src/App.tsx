@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { DatabaseService } from './services/storage';
-import { MediatorKontrak, FULog } from './types';
+import { MediatorKontrak, FULog, ExCustomer, ExCustomerFULog, Cabang, Posko, User } from './types';
 import { Header } from './components/Header';
 import { Sidebar, ActiveTab } from './components/Sidebar';
 import { Dashboard } from './components/Dashboard';
@@ -10,6 +10,7 @@ import { RegistrasiMediator } from './components/RegistrasiMediator';
 import { ValidasiKdMed } from './components/ValidasiKdMed';
 import { FollowUpModule } from './components/FollowUpModule';
 import { UserControl } from './components/UserControl';
+import { ExCustomerControl } from './components/ExCustomerControl';
 import { MediatorDetailModal } from './components/MediatorDetailModal';
 import { MediatorEditModal } from './components/MediatorEditModal';
 import { LoginModal } from './components/LoginModal';
@@ -18,9 +19,17 @@ import { ChangePasswordModal } from './components/ChangePasswordModal';
 function MainApp() {
   const { currentUser, canValidateKdMed, canRegisterMediator, canInputFU, canManageUsers } = useAuth();
 
-  const [activeTab, setActiveTab] = useState<ActiveTab>('dashboard');
+  const [activeTab, setActiveTab] = useState<ActiveTab>(
+    currentUser?.role === 'ADMIN_BPKB' ? 'ex-customer' : 'dashboard'
+  );
   const [mediators, setMediators] = useState<MediatorKontrak[]>([]);
   const [fuLogs, setFuLogs] = useState<FULog[]>([]);
+  const [exCustomers, setExCustomers] = useState<ExCustomer[]>([]);
+  const [exCustomerLogs, setExCustomerLogs] = useState<ExCustomerFULog[]>([]);
+  const [allCabang, setAllCabang] = useState<Cabang[]>([]);
+  const [allPosko, setAllPosko] = useState<Posko[]>([]);
+  const [allUsers, setAllUsers] = useState<User[]>([]);
+
   const [selectedMedForDetail, setSelectedMedForDetail] = useState<MediatorKontrak | null>(null);
   const [selectedMedForEdit, setSelectedMedForEdit] = useState<MediatorKontrak | null>(null);
   const [preSelectedKdMedForFU, setPreSelectedKdMedForFU] = useState<string | null>(null);
@@ -29,8 +38,19 @@ function MainApp() {
   const loadDatabase = () => {
     const meds = DatabaseService.getMediators();
     const logs = DatabaseService.getFULogs();
+    const exList = DatabaseService.getExCustomers();
+    const exLogs = DatabaseService.getExCustomerFULogs();
+    const cabList = DatabaseService.getCabangList();
+    const posList = DatabaseService.getPoskoList();
+    const uList = DatabaseService.getUsers();
+
     setMediators(meds);
     setFuLogs(logs);
+    setExCustomers(exList);
+    setExCustomerLogs(exLogs);
+    setAllCabang(cabList);
+    setAllPosko(posList);
+    setAllUsers(uList);
   };
 
   useEffect(() => {
@@ -45,6 +65,10 @@ function MainApp() {
 
   // Safeguard tab switching when role changes and user loses access to current tab
   useEffect(() => {
+    if (currentUser?.role === 'ADMIN_BPKB') {
+      setActiveTab('ex-customer');
+      return;
+    }
     if (activeTab === 'user-control' && !canManageUsers) {
       setActiveTab('dashboard');
     }
@@ -81,7 +105,25 @@ function MainApp() {
     return <LoginModal />;
   }
 
-  const pendingCount = mediators.filter(m => m.status === 'PENDING').length;
+  const isNational = currentUser?.role === 'SUPER_ADMIN' || currentUser?.role === 'RM';
+  const pendingCount = mediators.filter(m => {
+    if (currentUser?.role === 'ADM') {
+      if (m.status !== 'BELUM_AKTIF') return false;
+    } else if (currentUser?.role === 'KAPOS') {
+      if (m.status !== 'PENDING') return false;
+    } else {
+      if (m.status !== 'BELUM_AKTIF' && m.status !== 'PENDING') return false;
+    }
+
+    if (isNational) return true;
+    if (currentUser?.kd_posko && m.kd_posko?.trim().toUpperCase() !== currentUser.kd_posko.trim().toUpperCase()) {
+      return false;
+    }
+    if (currentUser?.kd_cabang && m.kd_cabang?.trim().toUpperCase() !== currentUser.kd_cabang.trim().toUpperCase()) {
+      return false;
+    }
+    return true;
+  }).length;
 
   return (
     <div className="min-h-screen bg-[#0a0b0d] flex flex-col font-sans text-[#e0e4eb] selection:bg-blue-600 selection:text-white">
@@ -147,6 +189,18 @@ function MainApp() {
 
           {activeTab === 'user-control' && (
             <UserControl onRefresh={loadDatabase} />
+          )}
+
+          {activeTab === 'ex-customer' && (
+            <ExCustomerControl
+              currentUser={currentUser}
+              allCabang={allCabang}
+              allPosko={allPosko}
+              allUsers={allUsers}
+              allExCustomers={exCustomers}
+              allExCustomerLogs={exCustomerLogs}
+              onRefresh={loadDatabase}
+            />
           )}
         </main>
       </div>

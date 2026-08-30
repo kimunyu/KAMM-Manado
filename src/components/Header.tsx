@@ -5,13 +5,11 @@ import {
   Building2, 
   LogOut, 
   MapPin, 
-  RefreshCw,
   KeyRound,
   Download,
   Upload
 } from 'lucide-react';
 import { DatabaseService, SystemFullBackup } from '../services/storage';
-import { ConfirmDeleteModal } from './ConfirmDeleteModal';
 
 interface HeaderProps {
   onRefresh: () => void;
@@ -20,14 +18,7 @@ interface HeaderProps {
 
 export const Header: React.FC<HeaderProps> = ({ onRefresh, onOpenChangePassword }) => {
   const { currentUser, logout, refreshData, isSuperAdminSession } = useAuth();
-  const [isResetConfirmOpen, setIsResetConfirmOpen] = useState(false);
   const [snapshotMsg, setSnapshotMsg] = useState<string | null>(null);
-
-  const handleConfirmReset = () => {
-    DatabaseService.resetToDefault();
-    refreshData();
-    onRefresh();
-  };
 
   // Download Full System JSON Backup
   const handleDownloadBackup = () => {
@@ -61,13 +52,13 @@ export const Header: React.FC<HeaderProps> = ({ onRefresh, onOpenChangePassword 
     if (!file) return;
 
     const reader = new FileReader();
-    reader.onload = (event) => {
+    reader.onload = async (event) => {
       try {
         const content = event.target?.result as string;
         const parsed = JSON.parse(content) as SystemFullBackup;
 
         if (window.confirm('Pulihkan seluruh database dari file .JSON ini? Semua akun, mediator, dan log FU akan disinkronkan.')) {
-          const res = DatabaseService.restoreFullSystemBackup(parsed);
+          const res = await DatabaseService.restoreFullSystemBackup(parsed);
           if (res.success) {
             refreshData();
             onRefresh();
@@ -221,31 +212,10 @@ export const Header: React.FC<HeaderProps> = ({ onRefresh, onOpenChangePassword 
                   className="hidden"
                 />
               </label>
-
-              {/* 3. Reset Data Button */}
-              <button
-                id="btn-reset-demo-data"
-                onClick={() => setIsResetConfirmOpen(true)}
-                className="text-[#8e96a8] hover:text-rose-300 flex items-center space-x-1 px-2.5 py-1 rounded-md bg-[#181a24] hover:bg-rose-950/40 border border-[#272d3e] hover:border-rose-900/50 transition-colors cursor-pointer text-[11px]"
-                title="Reset data ke kondisi awal"
-              >
-                <RefreshCw className="h-3 w-3" />
-                <span>Reset Data</span>
-              </button>
             </div>
           </div>
         )}
       </div>
-
-      {/* Reset Confirmation Modal */}
-      <ConfirmDeleteModal
-        isOpen={isResetConfirmOpen}
-        title="Reset Seluruh Data"
-        description="Apakah Anda yakin ingin mereset seluruh data aplikasi ke kondisi awal pabrik? Tindakan ini akan mengosongkan semua data mediator dan riwayat follow-up."
-        confirmButtonText="Ya, Reset Data"
-        onConfirm={handleConfirmReset}
-        onClose={() => setIsResetConfirmOpen(false)}
-      />
     </header>
   );
 };

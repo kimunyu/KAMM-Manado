@@ -47,7 +47,7 @@ export const ImportMediatorModal: React.FC<ImportMediatorModalProps> = ({
     message: string;
   } | null>(null);
 
-  if (!isOpen) return null;
+  if (!isOpen || currentUser?.role !== 'SUPER_ADMIN') return null;
 
   // Handle CSV file selected
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -118,6 +118,10 @@ export const ImportMediatorModal: React.FC<ImportMediatorModalProps> = ({
 
   // Execute Import
   const handleExecuteImport = () => {
+    if (currentUser?.role !== 'SUPER_ADMIN') {
+      setParseErrors(['Akses Ditolak: Hanya Super Admin yang diizinkan melakukan import data.']);
+      return;
+    }
     const validRows = parsedRows.filter(r => r.isValid);
     if (validRows.length === 0) {
       setParseErrors(['Tidak ada baris data valid yang siap diimpor. Silakan periksa format kolom.']);

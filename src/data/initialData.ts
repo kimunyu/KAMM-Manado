@@ -1,25 +1,23 @@
-import { Cabang, Posko, User, MediatorKontrak, FULog } from '../types';
+import { Cabang, Posko, User, MediatorKontrak, FULog, ExCustomer, ExCustomerFULog } from '../types';
+import { SEED_USERS, SEED_CABANG, SEED_POSKO } from './seedData';
+import { SEED_MEDS_MANADO } from './seedMedsManado';
+import { SEED_MEDS_TUMINTING } from './seedMedsTuminting';
+import { SEED_EX_CUSTOMERS, SEED_EX_CUSTOMER_FU_LOGS } from './seedExCustomers';
 
-// Bersih tanpa data demo - siap untuk input data riil
-export const INITIAL_CABANG: Cabang[] = [];
+export const INITIAL_CABANG: Cabang[] = SEED_CABANG;
 
-export const INITIAL_POSKO: Posko[] = [];
+export const INITIAL_POSKO: Posko[] = SEED_POSKO;
 
-// Hanya menyisakan akun Super Administrator
-export const INITIAL_USERS: User[] = [
-  {
-    id: 'USR-001',
-    username: 'superadmin',
-    password: '1234',
-    nama: 'Super Administrator',
-    role: 'SUPER_ADMIN',
-    kd_ao: 'SA-01',
-    status: 'AKTIF',
-    email: 'admin@perusahaan.co.id',
-    must_change_password: false
-  }
+export const INITIAL_USERS: User[] = SEED_USERS;
+
+export const INITIAL_MEDIATORS: MediatorKontrak[] = [
+  ...SEED_MEDS_MANADO,
+  ...SEED_MEDS_TUMINTING
 ];
 
-export const INITIAL_MEDIATORS: MediatorKontrak[] = [];
-
 export const INITIAL_FU_LOGS: FULog[] = [];
+
+export const INITIAL_EX_CUSTOMERS: ExCustomer[] = SEED_EX_CUSTOMERS;
+
+export const INITIAL_EX_CUSTOMER_FU_LOGS: ExCustomerFULog[] = SEED_EX_CUSTOMER_FU_LOGS;
+

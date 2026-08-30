@@ -33,31 +33,43 @@ export const FollowUpModule: React.FC<FollowUpModuleProps> = ({
 }) => {
   const { currentUser } = useAuth();
 
+  const isNational = currentUser?.role === 'SUPER_ADMIN' || currentUser?.role === 'RM';
   const isCMO = currentUser?.role === 'CMO';
-  const isKAPOS = currentUser?.role === 'KAPOS';
   const userAo = currentUser?.kd_ao;
   const userPosko = currentUser?.kd_posko;
   const userCabang = currentUser?.kd_cabang;
-  const isBranchRestricted = !isCMO && !isKAPOS && currentUser?.role !== 'SUPER_ADMIN' && currentUser?.role !== 'RM' && !!userCabang;
 
   const accessibleMediators = React.useMemo(() => {
-    if (isCMO) {
-      return mediators.filter(m => {
+    if (isNational) {
+      return mediators;
+    }
+    return mediators.filter(m => {
+      // CMO restriction
+      if (isCMO) {
         const matchAo = userAo ? (m.kd_ao || '').trim().toUpperCase() === userAo.trim().toUpperCase() : false;
         const matchCreated = !!(currentUser?.nama && m.created_by_user === currentUser.nama);
-        return matchAo || matchCreated;
-      });
-    }
-    if (isKAPOS) {
-      return mediators.filter(m => {
-        return userPosko ? m.kd_posko.trim().toUpperCase() === userPosko.trim().toUpperCase() : true;
-      });
-    }
-    if (isBranchRestricted) {
-      return mediators.filter(m => m.kd_cabang === userCabang);
-    }
-    return mediators;
-  }, [mediators, isCMO, isKAPOS, userAo, userPosko, isBranchRestricted, userCabang, currentUser?.nama]);
+        if (!matchAo && !matchCreated) {
+          return false;
+        }
+      }
+
+      // Posko restriction (for KAPOS, ADM Posko, or any role assigned to Posko)
+      if (userPosko) {
+        if (!m.kd_posko || m.kd_posko.trim().toUpperCase() !== userPosko.trim().toUpperCase()) {
+          return false;
+        }
+      }
+
+      // Cabang restriction
+      if (userCabang) {
+        if (!m.kd_cabang || m.kd_cabang.trim().toUpperCase() !== userCabang.trim().toUpperCase()) {
+          return false;
+        }
+      }
+
+      return true;
+    });
+  }, [mediators, isNational, isCMO, userAo, userPosko, userCabang, currentUser?.nama]);
 
   // Search / Selection state
   const [searchQuery, setSearchQuery] = useState('');
@@ -114,7 +126,7 @@ export const FollowUpModule: React.FC<FollowUpModuleProps> = ({
     setFeedback(null);
   };
 
-  const handleSubmitFU = (e: React.FormEvent) => {
+  const handleSubmitFU = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedMediator) {
       setFeedback({ type: 'error', message: 'Silakan pilih mediator terlebih dahulu!' });
@@ -134,7 +146,7 @@ export const FollowUpModule: React.FC<FollowUpModuleProps> = ({
     setIsSubmitting(true);
     setFeedback(null);
 
-    const result = DatabaseService.submitFollowUp({
+    const result = await DatabaseService.submitFollowUp({
       kd_med: selectedMediator.kd_med,
       hasil_fu: hasilFu,
       catatan_fu: catatanFu.trim(),

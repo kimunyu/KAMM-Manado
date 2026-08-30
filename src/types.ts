@@ -2,17 +2,86 @@ export type UserRole =
   | 'CMO' 
   | 'KAPOS' 
   | 'ADM' 
+  | 'ADMIN_BPKB'
   | 'KAOPS' 
   | 'KACAB' 
   | 'RM' 
   | 'SUPER_ADMIN';
 
-export type MediatorStatus = 'PENDING' | 'AKTIF' | 'INAKTIF';
+export type StatusKreditLunas = 
+  | 'Lebih Awal'
+  | 'Tepat Waktu'
+  | 'Dalam Perhatian Khusus'
+  | 'Kurang Lancar'
+  | 'Diragukan'
+  | 'AR2'
+  | 'AR3'
+  | 'AR4';
 
 export type HasilFU = 
   | 'WA/Tlpn Aktif, ada respon'
   | 'WA/Tlpn Aktif, tidak ada respon'
   | 'WA/Tlpn Tidak Aktif';
+
+export type HasilFUExCustomer = HasilFU;
+
+export interface ExCustomer {
+  no_psb: string;              // Unique/Primary Key
+  kd_cab: string;              // Kode Cabang
+  kd_pos: string;              // Kode Posko
+  nama_konsumen: string;
+  no_telepon: string;
+  tgl_bpkb_sdk: string;        // Tanggal BPKB diserahkan/diambil (YYYY-MM-DD)
+  status_kredit_lunas: StatusKreditLunas;
+  
+  // Keamanan & Pencatatan Input (Admin BPKB)
+  created_at: string;          // ISO Timestamp saat diinput
+  created_by_uid: string;      // ID User Penginput
+  created_by_name: string;
+  updated_at?: string;         // ISO Timestamp saat diedit
+  updated_by_name?: string;
+
+  // Drip Feeding Engine & Penugasan CMO
+  assigned_to_cmo_id?: string; // ID CMO jika ditugaskan oleh KAPOS
+  assigned_to_cmo_name?: string;
+  assigned_at?: string;        // Timestamp penugasan CMO (reset 24 jam)
+  
+  // Follow Up Terakhir
+  last_fu_date?: string | null;// ISO DateTime
+  last_fu_status?: HasilFUExCustomer | null;
+  last_fu_by_user?: string | null;
+  last_fu_by_role?: UserRole | null;
+  last_fu_notes?: string | null; // Maks 100 Karakter
+  fu_count: number;
+}
+
+export interface ExCustomerFULog {
+  id: string;
+  no_psb: string;
+  nama_konsumen: string;
+  kd_cab: string;
+  kd_pos: string;
+  tgl_fu: string;             // ISO DateTime
+  hasil_fu: HasilFUExCustomer;
+  catatan_fu: string;         // Max 100 chars
+  user_fu: string;            // Nama Pengguna
+  user_id: string;
+  user_role: UserRole;
+  kd_ao?: string;
+}
+
+export interface ExCustomerMetrics {
+  totalExCustomer: number;
+  totalDripToday: number;
+  totalSudahFuHariIni: number;
+  totalBelumFuHariIni: number;
+  totalAssignedCmo: number;
+  responseRates: {
+    respon: number;
+    tidakRespon: number;
+    tidakAktif: number;
+  };
+}
 
 export interface Cabang {
   kd_cabang: string;
@@ -39,7 +108,15 @@ export interface User {
   password: string;
   must_change_password?: boolean;
   last_password_change?: string;
+  firebase_uid?: string;
 }
+
+export type MediatorStatus = 
+  | 'BELUM_AKTIF' // Baru didaftarkan (Menunggu Peninjauan Admin)
+  | 'PENDING'     // Telah ditinjau Admin (Menunggu Input KD MED oleh KAPOS / Super Admin)
+  | 'AKTIF'       // Telah diinput KD MED resmi (Aktif Beroperasi)
+  | 'INAKTIF'     // Nonaktif / Vakum
+  | 'DITOLAK';    // Ditolak saat peninjauan/validasi
 
 export interface MediatorKontrak {
   kd_med: string; // Manually inputted by KAOPS or SUPER_ADMIN, temporary pending code if PENDING
@@ -54,6 +131,8 @@ export interface MediatorKontrak {
   created_at: string; // ISO DateTime
   created_by_user?: string;
   created_by_role?: UserRole;
+  reviewed_at?: string | null;
+  reviewed_by?: string | null;
   validated_at?: string | null;
   validated_by?: string | null;
   catatan_admin?: string;

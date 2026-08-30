@@ -82,12 +82,64 @@
         "kd_cabang": { "type": "string" }
       },
       "required": ["id", "kd_med", "tgl_fu", "hasil_fu", "user_fu"]
+    },
+    "user_auth": {
+      "title": "UserAuth",
+      "description": "Firebase UID to user document ID mapping",
+      "type": "object",
+      "properties": {
+        "user_id": { "type": "string" },
+        "linked_at": { "type": "string" },
+        "email": { "type": "string" },
+        "status": { "type": "string" },
+        "linked_by": { "type": "string" }
+      },
+      "required": ["user_id", "linked_at"]
+    },
+    "ex_customers": {
+      "title": "ExCustomers",
+      "description": "Ex-Customer retention and BPKB guarantee data",
+      "type": "object",
+      "properties": {
+        "no_psb": { "type": "string" },
+        "kd_cab": { "type": "string" },
+        "kd_pos": { "type": "string" },
+        "nama_konsumen": { "type": "string" },
+        "no_telepon": { "type": "string" },
+        "tgl_bpkb_sdk": { "type": "string" },
+        "status_kredit_lunas": { "type": "string" },
+        "created_at": { "type": "string" },
+        "created_by_uid": { "type": "string" },
+        "created_by_name": { "type": "string" }
+      },
+      "required": ["no_psb", "kd_cab", "kd_pos", "nama_konsumen", "no_telepon", "tgl_bpkb_sdk", "status_kredit_lunas", "created_at"]
+    },
+    "ex_customer_fu_logs": {
+      "title": "ExCustomerFollowUpLogs",
+      "description": "Follow up logs for ex-customers retention",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "no_psb": { "type": "string" },
+        "nama_konsumen": { "type": "string" },
+        "kd_cab": { "type": "string" },
+        "kd_pos": { "type": "string" },
+        "tgl_fu": { "type": "string" },
+        "hasil_fu": { "type": "string" },
+        "catatan_fu": { "type": "string" },
+        "user_fu": { "type": "string" }
+      },
+      "required": ["id", "no_psb", "tgl_fu", "hasil_fu", "user_fu"]
     }
   },
   "firestore": {
     "users": {
       "entity": "users",
       "description": "User accounts collection"
+    },
+    "user_auth": {
+      "entity": "user_auth",
+      "description": "Firebase UID mapping collection"
     },
     "cabang": {
       "entity": "cabang",
@@ -104,6 +156,14 @@
     "fu_logs": {
       "entity": "fu_logs",
       "description": "Follow up logs collection"
+    },
+    "ex_customers": {
+      "entity": "ex_customers",
+      "description": "Ex-customers retention collection"
+    },
+    "ex_customer_fu_logs": {
+      "entity": "ex_customer_fu_logs",
+      "description": "Ex-customer follow up logs collection"
     }
   }
 }

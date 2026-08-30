@@ -69,14 +69,14 @@ export const CabangPoskoControl: React.FC<CabangPoskoControlProps> = ({ onRefres
     setIsCabangModalOpen(true);
   };
 
-  const handleSaveCabang = (e: React.FormEvent) => {
+  const handleSaveCabang = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!kdCabang.trim() || !namaCabang.trim()) {
       setFeedback({ type: 'error', message: 'Kode Cabang dan Nama Cabang wajib diisi!' });
       return;
     }
 
-    const res = DatabaseService.saveCabang(
+    const res = await DatabaseService.saveCabang(
       {
         kd_cabang: kdCabang.trim().toUpperCase(),
         nama_cabang: namaCabang.trim(),
@@ -125,14 +125,14 @@ export const CabangPoskoControl: React.FC<CabangPoskoControlProps> = ({ onRefres
     setIsPoskoModalOpen(true);
   };
 
-  const handleSavePosko = (e: React.FormEvent) => {
+  const handleSavePosko = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!kdPosko.trim() || !namaPosko.trim() || !poskoCabang.trim()) {
       setFeedback({ type: 'error', message: 'Kode Posko, Nama Posko, dan Cabang wajib diisi!' });
       return;
     }
 
-    const res = DatabaseService.savePosko(
+    const res = await DatabaseService.savePosko(
       {
         kd_posko: kdPosko.trim().toUpperCase(),
         nama_posko: namaPosko.trim(),
@@ -597,12 +597,12 @@ export const CabangPoskoControl: React.FC<CabangPoskoControlProps> = ({ onRefres
             : `Apakah Anda yakin ingin menghapus Posko "${itemToDelete?.code} - ${itemToDelete?.name}"? Data mediator di bawah posko ini akan memerlukan penyesuaian.`
         }
         confirmButtonText={itemToDelete?.type === 'cabang' ? 'Hapus Cabang' : 'Hapus Posko'}
-        onConfirm={() => {
+        onConfirm={async () => {
           if (itemToDelete) {
             if (itemToDelete.type === 'cabang') {
-              DatabaseService.deleteCabang(itemToDelete.code);
+              await DatabaseService.deleteCabang(itemToDelete.code);
             } else {
-              DatabaseService.deletePosko(itemToDelete.code);
+              await DatabaseService.deletePosko(itemToDelete.code);
             }
             refreshData();
             onRefresh();

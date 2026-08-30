@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { MediatorKontrak, MediatorStatus } from '../types';
 import { useAuth } from '../context/AuthContext';
 import { DatabaseService } from '../services/storage';
-import { Edit3, CheckCircle2, AlertCircle, X, Save, Building2 } from 'lucide-react';
+import { Edit3, CheckCircle2, AlertCircle, X, Save, Building2, Lock } from 'lucide-react';
 
 interface MediatorEditModalProps {
   mediator: MediatorKontrak | null;
@@ -11,9 +11,14 @@ interface MediatorEditModalProps {
 }
 
 export const MediatorEditModal: React.FC<MediatorEditModalProps> = ({ mediator, onClose, onSuccess }) => {
-  const { allCabang, allPosko, currentUser } = useAuth();
+  const { allCabang, allPosko, currentUser, canEditMediator } = useAuth();
 
   if (!mediator) return null;
+
+  const role = currentUser?.role;
+  const isSuperAdminOrKaops = role === 'SUPER_ADMIN' || role === 'KAOPS';
+  const isAdm = role === 'ADM';
+  const isCmoOrKapos = role === 'CMO' || role === 'KAPOS';
 
   const [namaMediator, setNamaMediator] = useState(mediator.nama_mediator);
   const [noTlpn, setNoTlpn] = useState(mediator.no_tlpn);
@@ -25,10 +30,20 @@ export const MediatorEditModal: React.FC<MediatorEditModalProps> = ({ mediator, 
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  const isEditable = canEditMediator(mediator.status);
   const availablePosko = allPosko.filter(p => !kdCabang || p.kd_cabang.toUpperCase() === kdCabang.toUpperCase());
 
-  const handleSave = (e: React.FormEvent) => {
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (!isEditable) {
+      setFeedback({
+        type: 'error',
+        message: `Role ${role} tidak memiliki akses untuk mengedit data mediator berstatus ${mediator.status}.`
+      });
+      return;
+    }
+
     if (!namaMediator.trim()) {
       setFeedback({ type: 'error', message: 'Nama mediator wajib diisi!' });
       return;
@@ -41,7 +56,7 @@ export const MediatorEditModal: React.FC<MediatorEditModalProps> = ({ mediator, 
     setIsSubmitting(true);
     setFeedback(null);
 
-    const result = DatabaseService.updateMediator({
+    const result = await DatabaseService.updateMediator({
       kd_med: mediator.kd_med,
       nama_mediator: namaMediator.trim(),
       no_tlpn: noTlpn.trim(),
@@ -50,6 +65,8 @@ export const MediatorEditModal: React.FC<MediatorEditModalProps> = ({ mediator, 
       kd_posko: kdPosko,
       status: status,
       catatan_admin: catatanAdmin.trim(),
+      updated_by_role: currentUser?.role,
+      updated_by_user: currentUser?.nama
     });
 
     setIsSubmitting(false);
@@ -77,7 +94,20 @@ export const MediatorEditModal: React.FC<MediatorEditModalProps> = ({ mediator, 
               <h3 className="text-base font-bold text-[#f1f3f7]">
                 Koreksi / Edit Data Mediator
               </h3>
-              <p className="text-xs text-[#8e96a8] font-mono">Kode: {mediator.kd_med}</p>
+              <div className="flex items-center space-x-2 mt-0.5">
+                <span className="text-xs text-[#8e96a8] font-mono">Kode: {mediator.kd_med}</span>
+                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                  mediator.status === 'AKTIF'
+                    ? 'bg-emerald-950/70 text-emerald-300 border-emerald-800/60'
+                    : mediator.status === 'PENDING'
+                    ? 'bg-amber-950/70 text-amber-300 border-amber-800/60'
+                    : mediator.status === 'BELUM_AKTIF'
+                    ? 'bg-blue-950/70 text-blue-300 border-blue-800/60'
+                    : 'bg-[#181a24] text-[#8e96a8] border-[#272d3e]'
+                }`}>
+                  {mediator.status}
+                </span>
+              </div>
             </div>
           </div>
           <button
@@ -87,6 +117,23 @@ export const MediatorEditModal: React.FC<MediatorEditModalProps> = ({ mediator, 
             <X className="h-5 w-5" />
           </button>
         </div>
+
+        {/* Lock / Warning Notification if not editable */}
+        {!isEditable && (
+          <div className="p-3 bg-rose-950/40 border border-rose-800/50 rounded-xl flex items-start space-x-2 text-xs text-rose-200">
+            <Lock className="h-4 w-4 text-rose-400 shrink-0 mt-0.5" />
+            <div>
+              <span className="font-bold block">Akses Edit Terkunci untuk Role {role}</span>
+              <span>
+                {isCmoOrKapos
+                  ? 'KAPOS dan CMO hanya dapat mengedit data mediator dengan status Pendaftaran Baru (BELUM AKTIF).'
+                  : isAdm
+                  ? 'ADM hanya dapat mengedit data mediator dengan status BELUM AKTIF atau PENDING (Peninjauan Berkas).'
+                  : 'Data mediator yang sudah AKTIF hanya dapat diedit oleh KAOPS dan Super Admin.'}
+              </span>
+            </div>
+          </div>
+        )}
 
         {feedback && (
           <div
@@ -114,10 +161,11 @@ export const MediatorEditModal: React.FC<MediatorEditModalProps> = ({ mediator, 
             <input
               type="text"
               required
+              disabled={!isEditable}
               maxLength={100}
               value={namaMediator}
               onChange={(e) => setNamaMediator(e.target.value)}
-              className="w-full p-2.5 bg-[#0d0e12] border border-[#272d3e] text-[#e0e4eb] placeholder-[#6b7280] rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500/50 focus:border-amber-500"
+              className="w-full p-2.5 bg-[#0d0e12] border border-[#272d3e] text-[#e0e4eb] placeholder-[#6b7280] rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500/50 focus:border-amber-500 disabled:opacity-60"
             />
           </div>
 
@@ -127,18 +175,20 @@ export const MediatorEditModal: React.FC<MediatorEditModalProps> = ({ mediator, 
               <input
                 type="text"
                 required
+                disabled={!isEditable}
                 value={noTlpn}
                 onChange={(e) => setNoTlpn(e.target.value)}
-                className="w-full p-2.5 bg-[#0d0e12] border border-[#272d3e] text-[#e0e4eb] placeholder-[#6b7280] rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500/50 focus:border-amber-500"
+                className="w-full p-2.5 bg-[#0d0e12] border border-[#272d3e] text-[#e0e4eb] placeholder-[#6b7280] rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500/50 focus:border-amber-500 disabled:opacity-60"
               />
             </div>
             <div>
               <label className="block font-bold text-[#c2c7d0] mb-1">Kode AO</label>
               <input
                 type="text"
+                disabled={!isEditable || role === 'CMO'}
                 value={kdAo}
                 onChange={(e) => setKdAo(e.target.value)}
-                className="w-full p-2.5 bg-[#0d0e12] border border-[#272d3e] text-[#e0e4eb] placeholder-[#6b7280] rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500/50 focus:border-amber-500 font-mono"
+                className="w-full p-2.5 bg-[#0d0e12] border border-[#272d3e] text-[#e0e4eb] placeholder-[#6b7280] rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500/50 focus:border-amber-500 font-mono disabled:opacity-60"
               />
             </div>
           </div>
@@ -147,6 +197,7 @@ export const MediatorEditModal: React.FC<MediatorEditModalProps> = ({ mediator, 
             <div>
               <label className="block font-bold text-[#c2c7d0] mb-1">Cabang Penugasan</label>
               <select
+                disabled={!isEditable || (!isSuperAdminOrKaops && role !== 'ADM')}
                 value={kdCabang}
                 onChange={(e) => {
                   const newCab = e.target.value;
@@ -158,7 +209,7 @@ export const MediatorEditModal: React.FC<MediatorEditModalProps> = ({ mediator, 
                     setKdPosko('');
                   }
                 }}
-                className="w-full p-2.5 bg-[#0d0e12] border border-[#272d3e] text-[#e0e4eb] rounded-xl font-medium focus:outline-none focus:ring-2 focus:ring-amber-500/50"
+                className="w-full p-2.5 bg-[#0d0e12] border border-[#272d3e] text-[#e0e4eb] rounded-xl font-medium focus:outline-none focus:ring-2 focus:ring-amber-500/50 disabled:opacity-60"
               >
                 {allCabang.map((c) => (
                   <option key={c.kd_cabang} value={c.kd_cabang}>{c.kd_cabang} - {c.nama_cabang}</option>
@@ -168,9 +219,10 @@ export const MediatorEditModal: React.FC<MediatorEditModalProps> = ({ mediator, 
             <div>
               <label className="block font-bold text-[#c2c7d0] mb-1">Posko Operasional</label>
               <select
+                disabled={!isEditable || (!isSuperAdminOrKaops && role !== 'ADM' && role !== 'KAPOS')}
                 value={kdPosko}
                 onChange={(e) => setKdPosko(e.target.value)}
-                className="w-full p-2.5 bg-[#0d0e12] border border-[#272d3e] text-[#e0e4eb] rounded-xl font-medium focus:outline-none focus:ring-2 focus:ring-amber-500/50"
+                className="w-full p-2.5 bg-[#0d0e12] border border-[#272d3e] text-[#e0e4eb] rounded-xl font-medium focus:outline-none focus:ring-2 focus:ring-amber-500/50 disabled:opacity-60"
               >
                 <option value="">-- Kantor Cabang Utama / Posko Bebas --</option>
                 {availablePosko.map((p) => (
@@ -185,24 +237,45 @@ export const MediatorEditModal: React.FC<MediatorEditModalProps> = ({ mediator, 
 
           <div>
             <label className="block font-bold text-[#c2c7d0] mb-1">Status Mediator</label>
-            <select
-              value={status}
-              onChange={(e) => setStatus(e.target.value as MediatorStatus)}
-              className="w-full p-2.5 bg-[#0d0e12] border border-[#272d3e] text-[#e0e4eb] rounded-xl font-bold"
-            >
-              <option value="AKTIF">AKTIF (KD MED Resmi)</option>
-              <option value="PENDING">PENDING (Diajukan)</option>
-              <option value="INAKTIF">INAKTIF (Nonaktif)</option>
-            </select>
+            {isSuperAdminOrKaops ? (
+              <select
+                value={status}
+                onChange={(e) => setStatus(e.target.value as MediatorStatus)}
+                className="w-full p-2.5 bg-[#0d0e12] border border-[#272d3e] text-[#e0e4eb] rounded-xl font-bold focus:outline-none focus:ring-2 focus:ring-amber-500/50"
+              >
+                <option value="BELUM_AKTIF">BELUM AKTIF (Review Pendaftaran)</option>
+                <option value="PENDING">PENDING (Menunggu Input KD MED)</option>
+                <option value="AKTIF">AKTIF (KD MED Resmi)</option>
+                <option value="INAKTIF">INAKTIF (Nonaktif)</option>
+                <option value="DITOLAK">DITOLAK (Ditolak oleh Admin)</option>
+              </select>
+            ) : isAdm ? (
+              <select
+                value={status}
+                onChange={(e) => setStatus(e.target.value as MediatorStatus)}
+                className="w-full p-2.5 bg-[#0d0e12] border border-[#272d3e] text-[#e0e4eb] rounded-xl font-bold focus:outline-none focus:ring-2 focus:ring-amber-500/50"
+              >
+                <option value="BELUM_AKTIF">BELUM AKTIF (Review Pendaftaran)</option>
+                <option value="PENDING">PENDING (Peninjauan Berkas Selesai)</option>
+                <option value="DITOLAK">DITOLAK (Ditolak)</option>
+              </select>
+            ) : (
+              <div className="p-2.5 bg-[#0d0e12] border border-[#272d3e] rounded-xl text-xs font-semibold text-[#8e96a8] flex items-center justify-between">
+                <span>{status}</span>
+                <span className="text-[10px] text-[#6b7280] italic">Hanya dapat diubah melalui alur validasi resmi</span>
+              </div>
+            )}
           </div>
 
           <div>
             <label className="block font-bold text-[#c2c7d0] mb-1">Catatan Koreksi Data</label>
             <textarea
               rows={2}
+              disabled={!isEditable}
               value={catatanAdmin}
               onChange={(e) => setCatatanAdmin(e.target.value)}
-              className="w-full p-2.5 bg-[#0d0e12] border border-[#272d3e] text-[#e0e4eb] placeholder-[#6b7280] rounded-xl resize-none focus:outline-none focus:ring-2 focus:ring-amber-500/50"
+              placeholder="Tambahkan catatan jika ada perbaikan data..."
+              className="w-full p-2.5 bg-[#0d0e12] border border-[#272d3e] text-[#e0e4eb] placeholder-[#6b7280] rounded-xl resize-none focus:outline-none focus:ring-2 focus:ring-amber-500/50 disabled:opacity-60"
             />
           </div>
 
@@ -217,7 +290,7 @@ export const MediatorEditModal: React.FC<MediatorEditModalProps> = ({ mediator, 
             <button
               id="btn-save-edit-mediator"
               type="submit"
-              disabled={isSubmitting}
+              disabled={isSubmitting || !isEditable}
               className="px-4 py-2 bg-amber-600 hover:bg-amber-500 text-white rounded-xl font-bold shadow-md shadow-amber-950/40 flex items-center space-x-1.5 cursor-pointer disabled:opacity-50"
             >
               <Save className="h-4 w-4" />

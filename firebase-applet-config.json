@@ -1,8 +1,9 @@
 {
-  "apiKey": "AIzaSyD...",
-  "authDomain": "med-control-app.firebaseapp.com",
-  "projectId": "med-control-app",
-  "storageBucket": "med-control-app.appspot.com",
-  "messagingSenderId": "123456789",
-  "appId": "1:123456789:web:abcdef"
+  "apiKey": "AIzaSyCMbgi0XqR2UKr09-YSycTkp8IQUDnjCZ4",
+  "authDomain": "kamm-manado.firebaseapp.com",
+  "projectId": "kamm-manado",
+  "storageBucket": "kamm-manado.firebasestorage.app",
+  "messagingSenderId": "103600318295",
+  "appId": "1:103600318295:web:6bb746eca4b7fb97f10012",
+  "firestoreDatabaseId": "ai-studio-mediatorkontrakm-919304e3-4fb7-4025-a4e8-2c90f5b0fe3e"
 }

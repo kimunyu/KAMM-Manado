@@ -18,13 +18,21 @@ export const LoginModal: React.FC = () => {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
-    const res = login(username, password);
-    if (!res.success) {
-      setError(res.message);
+    setIsSubmitting(true);
+    try {
+      const res = await login(username, password);
+      if (!res.success) {
+        setError(res.message);
+      }
+    } catch (err: any) {
+      setError(err?.message || 'Gagal masuk sistem. Silakan coba lagi.');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
