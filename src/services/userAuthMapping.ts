@@ -73,6 +73,13 @@ export const UserAuthMappingService = {
             }
           }
         }
+
+        // Direct lookup on users/{cleanUid} in case user profile was saved under Firebase UID
+        const directUserRef = doc(db, 'users', cleanUid);
+        const directUserSnap = await getDoc(directUserRef);
+        if (directUserSnap.exists()) {
+          return directUserSnap.data() as User;
+        }
       } catch (err) {
         console.warn('UserAuthMapping: Error fetching user_auth document from Firestore:', err);
       }

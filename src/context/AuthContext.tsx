@@ -126,6 +126,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setIsSuperAdminSession(activeUser.role === 'SUPER_ADMIN');
         saveToStorage('med_control_auth_user_v2', activeUser);
         saveToStorage('med_control_is_super_admin_session_v2', activeUser.role === 'SUPER_ADMIN');
+
+        // Proactively link mapping if not linked yet
+        if (!matchedUser.firebase_uid || matchedUser.firebase_uid !== fbUser.uid) {
+          UserAuthMappingService.linkUserToFirebaseUid(matchedUser.id, fbUser.uid, fbUser.email || undefined, matchedUser.role)
+            .catch(err => console.warn('Background auto-link warning:', err));
+        }
+
         console.log('[AUTH-GATE]', { 
           firebaseUid: fbUser.uid, 
           businessUserId: activeUser.id, 

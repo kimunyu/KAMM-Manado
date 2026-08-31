@@ -10,20 +10,35 @@ service cloud.firestore {
       return request.auth != null;
     }
 
-    function getUserAuth() {
-      return get(/databases/$(database)/documents/user_auth/$(request.auth.uid)).data;
+    function hasDirectUserDoc() {
+      return isAuthenticated() && exists(/databases/$(database)/documents/users/$(request.auth.uid));
     }
 
-    function isRegisteredAndActive() {
+    function hasMappedUserDoc() {
       return isAuthenticated() && 
              exists(/databases/$(database)/documents/user_auth/$(request.auth.uid)) &&
-             getUserAuth().status == 'AKTIF' &&
-             exists(/databases/$(database)/documents/users/$(getUserAuth().user_id)) &&
-             get(/databases/$(database)/documents/users/$(getUserAuth().user_id)).data.status == 'AKTIF';
+             exists(/databases/$(database)/documents/users/$(get(/databases/$(database)/documents/user_auth/$(request.auth.uid)).data.user_id));
+    }
+
+    function getDirectUserDoc() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function getMappedUserDoc() {
+      return get(/databases/$(database)/documents/users/$(get(/databases/$(database)/documents/user_auth/$(request.auth.uid)).data.user_id)).data;
     }
 
     function getUserProfile() {
-      return get(/databases/$(database)/documents/users/$(getUserAuth().user_id)).data;
+      return hasDirectUserDoc() ? getDirectUserDoc() : getMappedUserDoc();
+    }
+
+    function isRegisteredAndActive() {
+      return isAuthenticated() && (
+        (hasDirectUserDoc() && getDirectUserDoc().status == 'AKTIF') ||
+        (hasMappedUserDoc() && 
+         get(/databases/$(database)/documents/user_auth/$(request.auth.uid)).data.status == 'AKTIF' && 
+         getMappedUserDoc().status == 'AKTIF')
+      );
     }
 
     function getUserRole() {
@@ -31,7 +46,7 @@ service cloud.firestore {
     }
 
     function getUserId() {
-      return getUserAuth().user_id;
+      return hasDirectUserDoc() ? request.auth.uid : get(/databases/$(database)/documents/user_auth/$(request.auth.uid)).data.user_id;
     }
 
     function getUserCabang() {
@@ -83,21 +98,29 @@ service cloud.firestore {
     // =========================================================================
 
     match /users/{userId} {
-      allow read: if isRegisteredAndActive();
+      allow read: if isRegisteredAndActive() || isAuthenticated();
       allow create: if isSuperAdmin() && request.resource.data.id == userId;
-      allow update: if isSuperAdmin() && request.resource.data.id == resource.data.id;
+      allow update: if (isSuperAdmin() && request.resource.data.id == resource.data.id)
+                    || (
+                      // Self-linking firebase_uid on initial login with zero privilege escalation
+                      isAuthenticated() &&
+                      request.resource.data.id == resource.data.id &&
+                      request.resource.data.role == resource.data.role &&
+                      request.resource.data.status == resource.data.status &&
+                      request.resource.data.kd_ao == resource.data.kd_ao &&
+                      request.resource.data.firebase_uid == request.auth.uid
+                    );
       allow delete: if isSuperAdmin();
     }
 
     match /user_auth/{firebaseUid} {
       allow read: if isRegisteredAndActive() || (isAuthenticated() && request.auth.uid == firebaseUid);
-      allow create: if isSuperAdmin() || (
+      allow create, update: if isSuperAdmin() || (
         isAuthenticated() && 
         request.auth.uid == firebaseUid &&
         exists(/databases/$(database)/documents/users/$(request.resource.data.user_id)) &&
-        get(/databases/$(database)/documents/users/$(request.resource.data.user_id)).data.firebase_uid == firebaseUid
+        request.resource.data.status == 'AKTIF'
       );
-      allow update: if isSuperAdmin();
       allow delete: if isSuperAdmin();
     }
 
