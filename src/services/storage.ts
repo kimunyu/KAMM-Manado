@@ -759,9 +759,9 @@ export const DatabaseService = {
     }
 
     const cleanRole = (params.created_by_role as UserRole) || 'CMO';
-    const cleanAo = (params.kd_ao || '').trim();
-    const cleanCabang = (params.kd_cabang || '').trim();
-    const cleanPosko = (params.kd_posko || '').trim();
+    const cleanAo = (params.kd_ao || '').trim().toUpperCase();
+    const cleanCabang = (params.kd_cabang || '').trim().toUpperCase();
+    const cleanPosko = (params.kd_posko || '').trim().toUpperCase();
 
     // Strict Scope Verification before interacting with Firestore
     if (cleanRole === 'CMO') {

@@ -29,7 +29,7 @@ service cloud.firestore {
     }
 
     function getUserProfile() {
-      return hasDirectUserDoc() ? getDirectUserDoc() : getMappedUserDoc();
+      return hasDirectUserDoc() ? getDirectUserDoc() : (hasMappedUserDoc() ? getMappedUserDoc() : {});
     }
 
     function isRegisteredAndActive() {
@@ -42,23 +42,23 @@ service cloud.firestore {
     }
 
     function getUserRole() {
-      return getUserProfile().role;
+      return getUserProfile().get('role', '');
     }
 
     function getUserId() {
-      return hasDirectUserDoc() ? request.auth.uid : get(/databases/$(database)/documents/user_auth/$(request.auth.uid)).data.user_id;
+      return hasDirectUserDoc() ? request.auth.uid : (hasMappedUserDoc() ? get(/databases/$(database)/documents/user_auth/$(request.auth.uid)).data.user_id : '');
     }
 
     function getUserCabang() {
-      return getUserProfile().kd_cabang;
+      return getUserProfile().get('kd_cabang', '');
     }
 
     function getUserPosko() {
-      return getUserProfile().kd_posko;
+      return getUserProfile().get('kd_posko', '');
     }
 
     function getUserAO() {
-      return getUserProfile().kd_ao;
+      return getUserProfile().get('kd_ao', '');
     }
 
     function isSuperAdmin() {
@@ -107,7 +107,7 @@ service cloud.firestore {
                       request.resource.data.id == resource.data.id &&
                       request.resource.data.role == resource.data.role &&
                       request.resource.data.status == resource.data.status &&
-                      request.resource.data.kd_ao == resource.data.kd_ao &&
+                      request.resource.data.get('kd_ao', '') == resource.data.get('kd_ao', '') &&
                       request.resource.data.firebase_uid == request.auth.uid
                     );
       allow delete: if isSuperAdmin();
