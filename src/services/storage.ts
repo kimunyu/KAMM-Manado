@@ -101,6 +101,8 @@ export function cleanForFirestore<T>(data: T): any {
 export function logFirestoreWrite(params: {
   collection: string;
   documentId: string;
+  operation?: 'create' | 'update' | 'delete' | 'set' | 'batch';
+  method?: string;
   uid?: string | null;
   businessUserId?: string | null;
   role?: string | null;
@@ -110,6 +112,23 @@ export function logFirestoreWrite(params: {
   errorMessage?: string | null;
 }) {
   const activeUid = params.uid ?? auth?.currentUser?.uid ?? null;
+  const currentProjectId = firebaseConfigData?.projectId || 'kamm-manado';
+  const currentDbId = (firebaseConfigData as any)?.firestoreDatabaseId || 'ai-studio-mediatorkontrakm-919304e3-4fb7-4025-a4e8-2c90f5b0fe3e';
+  const path = `${params.collection}/${params.documentId}`;
+
+  if (params.result === 'FAILED') {
+    console.error('[FORENSIC-FIRESTORE-DENIED]', {
+      operation: params.operation || 'write',
+      path,
+      method: params.method || 'setDoc',
+      projectId: currentProjectId,
+      databaseId: currentDbId,
+      authUid: activeUid,
+      errorCode: params.errorCode || 'unknown',
+      errorMessage: params.errorMessage || 'Unknown Firestore error'
+    });
+  }
+
   console.log(
     `[FS-WRITE] collection=${params.collection} documentId=${params.documentId} uid=${activeUid || 'null'} businessUserId=${params.businessUserId || 'null'} role=${params.role || 'null'} status=${params.status || 'null'} result=${params.result}${params.errorCode ? ` errorCode=${params.errorCode}` : ''}${params.errorMessage ? ` errorMessage="${params.errorMessage}"` : ''}`
   );
@@ -808,9 +827,23 @@ export const DatabaseService = {
     };
 
     const currentAuthUid = auth?.currentUser?.uid || null;
-    const currentProjectId = firebaseConfigData?.projectId || null;
-    const currentDbId = (firebaseConfigData as any)?.firestoreDatabaseId || null;
+    const currentProjectId = firebaseConfigData?.projectId || 'kamm-manado';
+    const currentDbId = (firebaseConfigData as any)?.firestoreDatabaseId || 'ai-studio-mediatorkontrakm-919304e3-4fb7-4025-a4e8-2c90f5b0fe3e';
     const docId = sanitizeDocId(newMediator.temp_id || newMediator.kd_med);
+
+    console.log('[FORENSIC-MEDIATOR-WRITE-START]', {
+      projectId: currentProjectId,
+      databaseId: currentDbId,
+      collection: 'mediators',
+      documentId: docId,
+      authUid: currentAuthUid,
+      userId: (params as any)?.userId || cleanAo,
+      role: cleanRole,
+      status: newMediator.status,
+      kd_ao: newMediator.kd_ao,
+      kd_cabang: newMediator.kd_cabang,
+      kd_posko: newMediator.kd_posko
+    });
 
     console.log('[FORENSIC-MEDIATOR-WRITE]', {
       projectId: currentProjectId,
@@ -839,15 +872,31 @@ export const DatabaseService = {
         logFirestoreWrite({
           collection: 'mediators',
           documentId: docId,
+          operation: 'create',
+          method: 'setDoc',
           role: cleanRole,
           result: 'SUCCESS'
         });
       } catch (err: any) {
+        const errorCode = err?.code || 'unknown';
+        const errorMessage = err?.message || String(err);
+
+        console.error('[FORENSIC-FIRESTORE-DENIED]', {
+          operation: 'create',
+          path: `mediators/${docId}`,
+          method: 'setDoc',
+          projectId: currentProjectId,
+          databaseId: currentDbId,
+          authUid: currentAuthUid,
+          errorCode,
+          errorMessage
+        });
+
         console.error('[FORENSIC-MEDIATOR-ERROR]', {
           result: 'FAILED',
           documentId: docId,
-          errorCode: err?.code || 'unknown',
-          errorMessage: err?.message || String(err),
+          errorCode,
+          errorMessage,
           projectId: currentProjectId,
           databaseId: currentDbId,
           authUid: currentAuthUid,
@@ -861,15 +910,17 @@ export const DatabaseService = {
 
         logFirestoreWrite({
           collection: 'mediators',
-          documentId: newMediator.temp_id || newMediator.kd_med,
+          documentId: docId,
+          operation: 'create',
+          method: 'setDoc',
           role: cleanRole,
           result: 'FAILED',
-          errorCode: err?.code,
-          errorMessage: err?.message
+          errorCode,
+          errorMessage
         });
         return {
           success: false,
-          message: `Gagal menyimpan mediator ke Firestore: ${err?.message || 'Permission denied'}`
+          message: `Gagal menyimpan mediator ke Firestore: ${errorMessage || 'Permission denied'}`
         };
       }
     }

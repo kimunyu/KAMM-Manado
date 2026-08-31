@@ -43,6 +43,19 @@ try {
     authDomain
   });
 
+  console.log('[FORENSIC-FIREBASE-CONFIG]', {
+    projectId,
+    databaseId: configDbId,
+    firestoreInstance: 'SINGLETON_NAMED_DATABASE',
+    authDomain
+  });
+
+  console.log('[FORENSIC-FIRESTORE-CONNECTION]', {
+    projectId,
+    databaseId: configDbId,
+    authUid: null
+  });
+
   if (!getApps().length) {
     app = initializeApp(firebaseConfigData);
   } else {

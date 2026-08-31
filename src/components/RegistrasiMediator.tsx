@@ -164,8 +164,9 @@ export const RegistrasiMediator: React.FC<RegistrasiMediatorProps> = ({ onSucces
     const poskoMatches = effectiveKdPosko.toUpperCase() === (currentUser?.kd_posko || '').toUpperCase();
 
     console.log('[FORENSIC-RULE-PREDICATE]', {
-      firebaseProjectId: firebaseConfigData?.projectId || null,
-      firestoreDatabaseId: (firebaseConfigData as any)?.firestoreDatabaseId || '(default)',
+      note: 'CLIENT_PREDICATE_INSPECTION_ONLY - Actual verdict is determined server-side by Firestore Security Rules',
+      firebaseProjectId: firebaseConfigData?.projectId || 'kamm-manado',
+      firestoreDatabaseId: (firebaseConfigData as any)?.firestoreDatabaseId || 'ai-studio-mediatorkontrakm-919304e3-4fb7-4025-a4e8-2c90f5b0fe3e',
       firebaseAuthUid: currentAuthUid,
       firebaseAuthEmail: currentAuthEmail,
       isRegisteredAndActive: identityReady,
@@ -178,7 +179,7 @@ export const RegistrasiMediator: React.FC<RegistrasiMediatorProps> = ({ onSucces
         kdAoMatches: aoMatches,
         kdCabangMatches: cabangMatches,
         kdPoskoMatches: poskoMatches,
-        expectedRuleVerdict: (identityReady && isCMO && aoMatches && cabangMatches && poskoMatches) ? 'ALLOW' : 'DENY'
+        clientExpectedPredicate: (identityReady && isCMO && aoMatches && cabangMatches && poskoMatches) ? 'ALLOW' : 'DENY'
       },
       payload: {
         kd_ao: effectiveKdAo,

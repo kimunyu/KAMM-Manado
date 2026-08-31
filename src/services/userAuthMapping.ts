@@ -1,5 +1,5 @@
 import { doc, getDoc, setDoc, deleteDoc, writeBatch } from 'firebase/firestore';
-import { db, firebaseConfigData } from './firebase';
+import { db, auth, firebaseConfigData } from './firebase';
 import { User } from '../types';
 import { DatabaseService } from './storage';
 
@@ -171,9 +171,12 @@ export const UserAuthMappingService = {
       };
 
       console.log('[FORENSIC-AUTH]', {
-        firebaseProjectId: firebaseConfigData?.projectId || null,
-        firestoreDatabaseId: (firebaseConfigData as any)?.firestoreDatabaseId || '(default)',
-        firebaseUid: cleanUid,
+        projectId: firebaseConfigData?.projectId || 'kamm-manado',
+        databaseId: (firebaseConfigData as any)?.firestoreDatabaseId || 'ai-studio-mediatorkontrakm-919304e3-4fb7-4025-a4e8-2c90f5b0fe3e',
+        authUid: cleanUid,
+        email: auth?.currentUser?.email || null,
+        emailVerified: auth?.currentUser?.emailVerified ?? false,
+        providerId: auth?.currentUser?.providerData?.[0]?.providerId || 'password',
         userAuthExists: true,
         mappedUserId: mappingUserId,
         mappedUserStatus: mappingStatus,
@@ -186,14 +189,18 @@ export const UserAuthMappingService = {
       });
 
       console.log('[FORENSIC-IDENTITY]', {
-        stage: 'VERIFIED',
-        firebaseUid: cleanUid,
-        resolvedUserId: verifiedUser.id,
+        authUid: cleanUid,
+        userAuthExists: true,
+        userAuthUserId: mappingUserId,
+        userAuthStatus: mappingStatus,
+        userDocExists: true,
+        userStatus: profileStatus,
         role: verifiedUser.role,
-        status: verifiedUser.status,
-        kd_ao: verifiedUser.kd_ao,
-        kd_cabang: verifiedUser.kd_cabang,
-        kd_posko: verifiedUser.kd_posko
+        username: verifiedUser.username,
+        kd_ao: verifiedUser.kd_ao || null,
+        kd_cabang: verifiedUser.kd_cabang || null,
+        kd_posko: verifiedUser.kd_posko || null,
+        firebase_uid: cleanUid
       });
 
       return {
@@ -515,10 +522,24 @@ export const UserAuthMappingService = {
             };
           }
         } catch (err: any) {
+          const errorCode = err?.code || 'unknown';
+          const errorMessage = err?.message || String(err);
+
+          console.error('[FORENSIC-FIRESTORE-DENIED]', {
+            operation: 'batch',
+            path: `users/${cleanUserId} + user_auth/${cleanUid}`,
+            method: 'batch.commit',
+            projectId: firebaseConfigData?.projectId || 'kamm-manado',
+            databaseId: (firebaseConfigData as any)?.firestoreDatabaseId || 'ai-studio-mediatorkontrakm-919304e3-4fb7-4025-a4e8-2c90f5b0fe3e',
+            authUid: cleanUid,
+            errorCode,
+            errorMessage
+          });
+
           console.warn('UserAuthMapping: Firestore batch commit failed:', err);
           return {
             success: false,
-            message: `Gagal memperbarui Firestore mapping: ${err.message || err}`
+            message: `Gagal memperbarui Firestore mapping: ${errorMessage || err}`
           };
         }
       }
