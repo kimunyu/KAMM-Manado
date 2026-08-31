@@ -44,5 +44,5 @@ try {
   console.warn('Firebase initialization note (running in local/offline fallback mode):', error);
 }
 
-export { app, db, auth };
+export { app, db, auth, firebaseConfigData };
 

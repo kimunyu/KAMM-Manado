@@ -111,7 +111,12 @@ service cloud.firestore {
                       request.resource.data.get('kd_cabang', '') == resource.data.get('kd_cabang', '') &&
                       request.resource.data.get('kd_posko', '') == resource.data.get('kd_posko', '') &&
                       request.resource.data.get('kd_ao', '') == resource.data.get('kd_ao', '') &&
-                      request.resource.data.firebase_uid == request.auth.uid
+                      request.resource.data.firebase_uid == request.auth.uid &&
+                      (
+                        request.auth.token.email == resource.data.get('email', '') ||
+                        request.auth.token.email == resource.data.get('username', '') + '@kamm-manado.internal' ||
+                        request.auth.token.email == resource.data.get('username', '') + '@perusahaan.co.id'
+                      )
                     );
       allow delete: if isSuperAdmin();
     }
@@ -123,7 +128,12 @@ service cloud.firestore {
         request.auth.uid == firebaseUid &&
         exists(/databases/$(database)/documents/users/$(request.resource.data.user_id)) &&
         get(/databases/$(database)/documents/users/$(request.resource.data.user_id)).data.status == 'AKTIF' &&
-        request.resource.data.status == 'AKTIF'
+        request.resource.data.status == 'AKTIF' &&
+        (
+          request.auth.token.email == get(/databases/$(database)/documents/users/$(request.resource.data.user_id)).data.get('email', '') ||
+          request.auth.token.email == get(/databases/$(database)/documents/users/$(request.resource.data.user_id)).data.get('username', '') + '@kamm-manado.internal' ||
+          request.auth.token.email == get(/databases/$(database)/documents/users/$(request.resource.data.user_id)).data.get('username', '') + '@perusahaan.co.id'
+        )
       );
       allow delete: if isSuperAdmin();
     }

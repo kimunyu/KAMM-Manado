@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { DatabaseService } from '../services/storage';
+import { auth, firebaseConfigData } from '../services/firebase';
 import { ActiveTab } from './Sidebar';
 import { 
   UserPlus, 
@@ -155,6 +156,37 @@ export const RegistrasiMediator: React.FC<RegistrasiMediatorProps> = ({ onSucces
       setFeedback({ type: 'error', message: 'Kode AO pendaftar wajib diisi!' });
       return;
     }
+
+    const currentAuthUid = auth?.currentUser?.uid || null;
+    const currentAuthEmail = auth?.currentUser?.email || null;
+    const aoMatches = effectiveKdAo.toUpperCase() === (currentUser?.kd_ao || '').toUpperCase();
+    const cabangMatches = effectiveKdCabang.toUpperCase() === (currentUser?.kd_cabang || '').toUpperCase();
+    const poskoMatches = effectiveKdPosko.toUpperCase() === (currentUser?.kd_posko || '').toUpperCase();
+
+    console.log('[FORENSIC-RULE-PREDICATE]', {
+      firebaseProjectId: firebaseConfigData?.projectId || null,
+      firestoreDatabaseId: (firebaseConfigData as any)?.firestoreDatabaseId || '(default)',
+      firebaseAuthUid: currentAuthUid,
+      firebaseAuthEmail: currentAuthEmail,
+      isRegisteredAndActive: identityReady,
+      currentUserRole: currentUser?.role || null,
+      isCmo: isCMO,
+      predicateChecks: {
+        isRegisteredAndActive: identityReady,
+        isCmo: isCMO,
+        statusIsBelumAktif: true,
+        kdAoMatches: aoMatches,
+        kdCabangMatches: cabangMatches,
+        kdPoskoMatches: poskoMatches,
+        expectedRuleVerdict: (identityReady && isCMO && aoMatches && cabangMatches && poskoMatches) ? 'ALLOW' : 'DENY'
+      },
+      payload: {
+        kd_ao: effectiveKdAo,
+        kd_cabang: effectiveKdCabang,
+        kd_posko: effectiveKdPosko,
+        status: 'BELUM_AKTIF'
+      }
+    });
 
     setIsSubmitting(true);
     setFeedback(null);

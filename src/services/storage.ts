@@ -1,6 +1,6 @@
 import { Cabang, Posko, User, UserRole, MediatorKontrak, FULog, MediatorStatus, HasilFU, ExCustomer, ExCustomerFULog, StatusKreditLunas, HasilFUExCustomer } from '../types';
 import { INITIAL_CABANG, INITIAL_POSKO, INITIAL_USERS, INITIAL_MEDIATORS, INITIAL_FU_LOGS, INITIAL_EX_CUSTOMERS, INITIAL_EX_CUSTOMER_FU_LOGS } from '../data/initialData';
-import { db, auth } from './firebase';
+import { db, auth, firebaseConfigData } from './firebase';
 import { 
   collection, 
   doc, 
@@ -807,22 +807,40 @@ export const DatabaseService = {
       catatan_admin: (params.catatan_admin || '').trim(),
     };
 
-    console.log('[MEDIATOR-WRITE-DIAGNOSTIC]', {
-      temp_id: newMediator.temp_id,
-      kd_med: newMediator.kd_med,
-      status: newMediator.status,
-      kd_ao: newMediator.kd_ao,
-      kd_posko: newMediator.kd_posko,
-      kd_cabang: newMediator.kd_cabang,
-      created_by_role: newMediator.created_by_role,
-      created_by_user: newMediator.created_by_user,
-      firebaseAuthUid: auth?.currentUser?.uid || null
+    const currentAuthUid = auth?.currentUser?.uid || null;
+    const currentProjectId = firebaseConfigData?.projectId || null;
+    const currentDbId = (firebaseConfigData as any)?.firestoreDatabaseId || '(default)';
+
+    console.log('[FORENSIC-MEDIATOR-WRITE]', {
+      firebaseProjectId: currentProjectId,
+      firestoreDatabaseId: currentDbId,
+      firebaseAuthUid: currentAuthUid,
+      documentId: newMediator.temp_id || newMediator.kd_med,
+      payload: {
+        temp_id: newMediator.temp_id,
+        kd_med: newMediator.kd_med,
+        status: newMediator.status,
+        kd_ao: newMediator.kd_ao,
+        kd_posko: newMediator.kd_posko,
+        kd_cabang: newMediator.kd_cabang,
+        created_by_role: newMediator.created_by_role,
+        created_by_user: newMediator.created_by_user
+      }
     });
 
     if (db) {
       try {
         const docId = sanitizeDocId(newMediator.temp_id || newMediator.kd_med);
         await setDoc(doc(db, 'mediators', docId), cleanForFirestore(newMediator));
+        
+        console.log('[FORENSIC-MEDIATOR-RESULT]', {
+          result: 'SUCCESS',
+          documentId: docId,
+          firebaseProjectId: currentProjectId,
+          firestoreDatabaseId: currentDbId,
+          firebaseAuthUid: currentAuthUid
+        });
+
         logFirestoreWrite({
           collection: 'mediators',
           documentId: docId,
@@ -830,6 +848,22 @@ export const DatabaseService = {
           result: 'SUCCESS'
         });
       } catch (err: any) {
+        console.error('[FORENSIC-MEDIATOR-ERROR]', {
+          result: 'FAILED',
+          documentId: newMediator.temp_id || newMediator.kd_med,
+          errorCode: err?.code || 'unknown',
+          errorMessage: err?.message || String(err),
+          firebaseProjectId: currentProjectId,
+          firestoreDatabaseId: currentDbId,
+          firebaseAuthUid: currentAuthUid,
+          payloadSummary: {
+            status: newMediator.status,
+            kd_ao: newMediator.kd_ao,
+            kd_cabang: newMediator.kd_cabang,
+            kd_posko: newMediator.kd_posko
+          }
+        });
+
         logFirestoreWrite({
           collection: 'mediators',
           documentId: newMediator.temp_id || newMediator.kd_med,

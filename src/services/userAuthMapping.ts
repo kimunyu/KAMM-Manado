@@ -1,5 +1,5 @@
 import { doc, getDoc, setDoc, deleteDoc, writeBatch } from 'firebase/firestore';
-import { db } from './firebase';
+import { db, firebaseConfigData } from './firebase';
 import { User } from '../types';
 import { DatabaseService } from './storage';
 
@@ -169,6 +169,32 @@ export const UserAuthMappingService = {
         id: firestoreUser.id || mappingUserId,
         firebase_uid: cleanUid
       };
+
+      console.log('[FORENSIC-AUTH]', {
+        firebaseProjectId: firebaseConfigData?.projectId || null,
+        firestoreDatabaseId: (firebaseConfigData as any)?.firestoreDatabaseId || '(default)',
+        firebaseUid: cleanUid,
+        userAuthExists: true,
+        mappedUserId: mappingUserId,
+        mappedUserStatus: mappingStatus,
+        profileExists: true,
+        profileStatus,
+        profileRole: verifiedUser.role,
+        profileKdAo: verifiedUser.kd_ao || null,
+        profileKdCabang: verifiedUser.kd_cabang || null,
+        profileKdPosko: verifiedUser.kd_posko || null
+      });
+
+      console.log('[FORENSIC-IDENTITY]', {
+        stage: 'VERIFIED',
+        firebaseUid: cleanUid,
+        resolvedUserId: verifiedUser.id,
+        role: verifiedUser.role,
+        status: verifiedUser.status,
+        kd_ao: verifiedUser.kd_ao,
+        kd_cabang: verifiedUser.kd_cabang,
+        kd_posko: verifiedUser.kd_posko
+      });
 
       return {
         verified: true,
@@ -435,13 +461,43 @@ export const UserAuthMappingService = {
             };
           }
 
+          const authDocRef = doc(db, 'user_auth', cleanUid);
+          const authDocSnap = await getDoc(authDocRef);
+
+          // If already correctly mapped, avoid redundant write
+          if (authDocSnap.exists() && 
+              (authDocSnap.data() as UserAuthMappingDoc).user_id === cleanUserId && 
+              existingUserData.firebase_uid === cleanUid) {
+            console.log('[FORENSIC-MAPPING]', {
+              status: 'ALREADY_MAPPED',
+              firebaseUid: cleanUid,
+              userId: cleanUserId,
+              email: authEmail || targetUser.email,
+              linkedBy
+            });
+            DatabaseService.saveUser(updatedUser, true);
+            return {
+              success: true,
+              message: `Akun "${targetUser.nama}" sudah terhubung ke Firebase UID ini.`,
+              status: 'MAPPED',
+              user: updatedUser
+            };
+          }
+
+          console.log('[FORENSIC-MAPPING]', {
+            status: 'LINKING',
+            firebaseUid: cleanUid,
+            userId: cleanUserId,
+            email: authEmail || targetUser.email,
+            linkedBy
+          });
+
           const batch = writeBatch(db);
           
           // Document 1: users/{userId} (self-linking firebase_uid)
           batch.set(userDocRef, { firebase_uid: cleanUid }, { merge: true });
 
           // Document 2: user_auth/{firebaseUid}
-          const authDocRef = doc(db, 'user_auth', cleanUid);
           batch.set(authDocRef, mappingDoc);
 
           await batch.commit();
