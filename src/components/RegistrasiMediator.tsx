@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { DatabaseService } from '../services/storage';
 import { ActiveTab } from './Sidebar';
@@ -13,7 +13,8 @@ import {
   Clock,
   ArrowRight,
   ShieldCheck,
-  FileCheck2
+  FileCheck2,
+  Lock
 } from 'lucide-react';
 
 interface RegistrasiMediatorProps {
@@ -25,6 +26,10 @@ export const RegistrasiMediator: React.FC<RegistrasiMediatorProps> = ({ onSucces
   const { currentUser, allCabang, allPosko } = useAuth();
 
   const isNational = currentUser?.role === 'SUPER_ADMIN' || currentUser?.role === 'RM';
+  const isCMO = currentUser?.role === 'CMO';
+  const isKaposOrAdm = currentUser?.role === 'KAPOS' || currentUser?.role === 'ADM';
+  const isKaops = currentUser?.role === 'KAOPS';
+
   const defaultCabang = currentUser?.kd_cabang || (allCabang[0]?.kd_cabang || '');
   const initialPoskos = allPosko.filter(p => defaultCabang && p.kd_cabang.toUpperCase() === defaultCabang.toUpperCase());
   const defaultPosko = currentUser?.kd_posko || (initialPoskos[0]?.kd_posko || '');
@@ -33,14 +38,43 @@ export const RegistrasiMediator: React.FC<RegistrasiMediatorProps> = ({ onSucces
   const [noTlpn, setNoTlpn] = useState('');
   const [kdCabang, setKdCabang] = useState(defaultCabang);
   const [kdPosko, setKdPosko] = useState(defaultPosko);
-  const [kdAo, setKdAo] = useState(currentUser?.kd_ao || currentUser?.username?.toUpperCase() || 'AO-01');
+  const [kdAo, setKdAo] = useState(currentUser?.kd_ao || '');
   const [catatan, setCatatan] = useState('');
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string; tempCode?: string } | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // Synchronize state whenever currentUser or master data updates
+  useEffect(() => {
+    if (!currentUser) return;
+
+    if (isCMO) {
+      setKdCabang(currentUser.kd_cabang || '');
+      setKdPosko(currentUser.kd_posko || '');
+      setKdAo(currentUser.kd_ao || '');
+    } else if (isKaposOrAdm) {
+      setKdCabang(currentUser.kd_cabang || '');
+      setKdPosko(currentUser.kd_posko || '');
+      if (!kdAo && currentUser.kd_ao) {
+        setKdAo(currentUser.kd_ao);
+      }
+    } else if (isKaops) {
+      setKdCabang(currentUser.kd_cabang || '');
+      if (!kdAo && currentUser.kd_ao) {
+        setKdAo(currentUser.kd_ao);
+      }
+    } else if (isNational && !kdCabang && allCabang.length > 0) {
+      const firstCab = allCabang[0].kd_cabang;
+      setKdCabang(firstCab);
+      const matchingPoskos = allPosko.filter(p => p.kd_cabang.toUpperCase() === firstCab.toUpperCase());
+      if (matchingPoskos.length > 0) {
+        setKdPosko(matchingPoskos[0].kd_posko);
+      }
+    }
+  }, [currentUser, allCabang, allPosko, isCMO, isKaposOrAdm, isKaops, isNational]);
+
   const isCabangLocked = !isNational && !!currentUser?.kd_cabang;
-  const isPoskoLocked = !isNational && !!currentUser?.kd_posko;
-  const isAoLocked = !isNational && (currentUser?.role === 'CMO' || !!currentUser?.kd_ao);
+  const isPoskoLocked = !isNational && (isCMO || isKaposOrAdm || !!currentUser?.kd_posko);
+  const isAoLocked = isCMO;
 
   // Available poskos for selected cabang
   const availablePosko = allPosko.filter(p => !kdCabang || p.kd_cabang.toUpperCase() === kdCabang.toUpperCase());
@@ -70,17 +104,51 @@ export const RegistrasiMediator: React.FC<RegistrasiMediatorProps> = ({ onSucces
       return;
     }
 
+    // Strict Scope Validation based on authenticated profile
+    if (isCMO) {
+      if (!currentUser?.kd_ao || !currentUser?.kd_cabang || !currentUser?.kd_posko) {
+        setFeedback({ 
+          type: 'error', 
+          message: 'Data profil akun CMO Anda belum lengkap (Kode AO, Cabang, atau Posko tidak ditemukan). Silakan hubungi Administrator.' 
+        });
+        return;
+      }
+    }
+
+    const effectiveKdAo = isCMO 
+      ? currentUser.kd_ao.trim() 
+      : (kdAo.trim() || currentUser?.kd_ao?.trim() || '');
+    const effectiveKdCabang = (isCabangLocked && currentUser?.kd_cabang) 
+      ? currentUser.kd_cabang.trim() 
+      : kdCabang.trim();
+    const effectiveKdPosko = (isPoskoLocked && currentUser?.kd_posko) 
+      ? currentUser.kd_posko.trim() 
+      : kdPosko.trim();
+
+    if (!effectiveKdCabang) {
+      setFeedback({ type: 'error', message: 'Kantor Cabang wajib dipilih!' });
+      return;
+    }
+    if (isCMO && !effectiveKdPosko) {
+      setFeedback({ type: 'error', message: 'Posko operasional CMO wajib ada!' });
+      return;
+    }
+    if (!effectiveKdAo) {
+      setFeedback({ type: 'error', message: 'Kode AO pendaftar wajib diisi!' });
+      return;
+    }
+
     setIsSubmitting(true);
     setFeedback(null);
 
     const result = await DatabaseService.registerMediator({
       nama_mediator: namaMediator.trim(),
       no_tlpn: noTlpn.trim(),
-      kd_ao: kdAo || currentUser?.kd_ao || 'AO-REG',
-      kd_posko: kdPosko,
-      kd_cabang: kdCabang,
-      created_by_user: currentUser?.nama || 'Petugas Registrasi',
-      created_by_role: currentUser?.role,
+      kd_ao: effectiveKdAo,
+      kd_posko: effectiveKdPosko,
+      kd_cabang: effectiveKdCabang,
+      created_by_user: currentUser?.nama || currentUser?.username || 'Petugas Registrasi',
+      created_by_role: currentUser?.role || 'CMO',
       catatan_admin: catatan.trim(),
     });
 

@@ -746,16 +746,45 @@ export const DatabaseService = {
   }): Promise<{ success: boolean; message: string; data?: MediatorKontrak }> {
     const mediators = this.getMediators();
 
+    if (!params.nama_mediator?.trim()) {
+      return { success: false, message: 'Nama mediator wajib diisi!' };
+    }
+
     if (params.nama_mediator.trim().length > 100) {
       return { success: false, message: 'Nama mediator melebihi batas maksimal 100 karakter!' };
     }
 
-    if (!params.nama_mediator.trim()) {
-      return { success: false, message: 'Nama mediator wajib diisi!' };
+    if (!params.no_tlpn?.trim()) {
+      return { success: false, message: 'Nomor telepon wajib diisi!' };
     }
 
-    if (!params.no_tlpn.trim()) {
-      return { success: false, message: 'Nomor telepon wajib diisi!' };
+    const cleanRole = (params.created_by_role as UserRole) || 'CMO';
+    const cleanAo = (params.kd_ao || '').trim();
+    const cleanCabang = (params.kd_cabang || '').trim();
+    const cleanPosko = (params.kd_posko || '').trim();
+
+    // Strict Scope Verification before interacting with Firestore
+    if (cleanRole === 'CMO') {
+      if (!cleanAo || !cleanCabang || !cleanPosko) {
+        return {
+          success: false,
+          message: 'Data scope CMO tidak lengkap (Kode AO, Cabang, dan Posko wajib ada). Silakan hubungi Administrator.'
+        };
+      }
+    } else if (cleanRole === 'KAPOS' || cleanRole === 'ADM') {
+      if (!cleanCabang || !cleanPosko) {
+        return {
+          success: false,
+          message: `Data scope ${cleanRole} tidak lengkap (Cabang dan Posko wajib ada).`
+        };
+      }
+    } else if (cleanRole === 'KAOPS') {
+      if (!cleanCabang) {
+        return {
+          success: false,
+          message: 'Data scope KAOPS tidak lengkap (Cabang wajib ada).'
+        };
+      }
     }
 
     const draftCount = mediators.filter(m => m.status === 'BELUM_AKTIF').length + 1;
@@ -768,14 +797,14 @@ export const DatabaseService = {
       nama_mediator: params.nama_mediator.trim(),
       no_tlpn: params.no_tlpn.trim(),
       status: 'BELUM_AKTIF',
-      kd_ao: params.kd_ao || 'AO-01',
-      kd_posko: params.kd_posko || '',
-      kd_cabang: params.kd_cabang || 'CAB-01',
+      kd_ao: cleanAo,
+      kd_posko: cleanPosko,
+      kd_cabang: cleanCabang,
       tgl_akhir_fu: null,
       created_at: new Date().toISOString(),
-      created_by_user: params.created_by_user,
-      created_by_role: (params.created_by_role as UserRole) || 'CMO',
-      catatan_admin: params.catatan_admin || '',
+      created_by_user: (params.created_by_user || 'Petugas Registrasi').trim(),
+      created_by_role: cleanRole,
+      catatan_admin: (params.catatan_admin || '').trim(),
     };
 
     if (db) {
@@ -785,14 +814,14 @@ export const DatabaseService = {
         logFirestoreWrite({
           collection: 'mediators',
           documentId: docId,
-          role: params.created_by_role,
+          role: cleanRole,
           result: 'SUCCESS'
         });
       } catch (err: any) {
         logFirestoreWrite({
           collection: 'mediators',
           documentId: newMediator.temp_id || newMediator.kd_med,
-          role: params.created_by_role,
+          role: cleanRole,
           result: 'FAILED',
           errorCode: err?.code,
           errorMessage: err?.message
@@ -810,7 +839,7 @@ export const DatabaseService = {
 
     return { 
       success: true, 
-      message: `Mediator "${params.nama_mediator}" berhasil diajukan dengan status BELUM AKTIF (${tempCode}). Menunggu peninjauan berkas oleh Admin.`,
+      message: `Mediator "${newMediator.nama_mediator}" berhasil diajukan dengan status BELUM AKTIF (${tempCode}). Menunggu peninjauan berkas oleh Admin.`,
       data: newMediator
     };
   },
@@ -828,9 +857,9 @@ export const DatabaseService = {
     return this.submitMediator({
       nama_mediator: params.nama_mediator,
       no_tlpn: params.no_tlpn,
-      kd_ao: params.kd_ao || 'AO-01',
-      kd_posko: params.kd_posko,
-      kd_cabang: params.kd_cabang,
+      kd_ao: params.kd_ao || '',
+      kd_posko: params.kd_posko || '',
+      kd_cabang: params.kd_cabang || '',
       created_by_user: params.created_by_user || 'Petugas Registrasi',
       created_by_role: params.created_by_role || 'CMO',
       catatan_admin: params.catatan_admin

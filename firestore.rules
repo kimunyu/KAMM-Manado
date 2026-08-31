@@ -120,58 +120,252 @@ service cloud.firestore {
     }
 
     // =========================================================================
-    // 3. MODUL MEDIATOR & FOLLOW-UP (HARD BLOCK ADMIN_BPKB)
+    // 3. MODUL MEDIATOR & FOLLOW-UP
+    //    HARD BLOCK ADMIN_BPKB
     // =========================================================================
 
     match /mediators/{kdMed} {
-      allow read: if isRegisteredAndActive() && !isAdminBpkb();
-      
-      allow create: if isRegisteredAndActive() && !isAdminBpkb() && !isRM() && !isKacab() && (
-        isSuperAdmin() ||
-        (isKaops() && request.resource.data.kd_cabang == getUserCabang() && request.resource.data.status == 'BELUM_AKTIF') ||
-        (isKapos() && request.resource.data.kd_cabang == getUserCabang() && request.resource.data.kd_posko == getUserPosko() && request.resource.data.status == 'BELUM_AKTIF') ||
-        (isAdm() && request.resource.data.kd_cabang == getUserCabang() && request.resource.data.kd_posko == getUserPosko() && request.resource.data.status == 'BELUM_AKTIF') ||
-        (isCmo() && request.resource.data.kd_cabang == getUserCabang() && request.resource.data.kd_posko == getUserPosko() && request.resource.data.kd_ao == getUserAO() && request.resource.data.status == 'BELUM_AKTIF')
-      );
 
-      allow update: if isRegisteredAndActive() && !isAdminBpkb() && (
-        isSuperAdmin() ||
-        (isKaops() && resource.data.kd_cabang == getUserCabang() && request.resource.data.kd_cabang == resource.data.kd_cabang && request.resource.data.status in ['BELUM_AKTIF', 'PENDING', 'AKTIF', 'DITOLAK']) ||
-        (isKapos() && resource.data.kd_cabang == getUserCabang() && resource.data.kd_posko == getUserPosko() && (
-          (resource.data.status == 'BELUM_AKTIF' && request.resource.data.status in ['BELUM_AKTIF', 'DITOLAK']) ||
-          (resource.data.status == 'PENDING' && request.resource.data.status in ['AKTIF', 'DITOLAK', 'PENDING'])
-        )) ||
-        (isAdm() && resource.data.kd_cabang == getUserCabang() && resource.data.kd_posko == getUserPosko() && (
-          (resource.data.status == 'BELUM_AKTIF' && request.resource.data.status in ['PENDING', 'DITOLAK', 'BELUM_AKTIF']) ||
-          (resource.data.status == 'PENDING' && request.resource.data.status in ['PENDING', 'DITOLAK'])
-        )) ||
-        (isCmo() && resource.data.kd_cabang == getUserCabang() && resource.data.kd_posko == getUserPosko() && resource.data.kd_ao == getUserAO() && resource.data.status == 'BELUM_AKTIF' && request.resource.data.status == 'BELUM_AKTIF')
-      ) && (
-        // Immutable audit fields
-        (!('created_at' in resource.data) || request.resource.data.created_at == resource.data.created_at) &&
-        (!('created_by_user' in resource.data) || request.resource.data.created_by_user == resource.data.created_by_user) &&
-        (!('created_by_role' in resource.data) || request.resource.data.created_by_role == resource.data.created_by_role)
-      );
+      // -----------------------------------------------------------------------
+      // READ
+      // ADMIN_BPKB TIDAK BOLEH MELIHAT DATA MEDIATOR
+      // -----------------------------------------------------------------------
+      allow read: if isRegisteredAndActive()
+                  && !isAdminBpkb();
 
-      allow delete: if isSuperAdmin() || (
-        isRegisteredAndActive() && !isAdminBpkb() && 
-        resource.data.status in ['BELUM_AKTIF', 'PENDING'] && (
-          (isKaops() && resource.data.kd_cabang == getUserCabang()) ||
-          (isKapos() && resource.data.kd_cabang == getUserCabang() && resource.data.kd_posko == getUserPosko()) ||
-          (isAdm() && resource.data.kd_cabang == getUserCabang() && resource.data.kd_posko == getUserPosko())
-        )
-      );
+
+      // -----------------------------------------------------------------------
+      // CREATE
+      // ADMIN_BPKB, RM, dan KACAB TIDAK BOLEH MEMBUAT MEDIATOR
+      // -----------------------------------------------------------------------
+      allow create: if isRegisteredAndActive()
+                    && !isAdminBpkb()
+                    && !isRM()
+                    && !isKacab()
+                    && (
+                      // SUPER ADMIN
+                      isSuperAdmin()
+
+                      // KAOPS
+                      || (
+                        isKaops()
+                        && request.resource.data.kd_cabang == getUserCabang()
+                        && request.resource.data.status == 'BELUM_AKTIF'
+                      )
+
+                      // KAPOS
+                      || (
+                        isKapos()
+                        && request.resource.data.kd_cabang == getUserCabang()
+                        && request.resource.data.kd_posko == getUserPosko()
+                        && request.resource.data.status == 'BELUM_AKTIF'
+                      )
+
+                      // ADM
+                      || (
+                        isAdm()
+                        && request.resource.data.kd_cabang == getUserCabang()
+                        && request.resource.data.kd_posko == getUserPosko()
+                        && request.resource.data.status == 'BELUM_AKTIF'
+                      )
+
+                      // CMO
+                      || (
+                        isCmo()
+                        && request.resource.data.kd_cabang == getUserCabang()
+                        && request.resource.data.kd_posko == getUserPosko()
+                        && request.resource.data.kd_ao == getUserAO()
+                        && request.resource.data.status == 'BELUM_AKTIF'
+                      )
+                    );
+
+
+      // -----------------------------------------------------------------------
+      // UPDATE
+      // ADMIN_BPKB TIDAK BOLEH MENGUBAH DATA MEDIATOR
+      // -----------------------------------------------------------------------
+      allow update: if isRegisteredAndActive()
+                    && !isAdminBpkb()
+                    && (
+                      // SUPER ADMIN
+                      isSuperAdmin()
+
+                      // KAOPS
+                      || (
+                        isKaops()
+                        && resource.data.kd_cabang == getUserCabang()
+                        && request.resource.data.kd_cabang == resource.data.kd_cabang
+                        && request.resource.data.status
+                           in ['BELUM_AKTIF', 'PENDING', 'AKTIF', 'DITOLAK']
+                      )
+
+                      // KAPOS
+                      || (
+                        isKapos()
+                        && resource.data.kd_cabang == getUserCabang()
+                        && resource.data.kd_posko == getUserPosko()
+                        && (
+                          (
+                            resource.data.status == 'BELUM_AKTIF'
+                            && request.resource.data.status
+                               in ['BELUM_AKTIF', 'DITOLAK']
+                          )
+                          ||
+                          (
+                            resource.data.status == 'PENDING'
+                            && request.resource.data.status
+                               in ['AKTIF', 'DITOLAK', 'PENDING']
+                          )
+                        )
+                      )
+
+                      // ADM
+                      || (
+                        isAdm()
+                        && resource.data.kd_cabang == getUserCabang()
+                        && resource.data.kd_posko == getUserPosko()
+                        && (
+                          (
+                            resource.data.status == 'BELUM_AKTIF'
+                            && request.resource.data.status
+                               in ['PENDING', 'DITOLAK', 'BELUM_AKTIF']
+                          )
+                          ||
+                          (
+                            resource.data.status == 'PENDING'
+                            && request.resource.data.status
+                               in ['PENDING', 'DITOLAK']
+                          )
+                        )
+                      )
+
+                      // CMO
+                      || (
+                        isCmo()
+                        && resource.data.kd_cabang == getUserCabang()
+                        && resource.data.kd_posko == getUserPosko()
+                        && resource.data.kd_ao == getUserAO()
+                        && resource.data.status == 'BELUM_AKTIF'
+                        && request.resource.data.status == 'BELUM_AKTIF'
+                      )
+                    )
+                    && (
+                      // -----------------------------------------------------------------
+                      // IMMUTABLE AUDIT FIELDS
+                      // -----------------------------------------------------------------
+                      (
+                        !('created_at' in resource.data)
+                        || request.resource.data.created_at == resource.data.created_at
+                      )
+                      &&
+                      (
+                        !('created_by_user' in resource.data)
+                        || request.resource.data.created_by_user == resource.data.created_by_user
+                      )
+                      &&
+                      (
+                        !('created_by_role' in resource.data)
+                        || request.resource.data.created_by_role == resource.data.created_by_role
+                      )
+                    );
+
+
+      // -----------------------------------------------------------------------
+      // DELETE
+      // ADMIN_BPKB TIDAK BOLEH MENGHAPUS DATA MEDIATOR
+      // -----------------------------------------------------------------------
+      allow delete: if isSuperAdmin()
+                    ||
+                    (
+                      isRegisteredAndActive()
+                      && !isAdminBpkb()
+                      && resource.data.status in ['BELUM_AKTIF', 'PENDING']
+                      && (
+                        // KAOPS
+                        (
+                          isKaops()
+                          && resource.data.kd_cabang == getUserCabang()
+                        )
+
+                        // KAPOS
+                        ||
+                        (
+                          isKapos()
+                          && resource.data.kd_cabang == getUserCabang()
+                          && resource.data.kd_posko == getUserPosko()
+                        )
+
+                        // ADM
+                        ||
+                        (
+                          isAdm()
+                          && resource.data.kd_cabang == getUserCabang()
+                          && resource.data.kd_posko == getUserPosko()
+                        )
+                      )
+                    );
     }
 
+
+    // =========================================================================
+    // FOLLOW-UP LOGS
+    // =========================================================================
+
     match /fu_logs/{logId} {
-      allow read: if isRegisteredAndActive() && !isAdminBpkb();
-      allow create: if isRegisteredAndActive() && !isAdminBpkb() && !isRM() && !isKacab() && (
-        isSuperAdmin() ||
-        (isKaops() && request.resource.data.kd_cabang == getUserCabang()) ||
-        (isKapos() && request.resource.data.kd_cabang == getUserCabang() && request.resource.data.kd_posko == getUserPosko()) ||
-        (isAdm() && request.resource.data.kd_cabang == getUserCabang() && request.resource.data.kd_posko == getUserPosko()) ||
-        (isCmo() && request.resource.data.kd_ao == getUserAO())
-      );
+
+      // -----------------------------------------------------------------------
+      // READ
+      // ADMIN_BPKB TIDAK BOLEH MELIHAT FOLLOW-UP LOG
+      // -----------------------------------------------------------------------
+      allow read: if isRegisteredAndActive()
+                  && !isAdminBpkb();
+
+
+      // -----------------------------------------------------------------------
+      // CREATE
+      // ADMIN_BPKB, RM, dan KACAB TIDAK BOLEH MEMBUAT FOLLOW-UP
+      // -----------------------------------------------------------------------
+      allow create: if isRegisteredAndActive()
+                    && !isAdminBpkb()
+                    && !isRM()
+                    && !isKacab()
+                    && (
+                      // SUPER ADMIN
+                      isSuperAdmin()
+
+                      // KAOPS
+                      || (
+                        isKaops()
+                        && request.resource.data.kd_cabang == getUserCabang()
+                      )
+
+                      // KAPOS
+                      || (
+                        isKapos()
+                        && request.resource.data.kd_cabang == getUserCabang()
+                        && request.resource.data.kd_posko == getUserPosko()
+                      )
+
+                      // ADM
+                      || (
+                        isAdm()
+                        && request.resource.data.kd_cabang == getUserCabang()
+                        && request.resource.data.kd_posko == getUserPosko()
+                      )
+
+                      // CMO
+                      || (
+                        isCmo()
+                        && request.resource.data.kd_ao == getUserAO()
+                      )
+                    );
+
+
+      // -----------------------------------------------------------------------
+      // UPDATE & DELETE
+      // HANYA SUPER ADMIN
+      // ADMIN_BPKB JUGA TIDAK BOLEH
+      // -----------------------------------------------------------------------
       allow update, delete: if isSuperAdmin();
     }
 

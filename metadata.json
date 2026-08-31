@@ -1,6 +1,6 @@
 {
-  "name": "Contract Mediator Control System",
-  "description": "MEDIATOR KONTRAK MANADO",
+  "name": "Super App KAMM Manado",
+  "description": "Sistem Pengendalian & Monitoring Mediator Kontrak KAMM Manado",
   "requestFramePermissions": [],
   "majorCapabilities": [
     "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
