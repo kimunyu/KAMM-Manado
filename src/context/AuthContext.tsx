@@ -25,6 +25,7 @@ interface AuthContextType {
   firebaseAuthStatus: FirebaseAuthStatus;
   isFirebaseAuthenticated: boolean;
   firebaseUid: string | null;
+  identityReady: boolean;
   loginFirebaseAuth: (email: string, password: string) => Promise<{ success: boolean; message: string }>;
   logoutFirebaseAuth: () => Promise<{ success: boolean; message: string }>;
   changePassword: (newPassword: string) => Promise<{ success: boolean; message: string }>;
@@ -61,6 +62,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // Firebase Auth State
   const [firebaseUser, setFirebaseUser] = useState<FirebaseUser | null>(getCurrentFirebaseUser());
   const [firebaseAuthStatus, setFirebaseAuthStatus] = useState<FirebaseAuthStatus>('LOADING');
+  const [identityReady, setIdentityReady] = useState<boolean>(false);
 
   const loadData = () => {
     const users = DatabaseService.getUsers();
@@ -81,6 +83,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       } else if (live && live.status !== 'AKTIF') {
         setCurrentUser(null);
         setIsSuperAdminSession(false);
+        setIdentityReady(false);
         localStorage.removeItem('med_control_auth_user_v2');
         localStorage.removeItem('med_control_is_super_admin_session_v2');
         stopFirebaseSync();
@@ -100,6 +103,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         // Unauthenticated in Firebase: revoke application access unconditionally
         setCurrentUser(null);
         setIsSuperAdminSession(false);
+        setIdentityReady(false);
         localStorage.removeItem('med_control_auth_user_v2');
         localStorage.removeItem('med_control_is_super_admin_session_v2');
         stopFirebaseSync();
@@ -118,20 +122,27 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                (u.email && fbUser.email && u.email.toLowerCase() === fbUser.email.toLowerCase()) ||
                (fbUser.email && u.username && u.username.toLowerCase() === fbUser.email.split('@')[0].toLowerCase())
         ) || null;
+
+        if (matchedUser && matchedUser.status === 'AKTIF') {
+          const linkRes = await UserAuthMappingService.linkUserToFirebaseUid(
+            matchedUser.id,
+            fbUser.uid,
+            fbUser.email || undefined,
+            matchedUser.role
+          );
+          if (!linkRes.success) {
+            console.warn('[AUTH-GATE-LINK-WARN]', linkRes.message);
+          }
+        }
       }
 
       if (matchedUser && matchedUser.status === 'AKTIF') {
         const activeUser: User = { ...matchedUser, firebase_uid: fbUser.uid };
         setCurrentUser(activeUser);
         setIsSuperAdminSession(activeUser.role === 'SUPER_ADMIN');
+        setIdentityReady(true);
         saveToStorage('med_control_auth_user_v2', activeUser);
         saveToStorage('med_control_is_super_admin_session_v2', activeUser.role === 'SUPER_ADMIN');
-
-        // Proactively link mapping if not linked yet
-        if (!matchedUser.firebase_uid || matchedUser.firebase_uid !== fbUser.uid) {
-          UserAuthMappingService.linkUserToFirebaseUid(matchedUser.id, fbUser.uid, fbUser.email || undefined, matchedUser.role)
-            .catch(err => console.warn('Background auto-link warning:', err));
-        }
 
         console.log('[AUTH-GATE]', { 
           firebaseUid: fbUser.uid, 
@@ -143,6 +154,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       } else {
         setCurrentUser(null);
         setIsSuperAdminSession(false);
+        setIdentityReady(false);
         localStorage.removeItem('med_control_auth_user_v2');
         localStorage.removeItem('med_control_is_super_admin_session_v2');
         stopFirebaseSync();
@@ -250,10 +262,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
              (u.email && fbUser.email && u.email.toLowerCase() === fbUser.email.toLowerCase())
       ) || null;
 
-      if (matchedUser && !matchedUser.firebase_uid) {
-        UserAuthMappingService.linkUserToFirebaseUid(matchedUser.id, fbUser.uid, fbUser.email || undefined).catch(err => {
-          console.warn('Auto-linking user to Firebase UID on login error:', err);
-        });
+      if (matchedUser) {
+        // Await the mapping write to guarantee user_auth/{uid} is created before any subsequent writes occur
+        const linkRes = await UserAuthMappingService.linkUserToFirebaseUid(
+          matchedUser.id,
+          fbUser.uid,
+          fbUser.email || undefined,
+          matchedUser.role
+        );
+        if (!linkRes.success) {
+          console.warn('[LOGIN-MAPPING-WARN] linkUserToFirebaseUid failed:', linkRes.message);
+        }
       }
     }
 
@@ -291,6 +310,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     setCurrentUser(activeUser);
     setIsSuperAdminSession(isSA);
+    setIdentityReady(true);
     saveToStorage('med_control_auth_user_v2', activeUser);
     saveToStorage('med_control_is_super_admin_session_v2', isSA);
 
@@ -319,6 +339,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     stopFirebaseSync();
     setCurrentUser(null);
     setIsSuperAdminSession(false);
+    setIdentityReady(false);
     localStorage.removeItem('med_control_auth_user_v2');
     localStorage.removeItem('med_control_is_super_admin_session_v2');
     signOutFirebaseAuth().catch((err) => {
@@ -419,6 +440,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         firebaseAuthStatus,
         isFirebaseAuthenticated: !!firebaseUser,
         firebaseUid: getFirebaseUID(),
+        identityReady,
         loginFirebaseAuth,
         logoutFirebaseAuth,
         changePassword,

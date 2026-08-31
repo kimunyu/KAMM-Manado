@@ -23,7 +23,7 @@ interface RegistrasiMediatorProps {
 }
 
 export const RegistrasiMediator: React.FC<RegistrasiMediatorProps> = ({ onSuccess, onNavigate }) => {
-  const { currentUser, allCabang, allPosko } = useAuth();
+  const { currentUser, allCabang, allPosko, identityReady } = useAuth();
 
   const isNational = currentUser?.role === 'SUPER_ADMIN' || currentUser?.role === 'RM';
   const isCMO = currentUser?.role === 'CMO';
@@ -101,6 +101,14 @@ export const RegistrasiMediator: React.FC<RegistrasiMediatorProps> = ({ onSucces
     }
     if (!noTlpn.trim()) {
       setFeedback({ type: 'error', message: 'Nomor telepon wajib diisi!' });
+      return;
+    }
+
+    if (!identityReady) {
+      setFeedback({
+        type: 'error',
+        message: 'Identitas Firebase Auth Anda sedang disinkronisasikan ke Firestore. Mohon tunggu sejenak lalu coba kembali.'
+      });
       return;
     }
 

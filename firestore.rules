@@ -107,6 +107,9 @@ service cloud.firestore {
                       request.resource.data.id == resource.data.id &&
                       request.resource.data.role == resource.data.role &&
                       request.resource.data.status == resource.data.status &&
+                      request.resource.data.get('username', '') == resource.data.get('username', '') &&
+                      request.resource.data.get('kd_cabang', '') == resource.data.get('kd_cabang', '') &&
+                      request.resource.data.get('kd_posko', '') == resource.data.get('kd_posko', '') &&
                       request.resource.data.get('kd_ao', '') == resource.data.get('kd_ao', '') &&
                       request.resource.data.firebase_uid == request.auth.uid
                     );
@@ -119,6 +122,7 @@ service cloud.firestore {
         isAuthenticated() && 
         request.auth.uid == firebaseUid &&
         exists(/databases/$(database)/documents/users/$(request.resource.data.user_id)) &&
+        get(/databases/$(database)/documents/users/$(request.resource.data.user_id)).data.status == 'AKTIF' &&
         request.resource.data.status == 'AKTIF'
       );
       allow delete: if isSuperAdmin();
