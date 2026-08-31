@@ -174,22 +174,41 @@ service cloud.firestore {
 // Jangan menambahkan get()/exists() lain ke predicate ini.
 // -------------------------------------------------------------------------
 
+// =========================================================================
+// CMO MEDIATOR CREATE — FORENSIC MINIMAL / ISOLATED
+//
+// Identity chain:
+// request.auth.uid
+//   -> user_auth/{uid}
+//   -> users/{user_id}
+//
+// DESIGN:
+// - Tidak menggunakan isRegisteredAndActive()
+// - Tidak menggunakan isCmo()
+// - Tidak menggunakan getUserCabang()
+// - Tidak menggunakan getUserPosko()
+// - Tidak menggunakan getUserAO()
+// - Tidak menggunakan helper role lain
+// - Hanya membaca identity chain yang diperlukan untuk CREATE mediator
+// =========================================================================
+
 function isCmoMediatorCreateAllowed() {
   return isAuthenticated()
 
     // ---------------------------------------------------------------
-    // 1. Mapping Firebase UID -> internal user
+    // 1. Firebase UID harus mempunyai mapping
     // ---------------------------------------------------------------
     && exists(
       /databases/$(database)/documents/user_auth/$(request.auth.uid)
     )
 
+    // Mapping harus AKTIF
     && get(
       /databases/$(database)/documents/user_auth/$(request.auth.uid)
     ).data.get('status', '') == 'AKTIF'
 
     // ---------------------------------------------------------------
-    // 2. Master user harus tersedia
+    // 2. Master user harus ada
     // ---------------------------------------------------------------
     && exists(
       /databases/$(database)/documents/users/$(
@@ -200,7 +219,7 @@ function isCmoMediatorCreateAllowed() {
     )
 
     // ---------------------------------------------------------------
-    // 3. Master user harus AKTIF + role CMO
+    // 3. Master user harus AKTIF
     // ---------------------------------------------------------------
     && get(
       /databases/$(database)/documents/users/$(
@@ -210,6 +229,9 @@ function isCmoMediatorCreateAllowed() {
       )
     ).data.get('status', '') == 'AKTIF'
 
+    // ---------------------------------------------------------------
+    // 4. Role harus CMO
+    // ---------------------------------------------------------------
     && get(
       /databases/$(database)/documents/users/$(
         get(
@@ -219,7 +241,7 @@ function isCmoMediatorCreateAllowed() {
     ).data.get('role', '') == 'CMO'
 
     // ---------------------------------------------------------------
-    // 4. Scope mediator HARUS sama dengan scope CMO
+    // 5. Scope CABANG harus identik
     // ---------------------------------------------------------------
     && request.resource.data.get('kd_cabang', '') ==
        get(
@@ -230,6 +252,9 @@ function isCmoMediatorCreateAllowed() {
          )
        ).data.get('kd_cabang', '')
 
+    // ---------------------------------------------------------------
+    // 6. Scope POSKO harus identik
+    // ---------------------------------------------------------------
     && request.resource.data.get('kd_posko', '') ==
        get(
          /databases/$(database)/documents/users/$(
@@ -239,6 +264,9 @@ function isCmoMediatorCreateAllowed() {
          )
        ).data.get('kd_posko', '')
 
+    // ---------------------------------------------------------------
+    // 7. Scope AO harus identik
+    // ---------------------------------------------------------------
     && request.resource.data.get('kd_ao', '') ==
        get(
          /databases/$(database)/documents/users/$(
@@ -249,7 +277,7 @@ function isCmoMediatorCreateAllowed() {
        ).data.get('kd_ao', '')
 
     // ---------------------------------------------------------------
-    // 5. CMO hanya boleh CREATE mediator BELUM_AKTIF
+    // 8. CMO hanya boleh CREATE mediator BELUM_AKTIF
     // ---------------------------------------------------------------
     && request.resource.data.get('status', '') == 'BELUM_AKTIF';
 }
@@ -264,220 +292,190 @@ match /mediators/{kdMed} {
   // -----------------------------------------------------------------------
   // CREATE
   // -----------------------------------------------------------------------
-  // ADMIN_BPKB, RM, dan KACAB TIDAK BOLEH MEMBUAT MEDIATOR.
   //
-  // CMO menggunakan isolated predicate di atas.
-  // Jalur lainnya tetap menggunakan authorization lama.
+  // CMO menggunakan jalur forensic-minimal yang terisolasi.
+  //
+  // PENTING:
+  // Predicate CMO diletakkan PALING DEPAN.
+  // Jika CMO valid, jalur authorization lama tidak perlu dievaluasi.
+  //
+  // ADMIN_BPKB / RM / KACAB tetap tidak mempunyai jalur CREATE.
   // -----------------------------------------------------------------------
 
   allow create: if
-
-    // ===============================================================
-    // CMO — ISOLATED PATH
-    // ===============================================================
     isCmoMediatorCreateAllowed()
 
     ||
 
-    // ===============================================================
-    // EXISTING NON-CMO AUTHORIZATION PATHS
-    // ===============================================================
     (
       isRegisteredAndActive()
-
       && !isAdminBpkb()
       && !isRM()
       && !isKacab()
-
       && (
-        // -----------------------------------------------------------
-        // SUPER ADMIN
-        // -----------------------------------------------------------
         isSuperAdmin()
 
         ||
 
-        // -----------------------------------------------------------
-        // KAOPS
-        // -----------------------------------------------------------
         (
           isKaops()
-          && request.resource.data.get('kd_cabang', '') ==
-             getUserCabang()
-          && request.resource.data.get('status', '') ==
-             'BELUM_AKTIF'
+          && request.resource.data.get('kd_cabang', '') == getUserCabang()
+          && request.resource.data.get('status', '') == 'BELUM_AKTIF'
         )
 
         ||
 
-        // -----------------------------------------------------------
-        // KAPOS
-        // -----------------------------------------------------------
         (
           isKapos()
-          && request.resource.data.get('kd_cabang', '') ==
-             getUserCabang()
-          && request.resource.data.get('kd_posko', '') ==
-             getUserPosko()
-          && request.resource.data.get('status', '') ==
-             'BELUM_AKTIF'
+          && request.resource.data.get('kd_cabang', '') == getUserCabang()
+          && request.resource.data.get('kd_posko', '') == getUserPosko()
+          && request.resource.data.get('status', '') == 'BELUM_AKTIF'
         )
 
         ||
 
-        // -----------------------------------------------------------
-        // ADM
-        // -----------------------------------------------------------
         (
           isAdm()
-          && request.resource.data.get('kd_cabang', '') ==
-             getUserCabang()
-          && request.resource.data.get('kd_posko', '') ==
-             getUserPosko()
-          && request.resource.data.get('status', '') ==
-             'BELUM_AKTIF'
+          && request.resource.data.get('kd_cabang', '') == getUserCabang()
+          && request.resource.data.get('kd_posko', '') == getUserPosko()
+          && request.resource.data.get('status', '') == 'BELUM_AKTIF'
         )
       )
     );
 
-      // -----------------------------------------------------------------------
-      // UPDATE
-      // ADMIN_BPKB TIDAK BOLEH MENGUBAH DATA MEDIATOR
-      // -----------------------------------------------------------------------
-      allow update: if isRegisteredAndActive() && !isAdminBpkb() && (
-        // SUPER ADMIN
-        isSuperAdmin()
+  // -----------------------------------------------------------------------
+  // UPDATE
+  // -----------------------------------------------------------------------
+  // PERTAHANKAN BLOCK UPDATE YANG SEKARANG.
+  // Jangan diubah dalam patch forensic ini.
+  // -----------------------------------------------------------------------
 
-        // KAOPS
-        || (
+  allow update: if isRegisteredAndActive() && !isAdminBpkb() && (
+
+    isSuperAdmin()
+
+    ||
+
+    (
+      isKaops()
+      && resource.data.kd_cabang == getUserCabang()
+      && request.resource.data.kd_cabang == resource.data.kd_cabang
+      && request.resource.data.status in [
+        'BELUM_AKTIF',
+        'PENDING',
+        'AKTIF',
+        'DITOLAK'
+      ]
+    )
+
+    ||
+
+    (
+      isKapos()
+      && resource.data.kd_cabang == getUserCabang()
+      && resource.data.kd_posko == getUserPosko()
+      && (
+        (
+          resource.data.status == 'BELUM_AKTIF'
+          && request.resource.data.status in [
+            'BELUM_AKTIF',
+            'DITOLAK'
+          ]
+        )
+        ||
+        (
+          resource.data.status == 'PENDING'
+          && request.resource.data.status in [
+            'AKTIF',
+            'DITOLAK',
+            'PENDING'
+          ]
+        )
+      )
+    )
+
+    ||
+
+    (
+      isAdm()
+      && resource.data.kd_cabang == getUserCabang()
+      && resource.data.kd_posko == getUserPosko()
+      && (
+        (
+          resource.data.status == 'BELUM_AKTIF'
+          && request.resource.data.status in [
+            'PENDING',
+            'DITOLAK',
+            'BELUM_AKTIF'
+          ]
+        )
+        ||
+        (
+          resource.data.status == 'PENDING'
+          && request.resource.data.status in [
+            'PENDING',
+            'DITOLAK'
+          ]
+        )
+      )
+    )
+
+    ||
+
+    (
+      isCmo()
+      && resource.data.kd_cabang == getUserCabang()
+      && resource.data.kd_posko == getUserPosko()
+      && resource.data.kd_ao == getUserAO()
+      && resource.data.status == 'BELUM_AKTIF'
+      && request.resource.data.status == 'BELUM_AKTIF'
+    )
+
+  ) && (
+    (!('created_at' in resource.data)
+      || request.resource.data.created_at == resource.data.created_at)
+
+    &&
+
+    (!('created_by_user' in resource.data)
+      || request.resource.data.created_by_user == resource.data.created_by_user)
+
+    &&
+
+    (!('created_by_role' in resource.data)
+      || request.resource.data.created_by_role == resource.data.created_by_role)
+  );
+
+  // -----------------------------------------------------------------------
+  // DELETE
+  // PERTAHANKAN RULE DELETE YANG SEKARANG.
+  // -----------------------------------------------------------------------
+
+  allow delete: if isSuperAdmin()
+    ||
+    (
+      isRegisteredAndActive()
+      && !isAdminBpkb()
+      && resource.data.status in ['BELUM_AKTIF', 'PENDING']
+      && (
+        (
           isKaops()
           && resource.data.kd_cabang == getUserCabang()
-          && request.resource.data.kd_cabang == resource.data.kd_cabang
-          && request.resource.data.status in ['BELUM_AKTIF', 'PENDING', 'AKTIF', 'DITOLAK']
         )
-
-        // KAPOS
-        || (
+        ||
+        (
           isKapos()
           && resource.data.kd_cabang == getUserCabang()
           && resource.data.kd_posko == getUserPosko()
-          && (
-            (resource.data.status == 'BELUM_AKTIF' && request.resource.data.status in ['BELUM_AKTIF', 'DITOLAK']) ||
-            (resource.data.status == 'PENDING' && request.resource.data.status in ['AKTIF', 'DITOLAK', 'PENDING'])
-          )
         )
-
-        // ADM
-        || (
+        ||
+        (
           isAdm()
           && resource.data.kd_cabang == getUserCabang()
           && resource.data.kd_posko == getUserPosko()
-          && (
-            (resource.data.status == 'BELUM_AKTIF' && request.resource.data.status in ['PENDING', 'DITOLAK', 'BELUM_AKTIF']) ||
-            (resource.data.status == 'PENDING' && request.resource.data.status in ['PENDING', 'DITOLAK'])
-          )
         )
-
-        // CMO
-        || (
-          isCmo()
-          && resource.data.kd_cabang == getUserCabang()
-          && resource.data.kd_posko == getUserPosko()
-          && resource.data.kd_ao == getUserAO()
-          && resource.data.status == 'BELUM_AKTIF'
-          && request.resource.data.status == 'BELUM_AKTIF'
-        )
-      ) && (
-        (!('created_at' in resource.data) || request.resource.data.created_at == resource.data.created_at) &&
-        (!('created_by_user' in resource.data) || request.resource.data.created_by_user == resource.data.created_by_user) &&
-        (!('created_by_role' in resource.data) || request.resource.data.created_by_role == resource.data.created_by_role)
-      );
-
-      // -----------------------------------------------------------------------
-      // DELETE
-      // ADMIN_BPKB TIDAK BOLEH MENGHAPUS DATA MEDIATOR
-      // -----------------------------------------------------------------------
-      allow delete: if isSuperAdmin()
-                    ||
-                    (
-                      isRegisteredAndActive()
-                      && !isAdminBpkb()
-                      && resource.data.status in ['BELUM_AKTIF', 'PENDING']
-                      && (
-                        (isKaops() && resource.data.kd_cabang == getUserCabang()) ||
-                        (isKapos() && resource.data.kd_cabang == getUserCabang() && resource.data.kd_posko == getUserPosko()) ||
-                        (isAdm() && resource.data.kd_cabang == getUserCabang() && resource.data.kd_posko == getUserPosko())
-                      )
-                    );
-    }
-
-    // =========================================================================
-    // FOLLOW-UP LOGS
-    // =========================================================================
-
-    match /fu_logs/{logId} {
-      allow read: if isRegisteredAndActive() && !isAdminBpkb();
-
-      allow create: if isRegisteredAndActive() && !isAdminBpkb() && !isRM() && !isKacab() && (
-        isSuperAdmin() ||
-        (isKaops() && request.resource.data.kd_cabang == getUserCabang()) ||
-        (isKapos() && request.resource.data.kd_cabang == getUserCabang() && request.resource.data.kd_posko == getUserPosko()) ||
-        (isAdm() && request.resource.data.kd_cabang == getUserCabang() && request.resource.data.kd_posko == getUserPosko()) ||
-        (isCmo() && request.resource.data.kd_ao == getUserAO())
-      );
-
-      allow update, delete: if isSuperAdmin();
-    }
-
-    // =========================================================================
-    // 4. MODUL EX-CUSTOMER & BPKB
-    // =========================================================================
-
-    match /ex_customers/{noPsb} {
-      allow read: if isRegisteredAndActive();
-      allow create: if isRegisteredAndActive() && (isSuperAdmin() || isAdminBpkb()) && request.resource.data.no_psb == noPsb;
-      
-      allow update: if isRegisteredAndActive() && !isRM() && !isKacab() && (
-        isSuperAdmin() ||
-        isAdminBpkb() ||
-        (isKaops() && resource.data.kd_cab == getUserCabang() && request.resource.data.kd_cab == resource.data.kd_cab) ||
-        (isKapos() && resource.data.kd_cab == getUserCabang() && resource.data.kd_pos == getUserPosko() && request.resource.data.kd_cab == resource.data.kd_cab && request.resource.data.kd_pos == resource.data.kd_pos) ||
-        (isAdm() && resource.data.kd_cab == getUserCabang() && resource.data.kd_pos == getUserPosko() && request.resource.data.kd_cab == resource.data.kd_cab && request.resource.data.kd_pos == resource.data.kd_pos) ||
-        (isCmo() && (
-          resource.data.assigned_to_cmo_id == getUserId() &&
-          request.resource.data.assigned_to_cmo_id == resource.data.assigned_to_cmo_id &&
-          request.resource.data.kd_cab == resource.data.kd_cab &&
-          request.resource.data.kd_pos == resource.data.kd_pos
-        ))
-      ) && (
-        request.resource.data.no_psb == resource.data.no_psb &&
-        (!('created_at' in resource.data) || request.resource.data.created_at == resource.data.created_at) &&
-        (!('created_by_uid' in resource.data) || request.resource.data.created_by_uid == resource.data.created_by_uid)
-      );
-
-      allow delete: if isSuperAdmin();
-    }
-
-    match /ex_customer_fu_logs/{logId} {
-      allow read: if isRegisteredAndActive();
-      allow create: if isRegisteredAndActive() && !isRM() && !isKacab() && (
-        isSuperAdmin() ||
-        isAdminBpkb() ||
-        (isKaops() && request.resource.data.kd_cab == getUserCabang()) ||
-        (isKapos() && request.resource.data.kd_cab == getUserCabang() && request.resource.data.kd_pos == getUserPosko()) ||
-        (isAdm() && request.resource.data.kd_cab == getUserCabang() && request.resource.data.kd_pos == getUserPosko()) ||
-        (isCmo() && request.resource.data.user_id == getUserId() && request.resource.data.kd_ao == getUserAO())
-      );
-      allow update, delete: if isSuperAdmin();
-    }
-
-    // =========================================================================
-    // 5. GLOBAL DEFAULT DENY CATCH-ALL
-    // =========================================================================
-
-    match /{document=**} {
-      allow read, write: if false;
-    }
-  }
+      )
+    );
+}
 }
 
