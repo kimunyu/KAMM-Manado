@@ -809,36 +809,31 @@ export const DatabaseService = {
 
     const currentAuthUid = auth?.currentUser?.uid || null;
     const currentProjectId = firebaseConfigData?.projectId || null;
-    const currentDbId = (firebaseConfigData as any)?.firestoreDatabaseId || '(default)';
+    const currentDbId = (firebaseConfigData as any)?.firestoreDatabaseId || null;
+    const docId = sanitizeDocId(newMediator.temp_id || newMediator.kd_med);
 
     console.log('[FORENSIC-MEDIATOR-WRITE]', {
-      firebaseProjectId: currentProjectId,
-      firestoreDatabaseId: currentDbId,
-      firebaseAuthUid: currentAuthUid,
-      documentId: newMediator.temp_id || newMediator.kd_med,
-      payload: {
-        temp_id: newMediator.temp_id,
-        kd_med: newMediator.kd_med,
-        status: newMediator.status,
-        kd_ao: newMediator.kd_ao,
-        kd_posko: newMediator.kd_posko,
-        kd_cabang: newMediator.kd_cabang,
-        created_by_role: newMediator.created_by_role,
-        created_by_user: newMediator.created_by_user
-      }
+      projectId: currentProjectId,
+      databaseId: currentDbId,
+      collection: 'mediators',
+      documentId: docId,
+      authUid: currentAuthUid,
+      status: newMediator.status,
+      kd_ao: newMediator.kd_ao,
+      kd_cabang: newMediator.kd_cabang,
+      kd_posko: newMediator.kd_posko
     });
 
     if (db) {
       try {
-        const docId = sanitizeDocId(newMediator.temp_id || newMediator.kd_med);
         await setDoc(doc(db, 'mediators', docId), cleanForFirestore(newMediator));
         
         console.log('[FORENSIC-MEDIATOR-RESULT]', {
           result: 'SUCCESS',
           documentId: docId,
-          firebaseProjectId: currentProjectId,
-          firestoreDatabaseId: currentDbId,
-          firebaseAuthUid: currentAuthUid
+          projectId: currentProjectId,
+          databaseId: currentDbId,
+          authUid: currentAuthUid
         });
 
         logFirestoreWrite({
@@ -850,12 +845,12 @@ export const DatabaseService = {
       } catch (err: any) {
         console.error('[FORENSIC-MEDIATOR-ERROR]', {
           result: 'FAILED',
-          documentId: newMediator.temp_id || newMediator.kd_med,
+          documentId: docId,
           errorCode: err?.code || 'unknown',
           errorMessage: err?.message || String(err),
-          firebaseProjectId: currentProjectId,
-          firestoreDatabaseId: currentDbId,
-          firebaseAuthUid: currentAuthUid,
+          projectId: currentProjectId,
+          databaseId: currentDbId,
+          authUid: currentAuthUid,
           payloadSummary: {
             status: newMediator.status,
             kd_ao: newMediator.kd_ao,
