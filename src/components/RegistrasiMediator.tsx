@@ -104,10 +104,20 @@ export const RegistrasiMediator: React.FC<RegistrasiMediatorProps> = ({ onSucces
       return;
     }
 
+    console.log('[IDENTITY-READY-CHECK]', {
+      identityReady,
+      userId: currentUser?.id || null,
+      firebaseUid: currentUser?.firebase_uid || null,
+      role: currentUser?.role || null,
+      kd_ao: currentUser?.kd_ao || null,
+      kd_cabang: currentUser?.kd_cabang || null,
+      kd_posko: currentUser?.kd_posko || null
+    });
+
     if (!identityReady) {
       setFeedback({
         type: 'error',
-        message: 'Identitas Firebase Auth Anda sedang disinkronisasikan ke Firestore. Mohon tunggu sejenak lalu coba kembali.'
+        message: 'Identitas Firebase Auth Anda sedang diverifikasi ke Firestore. Mohon tunggu sejenak atau login ulang.'
       });
       return;
     }

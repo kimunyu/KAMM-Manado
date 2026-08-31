@@ -94,6 +94,72 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     loadData();
 
+    // Helper to resolve and verify Firestore session with zero local bypass
+    const resolveAndVerifySession = async (
+      fbUser: FirebaseUser,
+      preferredUsername?: string
+    ): Promise<{ success: boolean; user: User | null; reason?: string }> => {
+      // 1. First, check if Firestore identity mapping already exists and is verified
+      let verifiedResult = await UserAuthMappingService.verifyFirestoreIdentityMapping(fbUser.uid);
+
+      if (verifiedResult.verified && verifiedResult.user && verifiedResult.user.status === 'AKTIF') {
+        return { success: true, user: verifiedResult.user };
+      }
+
+      // 2. If not verified in Firestore yet, find candidate master user profile
+      const candidateUser = UserAuthMappingService.findCandidateUser({
+        username: preferredUsername || (fbUser.email ? fbUser.email.split('@')[0] : undefined),
+        email: fbUser.email || undefined,
+        firebaseUid: fbUser.uid
+      });
+
+      if (!candidateUser) {
+        return {
+          success: false,
+          user: null,
+          reason: 'Profil pengguna tidak ditemukan dalam database sistem. Hubungi Administrator.'
+        };
+      }
+
+      if (candidateUser.status !== 'AKTIF') {
+        return {
+          success: false,
+          user: null,
+          reason: `Akun "${candidateUser.nama}" berstatus ${candidateUser.status} (bukan AKTIF).`
+        };
+      }
+
+      // 3. Perform single-flight linking in Firestore
+      const linkRes = await UserAuthMappingService.linkUserToFirebaseUid(
+        candidateUser.id,
+        fbUser.uid,
+        fbUser.email || undefined,
+        candidateUser.role
+      );
+
+      if (!linkRes.success) {
+        console.warn('[AUTH-SESSION-LINK-FAILED]', linkRes.message);
+        return {
+          success: false,
+          user: null,
+          reason: linkRes.message
+        };
+      }
+
+      // 4. Re-verify with getDoc() to guarantee Firestore documents actually exist
+      verifiedResult = await UserAuthMappingService.verifyFirestoreIdentityMapping(fbUser.uid);
+
+      if (verifiedResult.verified && verifiedResult.user && verifiedResult.user.status === 'AKTIF') {
+        return { success: true, user: verifiedResult.user };
+      }
+
+      return {
+        success: false,
+        user: null,
+        reason: verifiedResult.reason || 'Verifikasi dokumen Firestore mapping gagal.'
+      };
+    };
+
     // Subscribe to Firebase Auth state changes (Single Source of Truth)
     const unsubscribeFirebaseAuth = subscribeToFirebaseAuth(async (fbUser, status) => {
       setFirebaseUser(fbUser);
@@ -111,33 +177,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return;
       }
 
-      // If user is authenticated via Firebase Auth, resolve profile through single-source-of-truth mapping
-      let matchedUser = await UserAuthMappingService.getUserProfileByFirebaseUid(fbUser.uid);
+      // Resolve and verify session against real Firestore documents
+      const sessionRes = await resolveAndVerifySession(fbUser);
 
-      // Fallback lookup in local cached users by email or username if mapping doc is transitioning
-      if (!matchedUser) {
-        const users = DatabaseService.getUsers();
-        matchedUser = users.find(
-          u => (u.firebase_uid && u.firebase_uid === fbUser.uid) ||
-               (u.email && fbUser.email && u.email.toLowerCase() === fbUser.email.toLowerCase()) ||
-               (fbUser.email && u.username && u.username.toLowerCase() === fbUser.email.split('@')[0].toLowerCase())
-        ) || null;
-
-        if (matchedUser && matchedUser.status === 'AKTIF') {
-          const linkRes = await UserAuthMappingService.linkUserToFirebaseUid(
-            matchedUser.id,
-            fbUser.uid,
-            fbUser.email || undefined,
-            matchedUser.role
-          );
-          if (!linkRes.success) {
-            console.warn('[AUTH-GATE-LINK-WARN]', linkRes.message);
-          }
-        }
-      }
-
-      if (matchedUser && matchedUser.status === 'AKTIF') {
-        const activeUser: User = { ...matchedUser, firebase_uid: fbUser.uid };
+      if (sessionRes.success && sessionRes.user && sessionRes.user.status === 'AKTIF') {
+        const activeUser = sessionRes.user;
         setCurrentUser(activeUser);
         setIsSuperAdminSession(activeUser.role === 'SUPER_ADMIN');
         setIdentityReady(true);
@@ -160,10 +204,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         stopFirebaseSync();
         console.log('[AUTH-GATE]', { 
           firebaseUid: fbUser.uid, 
-          businessUserId: matchedUser?.id || null, 
-          role: matchedUser?.role || null, 
-          status: matchedUser?.status || null, 
-          authorized: false 
+          businessUserId: null, 
+          role: null, 
+          status: null, 
+          authorized: false,
+          reason: sessionRes.reason 
         });
       }
     });
@@ -252,25 +297,29 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setFirebaseUser(fbUser);
     setFirebaseAuthStatus('AUTHENTICATED');
 
-    // 5. Resolve user profile via Single Source of Truth Mapping (user_auth/{uid} -> users/{user_id})
-    let matchedUser = await UserAuthMappingService.getUserProfileByFirebaseUid(fbUser.uid);
-    if (!matchedUser) {
-      const currentUsers = allUsers.length > 0 ? allUsers : DatabaseService.getUsers();
-      matchedUser = currentUsers.find(
-        u => (u.firebase_uid && u.firebase_uid === fbUser.uid) ||
-             (u.username && u.username.toLowerCase() === cleanUsername) ||
-             (u.email && fbUser.email && u.email.toLowerCase() === fbUser.email.toLowerCase())
-      ) || null;
+    // 5. Resolve user profile via deterministic Firestore Identity Verification
+    let verifiedResult = await UserAuthMappingService.verifyFirestoreIdentityMapping(fbUser.uid);
+    let matchedUser = verifiedResult.verified && verifiedResult.user ? verifiedResult.user : null;
 
-      if (matchedUser) {
-        // Await the mapping write to guarantee user_auth/{uid} is created before any subsequent writes occur
+    if (!matchedUser) {
+      const candidateUser = UserAuthMappingService.findCandidateUser({
+        username: cleanUsername,
+        email: fbUser.email || undefined,
+        firebaseUid: fbUser.uid
+      });
+
+      if (candidateUser && candidateUser.status === 'AKTIF') {
         const linkRes = await UserAuthMappingService.linkUserToFirebaseUid(
-          matchedUser.id,
+          candidateUser.id,
           fbUser.uid,
           fbUser.email || undefined,
-          matchedUser.role
+          candidateUser.role
         );
-        if (!linkRes.success) {
+        if (linkRes.success) {
+          // Re-verify with getDoc()
+          verifiedResult = await UserAuthMappingService.verifyFirestoreIdentityMapping(fbUser.uid);
+          matchedUser = verifiedResult.verified && verifiedResult.user ? verifiedResult.user : null;
+        } else {
           console.warn('[LOGIN-MAPPING-WARN] linkUserToFirebaseUid failed:', linkRes.message);
         }
       }
@@ -281,12 +330,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         firebaseAuth: 'SUCCESS', 
         mapping: 'UNMAPPED', 
         profile: 'NOT_FOUND', 
-        finalResult: 'REJECTED' 
+        finalResult: 'REJECTED',
+        reason: verifiedResult.reason
       });
       await signOutFirebaseAuth();
+      setCurrentUser(null);
+      setIsSuperAdminSession(false);
+      setIdentityReady(false);
       return { 
         success: false, 
-        message: 'Akun Firebase belum terhubung dengan profil pengguna sistem. Hubungi Administrator.' 
+        message: verifiedResult.reason || 'Akun Firebase belum terhubung dengan profil pengguna terverifikasi di Firestore. Hubungi Administrator.' 
       };
     }
 
@@ -299,6 +352,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         finalResult: 'REJECTED' 
       });
       await signOutFirebaseAuth();
+      setCurrentUser(null);
+      setIsSuperAdminSession(false);
+      setIdentityReady(false);
       return { 
         success: false, 
         message: 'Akun Anda sedang dinonaktifkan oleh Administrator.' 

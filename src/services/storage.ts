@@ -807,6 +807,18 @@ export const DatabaseService = {
       catatan_admin: (params.catatan_admin || '').trim(),
     };
 
+    console.log('[MEDIATOR-WRITE-DIAGNOSTIC]', {
+      temp_id: newMediator.temp_id,
+      kd_med: newMediator.kd_med,
+      status: newMediator.status,
+      kd_ao: newMediator.kd_ao,
+      kd_posko: newMediator.kd_posko,
+      kd_cabang: newMediator.kd_cabang,
+      created_by_role: newMediator.created_by_role,
+      created_by_user: newMediator.created_by_user,
+      firebaseAuthUid: auth?.currentUser?.uid || null
+    });
+
     if (db) {
       try {
         const docId = sanitizeDocId(newMediator.temp_id || newMediator.kd_med);

@@ -27,6 +27,20 @@ export interface MappingValidationResult {
   firebaseUid?: string;
 }
 
+export interface VerifiedFirestoreIdentity {
+  verified: boolean;
+  userAuthExists: boolean;
+  userDocExists: boolean;
+  mappingUserId?: string;
+  mappingStatus?: string;
+  profileStatus?: string;
+  user?: User;
+  reason?: string;
+}
+
+// In-flight mutex map to prevent concurrent double-linking race conditions for the same UID
+const inFlightLinkOperations = new Map<string, Promise<{ success: boolean; message: string; status?: MappingValidationStatus; user?: User }>>();
+
 /**
  * P0-2C.2: Firebase UID Mapping Enforcement Service
  * 
@@ -38,59 +52,179 @@ export interface MappingValidationResult {
  * 2. Does NOT escalate privileges (unmapped UID is treated as UNMAPPED, never admin).
  * 3. Does NOT alter passwords or existing roles/permissions.
  * 4. Preserves user active/nonactive status.
+ * 5. Strict Zero-Trust: Local cache is only used for candidate lookup, NOT verified identity.
  */
 export const UserAuthMappingService = {
   /**
-   * Resolves a Firebase UID to its corresponding User Profile.
-   * Target flow: Firebase UID -> user_auth/{uid} -> user_id -> users/{user_id} -> User Profile
+   * Verifies that both user_auth/{firebaseUid} and users/{userId} exist in Firestore,
+   * have status 'AKTIF', and point consistently to each other.
    */
-  async getUserProfileByFirebaseUid(firebaseUid: string): Promise<User | null> {
+  async verifyFirestoreIdentityMapping(firebaseUid: string): Promise<VerifiedFirestoreIdentity> {
     const cleanUid = firebaseUid?.trim();
-    if (!cleanUid) return null;
+    if (!cleanUid) {
+      return { verified: false, userAuthExists: false, userDocExists: false, reason: 'Firebase UID kosong' };
+    }
 
-    const allUsers = DatabaseService.getUsers();
+    if (!db) {
+      const allUsers = DatabaseService.getUsers();
+      const candidate = allUsers.find(u => u.firebase_uid === cleanUid);
+      if (candidate && candidate.status === 'AKTIF') {
+        return {
+          verified: true,
+          userAuthExists: false,
+          userDocExists: false,
+          user: candidate,
+          profileStatus: candidate.status
+        };
+      }
+      return { verified: false, userAuthExists: false, userDocExists: false, reason: 'Firestore DB tidak aktif' };
+    }
 
-    // 1. Check direct Firestore user_auth mapping document if db is available
-    if (db) {
-      try {
-        const authDocRef = doc(db, 'user_auth', cleanUid);
-        const authDocSnap = await getDoc(authDocRef);
+    try {
+      // 1. Check user_auth/{cleanUid} in Firestore
+      const authDocRef = doc(db, 'user_auth', cleanUid);
+      const authDocSnap = await getDoc(authDocRef);
 
-        if (authDocSnap.exists()) {
-          const mappingData = authDocSnap.data() as UserAuthMappingDoc;
-          if (mappingData.user_id) {
-            // Find in current cached users
-            const matched = allUsers.find(u => u.id === mappingData.user_id);
-            if (matched) {
-              return matched;
-            }
-
-            // Fallback: fetch directly from Firestore users collection
-            const userDocRef = doc(db, 'users', mappingData.user_id);
-            const userDocSnap = await getDoc(userDocRef);
-            if (userDocSnap.exists()) {
-              return userDocSnap.data() as User;
-            }
-          }
-        }
-
-        // Direct lookup on users/{cleanUid} in case user profile was saved under Firebase UID
+      if (!authDocSnap.exists()) {
+        // Also check if users/{cleanUid} exists directly
         const directUserRef = doc(db, 'users', cleanUid);
         const directUserSnap = await getDoc(directUserRef);
         if (directUserSnap.exists()) {
-          return directUserSnap.data() as User;
+          const directUser = directUserSnap.data() as User;
+          if (directUser.status === 'AKTIF') {
+            return {
+              verified: true,
+              userAuthExists: false,
+              userDocExists: true,
+              mappingUserId: cleanUid,
+              profileStatus: directUser.status,
+              user: { ...directUser, firebase_uid: cleanUid }
+            };
+          }
         }
-      } catch (err) {
-        console.warn('UserAuthMapping: Error fetching user_auth document from Firestore:', err);
+        return {
+          verified: false,
+          userAuthExists: false,
+          userDocExists: false,
+          reason: `Dokumen user_auth/${cleanUid} belum ada di Firestore`
+        };
       }
-    }
 
-    // 2. Check cached/synced users list by firebase_uid field
-    const userByField = allUsers.find(u => u.firebase_uid === cleanUid);
-    if (userByField) {
-      return userByField;
-    }
+      const mappingData = authDocSnap.data() as UserAuthMappingDoc;
+      const mappingUserId = mappingData.user_id;
+      const mappingStatus = mappingData.status || 'AKTIF';
 
+      if (!mappingUserId) {
+        return {
+          verified: false,
+          userAuthExists: true,
+          userDocExists: false,
+          reason: 'Dokumen user_auth tidak memiliki field user_id'
+        };
+      }
+
+      if (mappingStatus !== 'AKTIF') {
+        return {
+          verified: false,
+          userAuthExists: true,
+          userDocExists: false,
+          mappingUserId,
+          mappingStatus,
+          reason: `Status mapping user_auth adalah "${mappingStatus}" (bukan AKTIF)`
+        };
+      }
+
+      // 2. Check users/{mappingUserId} in Firestore
+      const userDocRef = doc(db, 'users', mappingUserId);
+      const userDocSnap = await getDoc(userDocRef);
+
+      if (!userDocSnap.exists()) {
+        return {
+          verified: false,
+          userAuthExists: true,
+          userDocExists: false,
+          mappingUserId,
+          mappingStatus,
+          reason: `Dokumen master users/${mappingUserId} belum ada di Firestore`
+        };
+      }
+
+      const firestoreUser = userDocSnap.data() as User;
+      const profileStatus = firestoreUser.status || 'AKTIF';
+
+      if (profileStatus !== 'AKTIF') {
+        return {
+          verified: false,
+          userAuthExists: true,
+          userDocExists: true,
+          mappingUserId,
+          mappingStatus,
+          profileStatus,
+          reason: `Profil master pengguna users/${mappingUserId} berstatus "${profileStatus}" (bukan AKTIF)`
+        };
+      }
+
+      const verifiedUser: User = {
+        ...firestoreUser,
+        id: firestoreUser.id || mappingUserId,
+        firebase_uid: cleanUid
+      };
+
+      return {
+        verified: true,
+        userAuthExists: true,
+        userDocExists: true,
+        mappingUserId,
+        mappingStatus,
+        profileStatus,
+        user: verifiedUser
+      };
+    } catch (err: any) {
+      console.warn('[IDENTITY-VERIFY-ERROR]', err);
+      return {
+        verified: false,
+        userAuthExists: false,
+        userDocExists: false,
+        reason: err?.message || 'Error saat verifikasi Firestore identity'
+      };
+    }
+  },
+
+  /**
+   * Resolves a Firebase UID to its verified User Profile in Firestore.
+   * Target flow: Firebase UID -> user_auth/{uid} -> user_id -> users/{user_id} -> Verified User
+   * NOTE: Never returns unverified local cache if Firestore user_auth does not exist.
+   */
+  async getUserProfileByFirebaseUid(firebaseUid: string): Promise<User | null> {
+    const verified = await this.verifyFirestoreIdentityMapping(firebaseUid);
+    if (verified.verified && verified.user) {
+      return verified.user;
+    }
+    return null;
+  },
+
+  /**
+   * Helper to find candidate user in local state by username, email, or cached UID.
+   * Strictly used for linking discovery, never as proof of Firestore identity.
+   */
+  findCandidateUser(params: { username?: string; email?: string; firebaseUid?: string }): User | null {
+    const allUsers = DatabaseService.getUsers();
+    const cleanUsername = params.username?.trim().toLowerCase();
+    const cleanEmail = params.email?.trim().toLowerCase();
+    const cleanUid = params.firebaseUid?.trim();
+
+    if (cleanUid) {
+      const byUid = allUsers.find(u => u.firebase_uid === cleanUid);
+      if (byUid) return byUid;
+    }
+    if (cleanEmail) {
+      const byEmail = allUsers.find(u => u.email && u.email.trim().toLowerCase() === cleanEmail);
+      if (byEmail) return byEmail;
+    }
+    if (cleanUsername) {
+      const byUsername = allUsers.find(u => u.username && u.username.trim().toLowerCase() === cleanUsername);
+      if (byUsername) return byUsername;
+    }
     return null;
   },
 
@@ -125,12 +259,6 @@ export const UserAuthMappingService = {
 
   /**
    * Validates duplicate protection, conflict detection, and email consistency.
-   * 
-   * Case A: UID not used, user not mapped -> Valid
-   * Case B: UID used by SAME user -> Already mapped
-   * Case C: UID used by ANOTHER user -> CONFLICT
-   * Case D: User already has DIFFERENT UID -> CONFLICT
-   * Email check: Firebase email vs Profile email -> EMAIL_MISMATCH warning
    */
   async validateFirebaseUidMapping(
     firebaseUid: string, 
@@ -212,7 +340,7 @@ export const UserAuthMappingService = {
       };
     }
 
-    // Check Email validation / consistency (Non-blocking warning / classification)
+    // Check Email validation / consistency
     if (authEmail && targetUser.email) {
       const cleanAuthEmail = authEmail.trim().toLowerCase();
       const cleanProfileEmail = targetUser.email.trim().toLowerCase();
@@ -235,16 +363,14 @@ export const UserAuthMappingService = {
 
   /**
    * Links a User Profile to a Firebase Auth UID consistently and atomically.
-   * Updates:
-   * 1. users/{userId}.firebase_uid = firebaseUid
-   * 2. user_auth/{firebaseUid} = { user_id: userId, linked_at, ... }
+   * Implements single-flight mutex and post-commit verification.
    */
   async linkUserToFirebaseUid(
     userId: string,
     firebaseUid: string,
     authEmail?: string,
     linkedBy: string = 'SUPER_ADMIN'
-  ): Promise<{ success: boolean; message: string; status?: MappingValidationStatus }> {
+  ): Promise<{ success: boolean; message: string; status?: MappingValidationStatus; user?: User }> {
     const cleanUid = firebaseUid?.trim();
     const cleanUserId = userId?.trim();
 
@@ -252,65 +378,112 @@ export const UserAuthMappingService = {
       return { success: false, message: 'User ID dan Firebase UID tidak boleh kosong.' };
     }
 
-    // 1. Run conflict validation
-    const validation = await this.validateFirebaseUidMapping(cleanUid, cleanUserId, authEmail);
-    if (!validation.valid) {
-      return { success: false, message: validation.message, status: validation.status };
+    // Single-Flight check: deduplicate concurrent linking calls for the same UID
+    const existingOp = inFlightLinkOperations.get(cleanUid);
+    if (existingOp) {
+      return existingOp;
     }
 
-    const allUsers = DatabaseService.getUsers();
-    const userIndex = allUsers.findIndex(u => u.id === cleanUserId);
-    if (userIndex === -1) {
-      return { success: false, message: 'User tidak ditemukan dalam database.' };
-    }
-
-    const targetUser = allUsers[userIndex];
-    const nowIso = new Date().toISOString();
-
-    const updatedUser: User = {
-      ...targetUser,
-      firebase_uid: cleanUid
-    };
-
-    const mappingDoc: UserAuthMappingDoc = {
-      user_id: cleanUserId,
-      linked_at: nowIso,
-      email: authEmail || targetUser.email,
-      status: targetUser.status,
-      linked_by: linkedBy
-    };
-
-    // 2. Perform Firestore Atomic Batch Write if db is available
-    if (db) {
-      try {
-        const batch = writeBatch(db);
-        
-        // Document 1: users/{userId}
-        const userDocRef = doc(db, 'users', cleanUserId);
-        batch.set(userDocRef, { firebase_uid: cleanUid }, { merge: true });
-
-        // Document 2: user_auth/{firebaseUid}
-        const authDocRef = doc(db, 'user_auth', cleanUid);
-        batch.set(authDocRef, mappingDoc);
-
-        await batch.commit();
-      } catch (err: any) {
-        console.warn('UserAuthMapping: Firestore batch commit failed:', err);
-        return {
-          success: false,
-          message: `Gagal memperbarui Firestore mapping: ${err.message || err}`
-        };
+    const executionPromise = (async (): Promise<{ success: boolean; message: string; status?: MappingValidationStatus; user?: User }> => {
+      // 1. Run conflict validation
+      const validation = await this.validateFirebaseUidMapping(cleanUid, cleanUserId, authEmail);
+      if (!validation.valid) {
+        return { success: false, message: validation.message, status: validation.status };
       }
+
+      const allUsers = DatabaseService.getUsers();
+      const userIndex = allUsers.findIndex(u => u.id === cleanUserId);
+      if (userIndex === -1) {
+        return { success: false, message: 'User tidak ditemukan dalam database lokal.' };
+      }
+
+      const targetUser = allUsers[userIndex];
+      const nowIso = new Date().toISOString();
+
+      const updatedUser: User = {
+        ...targetUser,
+        firebase_uid: cleanUid
+      };
+
+      const mappingDoc: UserAuthMappingDoc = {
+        user_id: cleanUserId,
+        linked_at: nowIso,
+        email: authEmail || targetUser.email,
+        status: targetUser.status,
+        linked_by: linkedBy
+      };
+
+      // 2. Perform Firestore Atomic Batch Write if db is available
+      if (db) {
+        try {
+          const userDocRef = doc(db, 'users', cleanUserId);
+          const userDocSnap = await getDoc(userDocRef);
+
+          // Zero Privilege Escalation: CMO / client cannot create master user documents
+          if (!userDocSnap.exists()) {
+            return {
+              success: false,
+              message: `Profil pengguna "${cleanUserId}" belum tersedia di Firestore. Hubungi Administrator untuk provisioning master data.`
+            };
+          }
+
+          const existingUserData = userDocSnap.data() as User;
+          if (existingUserData.status !== 'AKTIF') {
+            return {
+              success: false,
+              message: `Profil pengguna "${cleanUserId}" tidak berstatus AKTIF di Firestore. Hubungi Administrator.`
+            };
+          }
+
+          const batch = writeBatch(db);
+          
+          // Document 1: users/{userId} (self-linking firebase_uid)
+          batch.set(userDocRef, { firebase_uid: cleanUid }, { merge: true });
+
+          // Document 2: user_auth/{firebaseUid}
+          const authDocRef = doc(db, 'user_auth', cleanUid);
+          batch.set(authDocRef, mappingDoc);
+
+          await batch.commit();
+
+          // 3. Post-commit verification: read back both documents to confirm write
+          const [verifyAuthSnap, verifyUserSnap] = await Promise.all([
+            getDoc(authDocRef),
+            getDoc(userDocRef)
+          ]);
+
+          if (!verifyAuthSnap.exists() || !verifyUserSnap.exists()) {
+            return {
+              success: false,
+              message: 'Verifikasi dokumen Firestore mapping gagal setelah batch write.'
+            };
+          }
+        } catch (err: any) {
+          console.warn('UserAuthMapping: Firestore batch commit failed:', err);
+          return {
+            success: false,
+            message: `Gagal memperbarui Firestore mapping: ${err.message || err}`
+          };
+        }
+      }
+
+      // 4. Update local database cache
+      DatabaseService.saveUser(updatedUser, true);
+
+      return {
+        success: true,
+        message: `Berhasil menautkan akun "${targetUser.nama}" ke Firebase UID (${cleanUid.slice(0, 8)}...).`,
+        status: validation.status,
+        user: updatedUser
+      };
+    })();
+
+    inFlightLinkOperations.set(cleanUid, executionPromise);
+    try {
+      return await executionPromise;
+    } finally {
+      inFlightLinkOperations.delete(cleanUid);
     }
-
-    // 3. Update local database cache
-    DatabaseService.saveUser(updatedUser, true);
-
-    return {
-      success: true,
-      message: `Berhasil menautkan akun "${targetUser.nama}" ke Firebase UID (${cleanUid.slice(0, 8)}...).`,
-      status: validation.status
-    };
   },
 
   /**
@@ -439,3 +612,4 @@ export const UserAuthMappingService = {
     };
   }
 };
+
