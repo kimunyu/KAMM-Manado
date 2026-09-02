@@ -309,12 +309,12 @@ service cloud.firestore {
     }
 
     // =========================================================================
-    // 5. AUDIT TRAIL & SYSTEM LOGS (Super Admin read-only, authenticated write)
+    // 5. AUDIT TRAIL & SYSTEM LOGS (Authenticated audit log trail)
     // =========================================================================
 
     match /audit_logs/{logId} {
-      // Read access strictly restricted to SUPER_ADMIN to prevent data leaks
-      allow read: if isRegisteredAndActive() && isSuperAdmin();
+      // Read access permitted for registered active staff & super admin
+      allow read: if isRegisteredAndActive();
       // Write allowed for active users performing tracked system actions
       allow create: if isRegisteredAndActive() || isAuthenticated();
       // Immutable log trail

@@ -152,6 +152,7 @@ export function stopFirebaseSync() {
     });
     activeSyncUnsubscribers = [];
   }
+  AuditService.stopSync();
   activeSyncKey = null;
   if (count > 0 || previousKey) {
     console.log(`[SYNC-LIFECYCLE] action=stop syncKey=${previousKey} unsubscribeCount=${count}`);
@@ -289,6 +290,9 @@ export function startFirebaseSync(currentUser: User | null = null, authenticated
       notifyAllListeners();
     }, (err) => console.warn('[FS-SYNC-ERROR] collection=ex_customer_fu_logs onSnapshot error:', err));
     activeSyncUnsubscribers.push(unsubExLogs);
+
+    // 8. Sync Audit Logs
+    AuditService.startSync(currentUser, currentAuthUid);
 
   } catch (e) {
     console.warn('Firebase sync listener setup failed:', e);

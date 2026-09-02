@@ -130,6 +130,24 @@
         "user_fu": { "type": "string" }
       },
       "required": ["id", "no_psb", "tgl_fu", "hasil_fu", "user_fu"]
+    },
+    "audit_logs": {
+      "title": "AuditLogs",
+      "description": "System activity logs and audit trail",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "timestamp": { "type": "string" },
+        "actor_id": { "type": "string" },
+        "actor_name": { "type": "string" },
+        "actor_role": { "type": "string" },
+        "actor_kd_ao": { "type": "string" },
+        "category": { "type": "string" },
+        "action": { "type": "string" },
+        "description": { "type": "string" },
+        "target_id": { "type": "string" }
+      },
+      "required": ["id", "timestamp", "actor_id", "actor_name", "actor_role", "category", "action", "description"]
     }
   },
   "firestore": {
@@ -164,6 +182,10 @@
     "ex_customer_fu_logs": {
       "entity": "ex_customer_fu_logs",
       "description": "Ex-customer follow up logs collection"
+    },
+    "audit_logs": {
+      "entity": "audit_logs",
+      "description": "System audit trail collection"
     }
   }
 }

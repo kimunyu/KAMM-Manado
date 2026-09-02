@@ -10,6 +10,7 @@ import {
   Upload
 } from 'lucide-react';
 import { DatabaseService, SystemFullBackup } from '../services/storage';
+import { KammLogo } from './KammLogo';
 
 interface HeaderProps {
   onRefresh: () => void;
@@ -105,8 +106,8 @@ export const Header: React.FC<HeaderProps> = ({ onRefresh, onOpenChangePassword,
         <div className="flex items-center justify-between h-16">
           {/* Brand */}
           <div className="flex items-center space-x-3">
-            <div className="h-10 w-10 rounded-lg bg-blue-600 flex items-center justify-center text-white shadow-md shadow-blue-900/30">
-              <Building2 className="h-6 w-6" />
+            <div className="h-10 w-10 rounded-xl bg-[#0d0f17] border border-[#2e3446] flex items-center justify-center p-1 shadow-md shadow-blue-950/40">
+              <KammLogo variant="icon" className="h-full w-full" />
             </div>
             <div>
               <div className="flex items-center space-x-2">

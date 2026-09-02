@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { 
-  Building2, 
   Lock, 
   User, 
   AlertCircle, 
@@ -11,6 +10,7 @@ import {
   EyeOff,
   ShieldCheck
 } from 'lucide-react';
+import { KammLogo } from './KammLogo';
 
 export const LoginModal: React.FC = () => {
   const { login } = useAuth();
@@ -39,10 +39,10 @@ export const LoginModal: React.FC = () => {
   return (
     <div className="min-h-screen bg-[#0a0b0d] flex flex-col justify-center py-12 sm:px-6 lg:px-8 bg-radial from-[#121520] via-[#0d0e14] to-[#0a0b0d]">
       <div className="sm:mx-auto sm:w-full sm:max-w-md text-center">
-        <div className="mx-auto h-14 w-14 rounded-2xl bg-blue-600 flex items-center justify-center text-white shadow-xl shadow-blue-500/20 border border-blue-400/30">
-          <Building2 className="h-8 w-8" />
+        <div className="mx-auto w-72 sm:w-80 px-5 py-3.5 bg-[#10131d] rounded-2xl border border-[#272d3e] shadow-2xl shadow-blue-950/40 flex items-center justify-center">
+          <KammLogo className="w-full h-auto" variant="full" />
         </div>
-        <h2 className="mt-4 text-2xl font-extrabold text-[#f1f3f7] tracking-tight">
+        <h2 className="mt-4 text-xl font-extrabold text-[#f1f3f7] tracking-tight">
           Super App KAMM Manado
         </h2>
         <p className="mt-1 text-xs text-[#8e96a8]">
@@ -63,10 +63,10 @@ export const LoginModal: React.FC = () => {
                 Masukkan username dan password terdaftar.
               </li>
               <li>
-                Password awal akun baru: <strong className="text-white font-mono bg-blue-900/60 px-1 rounded">1234</strong> (Wajib diganti minimal 6 karakter saat login pertama).
+                Password awal akun baru: <strong className="text-white font-mono bg-blue-900/60 px-1 rounded">test1234</strong> (Wajib diganti minimal 6 karakter saat login pertama).
               </li>
               <li>
-                Lupa password? Hubungi <strong className="text-white">Super Admin</strong> untuk reset akun ke <strong className="text-amber-300 font-mono">1234</strong>.
+                Lupa password? Hubungi <strong className="text-white">KAOPS atau SPV KAOPS</strong>.
               </li>
             </ul>
           </div>
@@ -102,7 +102,7 @@ export const LoginModal: React.FC = () => {
                 <label className="block text-xs font-bold text-[#c2c7d0] uppercase tracking-wide">
                   Password
                 </label>
-                <span className="text-[11px] text-[#8e96a8]">Default: 1234</span>
+                <span className="text-[11px] text-[#8e96a8]">Default: test1234</span>
               </div>
               <div className="relative">
                 <Lock className="h-4 w-4 absolute left-3 top-3 text-[#6b7280]" />

@@ -1,5 +1,5 @@
-import { AuditLog, AuditActionCategory, UserRole } from '../types';
-import { db } from './firebase';
+import { AuditLog, AuditActionCategory, UserRole, User } from '../types';
+import { db, auth } from './firebase';
 import { 
   collection, 
   doc, 
@@ -7,8 +7,7 @@ import {
   onSnapshot, 
   query, 
   orderBy, 
-  limit,
-  getDocs
+  limit
 } from 'firebase/firestore';
 
 const STORAGE_KEY_AUDIT = 'med_control_audit_logs_v1';
@@ -17,11 +16,10 @@ class AuditServiceManager {
   private logs: AuditLog[] = [];
   private unsubscribeFirestore: (() => void) | null = null;
   private listeners: Set<(logs: AuditLog[]) => void> = new Set();
-  private isInitialized = false;
+  private activeSyncUid: string | null = null;
 
   constructor() {
     this.loadFromLocalStorage();
-    this.initFirestoreListener();
   }
 
   private loadFromLocalStorage() {
@@ -53,9 +51,24 @@ class AuditServiceManager {
     });
   }
 
-  private initFirestoreListener() {
-    if (this.isInitialized) return;
-    this.isInitialized = true;
+  /**
+   * Start real-time Firestore listener only when an active authenticated user is logged in
+   */
+  public startSync(currentUser?: User | null, authenticatedUid?: string | null) {
+    if (!db || !auth) return;
+
+    const currentAuthUid = authenticatedUid || auth.currentUser?.uid;
+    if (!currentAuthUid || !currentUser || currentUser.status !== 'AKTIF') {
+      this.stopSync();
+      return;
+    }
+
+    if (this.activeSyncUid === currentAuthUid && this.unsubscribeFirestore) {
+      return; // Already actively syncing for this session
+    }
+
+    this.stopSync();
+    this.activeSyncUid = currentAuthUid;
 
     try {
       const colRef = collection(db, 'audit_logs');
@@ -75,12 +88,32 @@ class AuditServiceManager {
           }
         },
         (error) => {
-          console.warn('Audit logs realtime listener note (fallback to local):', error.message);
+          if (error.code === 'permission-denied') {
+            // Permission restricted for current role - fall back smoothly to local logs
+            console.debug('[AUDIT-SYNC] Audit logs restricted or unpermitted for current session.');
+          } else {
+            console.debug('[AUDIT-SYNC] Firestore onSnapshot note:', error.message);
+          }
         }
       );
     } catch (e) {
-      console.warn('Audit logs Firestore init error:', e);
+      console.debug('[AUDIT-SYNC] Init listener error:', e);
     }
+  }
+
+  /**
+   * Stop listener on user logout or session reset
+   */
+  public stopSync() {
+    if (this.unsubscribeFirestore) {
+      try {
+        this.unsubscribeFirestore();
+      } catch (err) {
+        // silent
+      }
+      this.unsubscribeFirestore = null;
+    }
+    this.activeSyncUid = null;
   }
 
   public getLogs(): AuditLog[] {
@@ -130,10 +163,13 @@ class AuditServiceManager {
 
     // Persist to Firestore asynchronously
     try {
-      const docRef = doc(db, 'audit_logs', id);
-      await setDoc(docRef, newLog);
+      if (db) {
+        const docRef = doc(db, 'audit_logs', id);
+        await setDoc(docRef, newLog);
+      }
     } catch (err: any) {
-      console.warn('Gagal sync audit log ke Firestore (tersimpan lokal):', err.message);
+      // If Firestore write fails (e.g. offline/permission), keep in local memory
+      console.debug('[AUDIT-LOG] Local cache kept; Firestore async persist note:', err?.message || err);
     }
 
     return newLog;
