@@ -14,9 +14,10 @@ import { DatabaseService, SystemFullBackup } from '../services/storage';
 interface HeaderProps {
   onRefresh: () => void;
   onOpenChangePassword?: () => void;
+  onOpenProfile?: () => void;
 }
 
-export const Header: React.FC<HeaderProps> = ({ onRefresh, onOpenChangePassword }) => {
+export const Header: React.FC<HeaderProps> = ({ onRefresh, onOpenChangePassword, onOpenProfile }) => {
   const { currentUser, logout, refreshData, isSuperAdminSession } = useAuth();
   const [snapshotMsg, setSnapshotMsg] = useState<string | null>(null);
 
@@ -131,35 +132,49 @@ export const Header: React.FC<HeaderProps> = ({ onRefresh, onOpenChangePassword 
             {/* Current user badge & actions */}
             {currentUser ? (
               <div className="flex items-center space-x-2 pl-2 border-l border-[#282d3d]">
-                <div className="text-right hidden sm:block">
-                  <div className="text-sm font-semibold text-[#f1f3f7] flex items-center justify-end space-x-1">
-                    <span>{currentUser.nama}</span>
+                <button
+                  id="btn-open-user-profile-header"
+                  onClick={onOpenProfile || onOpenChangePassword}
+                  className="flex items-center space-x-2 text-left hover:opacity-90 transition-opacity cursor-pointer p-1 rounded-xl hover:bg-[#1c202d]"
+                  title="Klik untuk membuka Profil & Ganti Password"
+                >
+                  <div className="text-right hidden sm:block">
+                    <div className="text-sm font-semibold text-[#f1f3f7] flex items-center justify-end space-x-1">
+                      <span>{currentUser.nama}</span>
+                    </div>
+                    <div className="flex items-center justify-end space-x-1 mt-0.5">
+                      <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full border ${getRoleBadgeColor(currentUser.role)}`}>
+                        {currentUser.role}
+                      </span>
+                      {currentUser.kd_ao && (
+                        <span className="text-[11px] text-[#8e96a8]">({currentUser.kd_ao})</span>
+                      )}
+                    </div>
                   </div>
-                  <div className="flex items-center justify-end space-x-1 mt-0.5">
-                    <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full border ${getRoleBadgeColor(currentUser.role)}`}>
-                      {currentUser.role}
-                    </span>
-                    {currentUser.kd_ao && (
-                      <span className="text-[11px] text-[#8e96a8]">({currentUser.kd_ao})</span>
-                    )}
-                  </div>
-                </div>
 
-                <div className="h-9 w-9 rounded-full bg-blue-600 text-white flex items-center justify-center font-bold text-sm shadow-xs border border-blue-400/30">
-                  {currentUser.nama.charAt(0)}
-                </div>
+                  {currentUser.foto_profil ? (
+                    <img
+                      src={currentUser.foto_profil}
+                      alt={currentUser.nama}
+                      referrerPolicy="no-referrer"
+                      className="h-9 w-9 rounded-full object-cover border border-blue-400/50 shadow-xs"
+                    />
+                  ) : (
+                    <div className="h-9 w-9 rounded-full bg-blue-600 text-white flex items-center justify-center font-bold text-sm shadow-xs border border-blue-400/30">
+                      {currentUser.nama.charAt(0)}
+                    </div>
+                  )}
+                </button>
 
-                {/* Change Password Button */}
-                {onOpenChangePassword && (
-                  <button
-                    id="btn-open-change-password"
-                    onClick={onOpenChangePassword}
-                    title="Ganti Password Akun"
-                    className="p-2 text-[#8e96a8] hover:text-amber-400 hover:bg-amber-950/40 rounded-lg transition-colors cursor-pointer"
-                  >
-                    <KeyRound className="h-4 w-4" />
-                  </button>
-                )}
+                {/* Open Profile/Password Button */}
+                <button
+                  id="btn-open-profile-icon"
+                  onClick={onOpenProfile || onOpenChangePassword}
+                  title="Profil & Ganti Password"
+                  className="p-2 text-[#8e96a8] hover:text-blue-400 hover:bg-blue-950/40 rounded-lg transition-colors cursor-pointer"
+                >
+                  <KeyRound className="h-4 w-4" />
+                </button>
 
                 {/* Logout Button */}
                 <button

@@ -253,9 +253,21 @@ export const UserAuthMappingService = {
     if (cleanEmail) {
       const byEmail = allUsers.find(u => u.email && u.email.trim().toLowerCase() === cleanEmail);
       if (byEmail) return byEmail;
+
+      if (cleanEmail.endsWith('@kamm-manado.internal')) {
+        const prefix = cleanEmail.replace('@kamm-manado.internal', '').trim().toLowerCase();
+        const byPrefix = allUsers.find(u => 
+          (u.kd_ao && u.kd_ao.trim().toLowerCase() === prefix) ||
+          (u.username && u.username.trim().toLowerCase() === prefix)
+        );
+        if (byPrefix) return byPrefix;
+      }
     }
     if (cleanUsername) {
-      const byUsername = allUsers.find(u => u.username && u.username.trim().toLowerCase() === cleanUsername);
+      const byUsername = allUsers.find(u => 
+        (u.username && u.username.trim().toLowerCase() === cleanUsername) ||
+        (u.kd_ao && u.kd_ao.trim().toLowerCase() === cleanUsername)
+      );
       if (byUsername) return byUsername;
     }
     return null;

@@ -15,6 +15,7 @@ import { MediatorDetailModal } from './components/MediatorDetailModal';
 import { MediatorEditModal } from './components/MediatorEditModal';
 import { LoginModal } from './components/LoginModal';
 import { ChangePasswordModal } from './components/ChangePasswordModal';
+import { UserProfileModal } from './components/UserProfileModal';
 
 function MainApp() {
   const { currentUser, canValidateKdMed, canRegisterMediator, canInputFU, canManageUsers } = useAuth();
@@ -34,6 +35,7 @@ function MainApp() {
   const [selectedMedForEdit, setSelectedMedForEdit] = useState<MediatorKontrak | null>(null);
   const [preSelectedKdMedForFU, setPreSelectedKdMedForFU] = useState<string | null>(null);
   const [isManualPasswordChangeOpen, setIsManualPasswordChangeOpen] = useState(false);
+  const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
 
   const loadDatabase = () => {
     const meds = DatabaseService.getMediators();
@@ -130,7 +132,8 @@ function MainApp() {
       {/* Header */}
       <Header 
         onRefresh={loadDatabase} 
-        onOpenChangePassword={() => setIsManualPasswordChangeOpen(true)} 
+        onOpenChangePassword={() => setIsManualPasswordChangeOpen(true)}
+        onOpenProfile={() => setIsProfileModalOpen(true)}
       />
 
       {/* Main Layout */}
@@ -214,6 +217,13 @@ function MainApp() {
           setIsManualPasswordChangeOpen(false);
           loadDatabase();
         }}
+      />
+
+      {/* User Profile & Password Modal */}
+      <UserProfileModal
+        isOpen={isProfileModalOpen}
+        onClose={() => setIsProfileModalOpen(false)}
+        onRefresh={loadDatabase}
       />
 
       {selectedMedForDetail && (

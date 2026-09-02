@@ -1,6 +1,7 @@
 import { Cabang, Posko, User, UserRole, MediatorKontrak, FULog, MediatorStatus, HasilFU, ExCustomer, ExCustomerFULog, StatusKreditLunas, HasilFUExCustomer } from '../types';
 import { INITIAL_CABANG, INITIAL_POSKO, INITIAL_USERS, INITIAL_MEDIATORS, INITIAL_FU_LOGS, INITIAL_EX_CUSTOMERS, INITIAL_EX_CUSTOMER_FU_LOGS } from '../data/initialData';
 import { db, auth, firebaseConfigData } from './firebase';
+import { AuditService } from './auditService';
 import { 
   collection, 
   doc, 
@@ -615,6 +616,17 @@ export const DatabaseService = {
 
     saveToStorage(STORAGE_KEYS.USERS, users);
     notifyAllListeners();
+
+    const currentUser = this.getStoredAuthUser();
+    AuditService.record(
+      currentUser || { id: 'SYSTEM', nama: 'System', role: 'SUPER_ADMIN' },
+      'USER_MANAGEMENT',
+      isEdit ? 'UPDATE_USER' : 'CREATE_USER',
+      `${isEdit ? 'Memperbarui' : 'Membuat'} akun pengguna "${savedUser.nama}" (@${cleanUsername} - Role: ${savedUser.role})`,
+      savedUser.id,
+      { role: savedUser.role, kd_ao: savedUser.kd_ao, kd_cabang: savedUser.kd_cabang, kd_posko: savedUser.kd_posko }
+    );
+
     return { success: true, message: `Akun "${user.nama}" (@${cleanUsername} / ${cleanAo}) berhasil disimpan ke sistem cloud!` };
   },
 
@@ -658,6 +670,16 @@ export const DatabaseService = {
     users[userIndex] = updatedUser;
     saveToStorage(STORAGE_KEYS.USERS, users);
     notifyAllListeners();
+
+    const currentUser = this.getStoredAuthUser();
+    AuditService.record(
+      currentUser || { id: 'SYSTEM', nama: 'Super Admin', role: 'SUPER_ADMIN' },
+      'USER_MANAGEMENT',
+      'RESET_PASSWORD',
+      `Mereset password pengguna "${updatedUser.nama}" (@${updatedUser.username}) kembali ke default "1234"`,
+      updatedUser.id
+    );
+
     return { 
       success: true, 
       message: `Password akun ${updatedUser.nama} berhasil direset ke "1234".` 
@@ -712,6 +734,15 @@ export const DatabaseService = {
     users[userIndex] = updatedUser;
     saveToStorage(STORAGE_KEYS.USERS, users);
     notifyAllListeners();
+
+    AuditService.record(
+      { id: updatedUser.id, nama: updatedUser.nama, role: updatedUser.role, kd_ao: updatedUser.kd_ao },
+      'AUTH',
+      'CHANGE_PASSWORD',
+      `Pengguna "${updatedUser.nama}" memperbarui kata sandi`,
+      updatedUser.id
+    );
+
     return { success: true, message: 'Password berhasil diperbarui!' };
   },
 
@@ -745,6 +776,16 @@ export const DatabaseService = {
     const filtered = users.filter(u => u.id !== userId);
     saveToStorage(STORAGE_KEYS.USERS, filtered);
     notifyAllListeners();
+
+    const currentUser = this.getStoredAuthUser();
+    AuditService.record(
+      currentUser || { id: 'SYSTEM', nama: 'Super Admin', role: 'SUPER_ADMIN' },
+      'USER_MANAGEMENT',
+      'DELETE_USER',
+      `Menghapus akun pengguna "${targetUser?.nama || userId}" (@${targetUser?.username || '-'})`,
+      userId
+    );
+
     return { success: true, message: 'User berhasil dihapus.' };
   },
 
@@ -2281,6 +2322,18 @@ export const DatabaseService = {
       message: `Hasil Follow-Up untuk ${item.nama_konsumen} (${item.no_psb}) berhasil disimpan!`,
       log: newLog
     };
+  },
+
+  getStoredAuthUser(): User | null {
+    return getInitialOrStored<User | null>(STORAGE_KEYS.CURRENT_USER, null);
+  },
+
+  setStoredAuthUser(user: User | null): void {
+    if (user) {
+      saveToStorage(STORAGE_KEYS.CURRENT_USER, user);
+    } else {
+      localStorage.removeItem(STORAGE_KEYS.CURRENT_USER);
+    }
   },
 
   resetToDefault(): void {

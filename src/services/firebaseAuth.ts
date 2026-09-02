@@ -40,10 +40,12 @@ export function getFirebaseAuthIdentifierFromUsername(username: string): string 
 
 /**
  * Derives a valid unique internal email address for Firebase Auth if user email is missing.
+ * Prioritizes user's kd_ao (e.g. 'MN.72' -> 'mn.72@kamm-manado.internal').
  */
 export function getFirebaseCompatibleEmail(user: User): string {
-  if (user.username) {
-    return getFirebaseAuthIdentifierFromUsername(user.username);
+  const prefix = user.kd_ao || user.username || '';
+  if (prefix) {
+    return getFirebaseAuthIdentifierFromUsername(prefix);
   }
   if (user.email && user.email.includes('@')) {
     return user.email.trim().toLowerCase();

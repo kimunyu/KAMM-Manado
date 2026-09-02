@@ -114,6 +114,53 @@ export interface User {
   must_change_password?: boolean;
   last_password_change?: string;
   firebase_uid?: string;
+  foto_profil?: string; // Lightweight base64 image (< 30KB)
+}
+
+export type AuditActionCategory = 
+  | 'USER_MANAGEMENT'      // Create/Edit/Delete User, Reset Password
+  | 'AUTH'                 // Login, Logout, Change Password
+  | 'MEDIATOR'             // Register, Review Berkas, Input KD MED, Edit, Delete
+  | 'FOLLOW_UP'            // Input FU Mediator
+  | 'EX_CUSTOMER'          // Input BPKB, Penugasan CMO, FU Ex-Customer, Import/Export
+  | 'MASTER_DATA'          // Cabang, Posko
+  | 'SYSTEM';              // Backup, Restore, Health Check
+
+export interface AuditLog {
+  id: string;
+  timestamp: string;       // ISO DateTime string
+  actor_id: string;
+  actor_name: string;
+  actor_role: UserRole;
+  actor_kd_ao?: string;
+  category: AuditActionCategory;
+  action: string;          // Action identifier (e.g. 'TAMBAH_USER', 'VALIDASI_KD_MED')
+  description: string;     // Indonesian human-readable detail
+  target_id?: string;      // ID of the modified entity
+  metadata?: Record<string, any>;
+}
+
+export interface CollectionHealthStat {
+  name: string;
+  count: number;
+  lastUpdated?: string;
+}
+
+export interface SystemHealthStatus {
+  isOnline: boolean;
+  firestoreConnected: boolean;
+  latencyMs: number;
+  lastChecked: string;
+  collectionCounts: {
+    users: number;
+    mediators: number;
+    fu_logs: number;
+    ex_customers: number;
+    ex_customer_fu_logs: number;
+    cabang: number;
+    posko: number;
+    audit_logs: number;
+  };
 }
 
 export type MediatorStatus = 
