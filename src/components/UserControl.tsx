@@ -92,7 +92,8 @@ export const UserControl: React.FC<UserControlProps> = ({ onRefresh }) => {
       (u.kd_posko && u.kd_posko.toLowerCase().includes(query)) ||
       (u.email && u.email.toLowerCase().includes(query));
 
-    const matchRole = roleFilter === 'ALL' || u.role === roleFilter;
+    const matchRole = roleFilter === 'ALL' || 
+      (roleFilter === 'ADM_BPKB' ? (u.role === 'ADM_BPKB' || u.role === 'ADMIN_BPKB') : u.role === roleFilter);
     const matchStatus = statusFilter === 'ALL' || u.status === statusFilter;
 
     return matchQuery && matchRole && matchStatus;
@@ -168,8 +169,8 @@ export const UserControl: React.FC<UserControlProps> = ({ onRefresh }) => {
     }
 
     setIsSubmitting(true);
-    const isNationalRole = role === 'SUPER_ADMIN' || role === 'RM' || role === 'ADMIN_BPKB';
-    const cleanEmail = (email.trim() || `${cleanAo.toLowerCase()}@kamm-manado.internal`).toLowerCase();
+    const isNationalRole = role === 'SUPER_ADMIN' || role === 'RM' || role === 'ADM_BPKB' || role === 'ADMIN_BPKB';
+    const cleanEmail = (email.trim() || `${cleanAo.toLowerCase().replace(/[^a-z0-9_.-]/g, '')}@kamm-manado.internal`).toLowerCase();
 
     let userData: User = {
       id: editingUser ? editingUser.id : `USR-${Date.now().toString().slice(-4)}`,
@@ -542,7 +543,7 @@ export const UserControl: React.FC<UserControlProps> = ({ onRefresh }) => {
                 >
                   <option value="ALL">Semua Role</option>
                   <option value="SUPER_ADMIN">SUPER_ADMIN</option>
-                  <option value="ADMIN_BPKB">ADMIN_BPKB (Jaminan BPKB)</option>
+                  <option value="ADM_BPKB">ADM BPKB (Jaminan BPKB)</option>
                   <option value="RM">RM (Regional)</option>
                   <option value="KACAB">KACAB (Kepala Cabang)</option>
                   <option value="KAOPS">KAOPS (Kepala Operasional)</option>
@@ -697,14 +698,14 @@ export const UserControl: React.FC<UserControlProps> = ({ onRefresh }) => {
                           <td className="py-3.5 px-4">
                             <span className={`px-2.5 py-0.5 rounded-lg font-bold text-[11px] border ${
                               u.role === 'SUPER_ADMIN' ? 'bg-purple-950/80 text-purple-300 border-purple-800/60' :
-                              u.role === 'ADMIN_BPKB' ? 'bg-amber-950/80 text-amber-300 border-amber-800/60' :
+                              (u.role === 'ADM_BPKB' || u.role === 'ADMIN_BPKB') ? 'bg-amber-950/80 text-amber-300 border-amber-800/60' :
                               u.role === 'KAPOS' ? 'bg-emerald-950/80 text-emerald-300 border-emerald-800/60' :
                               u.role === 'ADM' ? 'bg-blue-950/80 text-blue-300 border-blue-800/60' :
                               u.role === 'CMO' ? 'bg-cyan-950/80 text-cyan-300 border-cyan-800/60' :
                               u.role === 'KAOPS' ? 'bg-indigo-950/80 text-indigo-300 border-indigo-800/60' :
                               'bg-slate-900/80 text-slate-300 border-slate-700/60'
                             }`}>
-                              {u.role}
+                              {u.role === 'ADMIN_BPKB' ? 'ADM BPKB' : u.role === 'ADM_BPKB' ? 'ADM BPKB' : u.role}
                             </span>
                           </td>
 
@@ -958,10 +959,10 @@ export const UserControl: React.FC<UserControlProps> = ({ onRefresh }) => {
                       required
                       value={kdAo}
                       onChange={(e) => {
-                        const val = e.target.value.toUpperCase().replace(/\s+/g, '');
+                        const val = e.target.value.toUpperCase().replace(/\s{2,}/g, ' ');
                         setKdAo(val);
                       }}
-                      placeholder="contoh: MN.72"
+                      placeholder="contoh: MN.72 atau ADM BPKB"
                       className="w-full p-2.5 bg-[#141721] border border-[#272d3e] text-purple-300 placeholder-[#6b7280] rounded-xl font-mono font-bold focus:outline-none focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500"
                     />
                   </div>
@@ -982,13 +983,20 @@ export const UserControl: React.FC<UserControlProps> = ({ onRefresh }) => {
                 </label>
                 <select
                   value={role}
-                  onChange={(e) => setRole(e.target.value as UserRole)}
+                  onChange={(e) => {
+                    const newRole = e.target.value as UserRole;
+                    setRole(newRole);
+                    if (!editingUser && newRole === 'ADM_BPKB') {
+                      if (!kdAo || kdAo === 'MN.72') setKdAo('ADM BPKB');
+                      if (!username) setUsername('admbpkb');
+                    }
+                  }}
                   className="w-full p-2.5 bg-[#0d0e12] border border-[#272d3e] text-[#e0e4eb] rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500/50 font-semibold"
                 >
                   <option value="CMO">CMO (Registrasi + Input FU)</option>
                   <option value="KAPOS">KAPOS (Registrasi + Input FU + Penugasan CMO)</option>
                   <option value="ADM">ADM (Registrasi + Koreksi Data + FU Ex-Customer)</option>
-                  <option value="ADMIN_BPKB">ADMIN_BPKB (Input Jaminan BPKB - Akses Nasional 2x24 Jam)</option>
+                  <option value="ADM_BPKB">ADM BPKB (Input Jaminan BPKB - Akses Nasional 2x24 Jam)</option>
                   <option value="KAOPS">KAOPS (Validasi KD MED + Aktivasi + FU)</option>
                   <option value="KACAB">KACAB (Monitoring View-Only Cabang)</option>
                   <option value="RM">RM (Monitoring View-Only Nasional)</option>
@@ -996,7 +1004,7 @@ export const UserControl: React.FC<UserControlProps> = ({ onRefresh }) => {
                 </select>
               </div>
 
-              {role !== 'SUPER_ADMIN' && role !== 'RM' && role !== 'ADMIN_BPKB' ? (
+              {role !== 'SUPER_ADMIN' && role !== 'RM' && role !== 'ADM_BPKB' && role !== 'ADMIN_BPKB' ? (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <label className="block font-bold text-[#c2c7d0] mb-1">

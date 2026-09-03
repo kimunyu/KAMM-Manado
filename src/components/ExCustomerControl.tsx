@@ -61,9 +61,12 @@ export const ExCustomerControl: React.FC<ExCustomerControlProps> = ({
   allExCustomerLogs,
   onRefresh
 }) => {
+  // Helper for ADM BPKB role
+  const isAdmBpkb = currentUser.role === 'ADM_BPKB' || currentUser.role === 'ADMIN_BPKB';
+
   // Navigation tabs for Ex-Customer module
   const [activeTab, setActiveTab] = useState<'drip' | 'input_bpkb' | 'my_assignments' | 'master' | 'logs'>(
-    currentUser.role === 'ADMIN_BPKB' ? 'input_bpkb' : currentUser.role === 'CMO' ? 'my_assignments' : 'drip'
+    isAdmBpkb ? 'input_bpkb' : currentUser.role === 'CMO' ? 'my_assignments' : 'drip'
   );
 
   // Selected Branch & Posko filters
@@ -75,7 +78,7 @@ export const ExCustomerControl: React.FC<ExCustomerControlProps> = ({
   const [statusLunasFilter, setStatusLunasFilter] = useState<string>('ALL');
   const [statusFUFilter, setStatusFUFilter] = useState<string>('ALL');
 
-  // Form State for Admin BPKB Input
+  // Form State for ADM BPKB Input
   const [inputNoPsb, setInputNoPsb] = useState('');
   const [inputNama, setInputNama] = useState('');
   const [inputTelp, setInputTelp] = useState('');
@@ -116,7 +119,7 @@ export const ExCustomerControl: React.FC<ExCustomerControlProps> = ({
     );
   }, [allUsers, selectedPosko]);
 
-  // Admin BPKB Data (<= 48 hours / 2x24h)
+  // ADM BPKB Data (<= 48 hours / 2x24h)
   const adminBpkbData = useMemo(() => {
     return DatabaseService.getExCustomersForAdminBpkb(currentUser);
   }, [currentUser, allExCustomers]);
@@ -368,7 +371,7 @@ export const ExCustomerControl: React.FC<ExCustomerControlProps> = ({
 
         {/* Global Controls / Scope Selection */}
         <div className="flex flex-wrap items-center gap-2">
-          {/* Branch & Posko Selectors (For Roles that can switch, including ADMIN_BPKB with national scope) */}
+          {/* Branch & Posko Selectors (For Roles that can switch, including ADM_BPKB with national scope) */}
           {currentUser.role !== 'CMO' && (
             <>
               <div className="relative">
@@ -418,7 +421,7 @@ export const ExCustomerControl: React.FC<ExCustomerControlProps> = ({
       {/* MODULE TABS NAVIGATION */}
       <div className="flex flex-wrap items-center gap-2 border-b border-[#232734] pb-3">
         {/* Tab: Drip Feeding 25 (Admin, Kapos, BM, RM, Super Admin) */}
-        {currentUser.role !== 'ADMIN_BPKB' && currentUser.role !== 'CMO' && (
+        {!isAdmBpkb && currentUser.role !== 'CMO' && (
           <button
             id="tab-ex-drip"
             onClick={() => setActiveTab('drip')}
@@ -436,8 +439,8 @@ export const ExCustomerControl: React.FC<ExCustomerControlProps> = ({
           </button>
         )}
 
-        {/* Tab: Input BPKB (Admin BPKB & Super Admin) */}
-        {(currentUser.role === 'ADMIN_BPKB' || currentUser.role === 'SUPER_ADMIN') && (
+        {/* Tab: Input BPKB (ADM BPKB & Super Admin) */}
+        {(isAdmBpkb || currentUser.role === 'SUPER_ADMIN') && (
           <button
             id="tab-ex-input-bpkb"
             onClick={() => setActiveTab('input_bpkb')}
@@ -472,7 +475,7 @@ export const ExCustomerControl: React.FC<ExCustomerControlProps> = ({
         )}
 
         {/* Tab: Master Data (All Ex-Customers) */}
-        {currentUser.role !== 'ADMIN_BPKB' && currentUser.role !== 'CMO' && (
+        {!isAdmBpkb && currentUser.role !== 'CMO' && (
           <button
             id="tab-ex-master"
             onClick={() => setActiveTab('master')}
@@ -491,7 +494,7 @@ export const ExCustomerControl: React.FC<ExCustomerControlProps> = ({
         )}
 
         {/* Tab: Log FU */}
-        {currentUser.role !== 'ADMIN_BPKB' && (
+        {!isAdmBpkb && (
           <button
             id="tab-ex-logs"
             onClick={() => setActiveTab('logs')}
@@ -529,7 +532,7 @@ export const ExCustomerControl: React.FC<ExCustomerControlProps> = ({
                       SUPER ADMIN
                     </span>
                   )}
-                  {currentUser.role === 'ADMIN_BPKB' && (
+                  {isAdmBpkb && (
                     <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-950/80 text-amber-300 border border-amber-800/60">
                       NASIONAL
                     </span>
@@ -596,7 +599,7 @@ export const ExCustomerControl: React.FC<ExCustomerControlProps> = ({
             <div>
               <p className="font-bold text-amber-300 text-sm">Ketentuan Keamanan & Batas Waktu Akses (2x24 Jam)</p>
               <p className="mt-1 leading-relaxed text-[#c7cbcf]">
-                Admin BPKB hanya dapat melihat serta mengedit data penyerahan BPKB dalam kurun waktu <strong>maksimal 2x24 jam (48 jam)</strong> sejak waktu input. Setelah 48 jam, data otomatis terkunci dan tersembunyi dari tampilan Admin BPKB demi perlindungan privasi data nasabah.
+                ADM BPKB hanya dapat melihat serta mengedit data penyerahan BPKB dalam kurun waktu <strong>maksimal 2x24 jam (48 jam)</strong> sejak waktu input. Setelah 48 jam, data otomatis terkunci dan tersembunyi dari tampilan ADM BPKB demi perlindungan privasi data nasabah.
               </p>
             </div>
           </div>
@@ -1439,7 +1442,7 @@ export const ExCustomerControl: React.FC<ExCustomerControlProps> = ({
       )}
 
       {/* ========================================================================= */}
-      {/* MODAL 3: EDIT DATA BPKB (ADMIN BPKB <= 48 JAM ATAU SUPER ADMIN)          */}
+      {/* MODAL 3: EDIT DATA BPKB (ADM BPKB <= 48 JAM ATAU SUPER ADMIN)             */}
       {/* ========================================================================= */}
       {editingCustomer && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">

@@ -86,7 +86,7 @@ service cloud.firestore {
     }
 
     function isAdminBpkb() {
-      return getUserRole() == 'ADMIN_BPKB';
+      return getUserRole() == 'ADM_BPKB' || getUserRole() == 'ADMIN_BPKB';
     }
 
     // =========================================================================

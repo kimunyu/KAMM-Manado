@@ -142,13 +142,13 @@ export const SEED_USERS: User[] = [
   },
   {
     id: "USR-882190",
-    nama: "VALENTINO BPKB ADMIN",
-    username: "adminbpkb.c16",
+    nama: "VALENTINO ADM BPKB",
+    username: "admbpkb.c16",
     password: "test1234",
-    role: "ADMIN_BPKB",
-    kd_ao: "BPKB-C16",
+    role: "ADM_BPKB",
+    kd_ao: "ADM BPKB",
     status: "AKTIF",
-    email: "bpkb-c16@kamm-manado.internal",
+    email: "admbpkb@kamm-manado.internal",
     must_change_password: false
   }
 ];

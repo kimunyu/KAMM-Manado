@@ -2,11 +2,16 @@ export type UserRole =
   | 'CMO' 
   | 'KAPOS' 
   | 'ADM' 
-  | 'ADMIN_BPKB'
+  | 'ADM_BPKB'
+  | 'ADMIN_BPKB' // Backward compatibility alias
   | 'KAOPS' 
   | 'KACAB' 
   | 'RM' 
   | 'SUPER_ADMIN';
+
+export const isAdmBpkbRole = (role?: string | null): boolean => {
+  return role === 'ADM_BPKB' || role === 'ADMIN_BPKB';
+};
 
 export type StatusKreditLunas = 
   | 'Lebih Awal'
@@ -34,7 +39,7 @@ export interface ExCustomer {
   tgl_bpkb_sdk: string;        // Tanggal BPKB diserahkan/diambil (YYYY-MM-DD)
   status_kredit_lunas: StatusKreditLunas;
   
-  // Keamanan & Pencatatan Input (Admin BPKB)
+  // Keamanan & Pencatatan Input (ADM BPKB)
   created_at: string;          // ISO Timestamp saat diinput
   created_by_uid: string;      // ID User Penginput
   created_by_name: string;

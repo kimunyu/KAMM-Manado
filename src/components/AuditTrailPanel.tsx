@@ -54,7 +54,8 @@ export const AuditTrailPanel: React.FC = () => {
         (log.actor_kd_ao && log.actor_kd_ao.toLowerCase().includes(q));
 
       const matchCategory = categoryFilter === 'ALL' || log.category === categoryFilter;
-      const matchRole = roleFilter === 'ALL' || log.actor_role === roleFilter;
+      const matchRole = roleFilter === 'ALL' || 
+        (roleFilter === 'ADM_BPKB' ? (log.actor_role === 'ADM_BPKB' || log.actor_role === 'ADMIN_BPKB') : log.actor_role === roleFilter);
 
       return matchSearch && matchCategory && matchRole;
     });
@@ -219,7 +220,7 @@ export const AuditTrailPanel: React.FC = () => {
               <option value="KAPOS" className="bg-[#181a24]">KAPOS</option>
               <option value="ADM" className="bg-[#181a24]">ADM</option>
               <option value="CMO" className="bg-[#181a24]">CMO</option>
-              <option value="ADMIN_BPKB" className="bg-[#181a24]">ADMIN_BPKB</option>
+              <option value="ADM_BPKB" className="bg-[#181a24]">ADM_BPKB</option>
             </select>
           </div>
         </div>

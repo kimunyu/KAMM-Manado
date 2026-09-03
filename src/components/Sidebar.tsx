@@ -36,7 +36,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, pendi
     canManageUsers 
   } = useAuth();
 
-  const isBpkbAdmin = currentUser?.role === 'ADMIN_BPKB';
+  const isBpkbAdmin = currentUser?.role === 'ADM_BPKB' || currentUser?.role === 'ADMIN_BPKB';
 
   const mediatorMenuItems = [
     {
@@ -94,12 +94,12 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, pendi
         <div className="flex items-center justify-between text-xs text-[#8e96a8] mb-1.5">
           <span className="font-semibold text-[#c2c7d0]">Hak Akses Role:</span>
           <span className="font-bold text-amber-400 bg-amber-950/80 border border-amber-800/60 px-2 py-0.5 rounded text-[10px]">
-            {currentUser?.role}
+            {currentUser?.role === 'ADMIN_BPKB' || currentUser?.role === 'ADM_BPKB' ? 'ADM BPKB' : currentUser?.role}
           </span>
         </div>
         <p className="text-[11px] text-[#8e96a8] leading-relaxed">
           {currentUser?.role === 'SUPER_ADMIN' && 'Full Control: Kontrol Mediator & Kontrol Ex-Customer, User Management, Cabang & Posko.'}
-          {currentUser?.role === 'ADMIN_BPKB' && 'Khusus Input Data Jaminan BPKB nasabah lunas. Akses data & edit aktif 2x24 jam.'}
+          {(currentUser?.role === 'ADM_BPKB' || currentUser?.role === 'ADMIN_BPKB') && 'Khusus Input Data Jaminan BPKB nasabah lunas. Akses data & edit aktif 2x24 jam.'}
           {currentUser?.role === 'RM' && 'Akses Monitoring Nasional: Mediator & Ex-Customer seluruh cabang & posko (View-Only).'}
           {currentUser?.role === 'KACAB' && `Akses Monitoring Cabang ${currentUser.kd_cabang || ''}: Mediator & Drip Ex-Customer.`}
           {currentUser?.role === 'KAOPS' && 'Registrasi, Peninjauan Berkas, Input KD MED, serta FU Mediator & Ex-Customer.'}

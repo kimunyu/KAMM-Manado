@@ -21,7 +21,7 @@ function MainApp() {
   const { currentUser, canValidateKdMed, canRegisterMediator, canInputFU, canManageUsers } = useAuth();
 
   const [activeTab, setActiveTab] = useState<ActiveTab>(
-    currentUser?.role === 'ADMIN_BPKB' ? 'ex-customer' : 'dashboard'
+    (currentUser?.role === 'ADM_BPKB' || currentUser?.role === 'ADMIN_BPKB') ? 'ex-customer' : 'dashboard'
   );
   const [mediators, setMediators] = useState<MediatorKontrak[]>([]);
   const [fuLogs, setFuLogs] = useState<FULog[]>([]);
@@ -67,7 +67,7 @@ function MainApp() {
 
   // Safeguard tab switching when role changes and user loses access to current tab
   useEffect(() => {
-    if (currentUser?.role === 'ADMIN_BPKB') {
+    if (currentUser?.role === 'ADM_BPKB' || currentUser?.role === 'ADMIN_BPKB') {
       setActiveTab('ex-customer');
       return;
     }

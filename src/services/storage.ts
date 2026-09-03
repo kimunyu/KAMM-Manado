@@ -220,8 +220,8 @@ export function startFirebaseSync(currentUser: User | null = null, authenticated
     }, (err) => console.warn('[FS-SYNC-ERROR] collection=posko onSnapshot error:', err));
     activeSyncUnsubscribers.push(unsubPosko);
 
-    // 4. Sync Mediators (Isolated: ADMIN_BPKB is forbidden from mediator collection)
-    if (currentUser.role !== 'ADMIN_BPKB') {
+    // 4. Sync Mediators (Isolated: ADM_BPKB is forbidden from mediator collection)
+    if (currentUser.role !== 'ADM_BPKB' && currentUser.role !== 'ADMIN_BPKB') {
       console.log(
         "[CROSS-DEVICE-SYNC]",
         {
@@ -257,7 +257,7 @@ export function startFirebaseSync(currentUser: User | null = null, authenticated
       });
       activeSyncUnsubscribers.push(unsubMediators);
 
-      // 5. Sync FU Logs (Isolated: ADMIN_BPKB is forbidden from fu_logs collection)
+      // 5. Sync FU Logs (Isolated: ADM_BPKB is forbidden from fu_logs collection)
       console.log(`[FS-SYNC-DEBUG] collection=fu_logs operation=onSnapshot firebaseAuthUid=${currentAuthUid} businessUserId=${currentUser.id} role=${currentUser.role} status=${currentUser.status} activeSyncKey=${syncKey}`);
       const fuLogsCol = collection(db, 'fu_logs');
       const unsubFuLogs = onSnapshot(fuLogsCol, (snapshot) => {
@@ -511,7 +511,24 @@ export const DatabaseService = {
 
   // User Management
   getUsers(): User[] {
-    return getInitialOrStored<User[]>(STORAGE_KEYS.USERS, INITIAL_USERS);
+    const raw = getInitialOrStored<User[]>(STORAGE_KEYS.USERS, INITIAL_USERS);
+    let hasMigrated = false;
+    const migrated = raw.map(u => {
+      if (u.role === 'ADMIN_BPKB') {
+        hasMigrated = true;
+        return {
+          ...u,
+          role: 'ADM_BPKB' as UserRole,
+          kd_ao: (u.kd_ao === 'BPKB-C16' || !u.kd_ao) ? 'ADM BPKB' : u.kd_ao,
+          nama: u.nama.includes('BPKB ADMIN') ? u.nama.replace('BPKB ADMIN', 'ADM BPKB') : u.nama
+        };
+      }
+      return u;
+    });
+    if (hasMigrated) {
+      saveToStorage(STORAGE_KEYS.USERS, migrated);
+    }
+    return migrated;
   },
 
   async saveUser(user: User, isEdit: boolean = false): Promise<{ success: boolean; message: string }> {
@@ -524,7 +541,7 @@ export const DatabaseService = {
     const cleanAo = (user.kd_ao || user.username).trim().toUpperCase();
 
     // Clear branch/posko for national roles
-    if (user.role === 'SUPER_ADMIN' || user.role === 'RM' || user.role === 'ADMIN_BPKB') {
+    if (user.role === 'SUPER_ADMIN' || user.role === 'RM' || user.role === 'ADM_BPKB' || user.role === 'ADMIN_BPKB') {
       user.kd_cabang = undefined;
       user.kd_posko = undefined;
     }
@@ -1643,13 +1660,13 @@ export const DatabaseService = {
     return getInitialOrStored<ExCustomerFULog[]>(STORAGE_KEYS.EX_CUSTOMER_FU_LOGS, INITIAL_EX_CUSTOMER_FU_LOGS);
   },
 
-  // Admin BPKB View: Data Leakage Guard (Max 48 Hours / 2x24h) - Akses Nasional Seluruh Cabang & Posko
+  // ADM BPKB View: Data Leakage Guard (Max 48 Hours / 2x24h) - Akses Nasional Seluruh Cabang & Posko
   getExCustomersForAdminBpkb(currentUser: User): { data: ExCustomer[]; canEdit: (item: ExCustomer) => boolean; remainingHours: (item: ExCustomer) => number } {
     const list = this.getExCustomers();
     const now = Date.now();
     const FORTY_EIGHT_HOURS = 48 * 3600 * 1000;
 
-    // Super admin sees all, Admin BPKB sees all records across all cabang & posko within 48h
+    // Super admin sees all, ADM BPKB sees all records across all cabang & posko within 48h
     const filtered = list.filter(item => {
       const createdAtTime = new Date(item.created_at).getTime();
       const isWithin48h = (now - createdAtTime) <= FORTY_EIGHT_HOURS;
@@ -1868,7 +1885,7 @@ export const DatabaseService = {
           tgl_bpkb_sdk: cleanTgl,
           status_kredit_lunas: cleanStatus,
           updated_at: nowIso,
-          updated_by_name: currentUser?.nama || 'Admin BPKB'
+          updated_by_name: currentUser?.nama || 'ADM BPKB'
         };
 
         if (db) {
@@ -1917,7 +1934,7 @@ export const DatabaseService = {
       status_kredit_lunas: cleanStatus,
       created_at: nowIso,
       created_by_uid: currentUser?.id || 'USR-BPKB',
-      created_by_name: currentUser?.nama || 'Admin BPKB',
+      created_by_name: currentUser?.nama || 'ADM BPKB',
       last_fu_date: null,
       last_fu_status: null,
       fu_count: 0

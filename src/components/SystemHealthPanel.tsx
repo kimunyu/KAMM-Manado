@@ -269,7 +269,7 @@ export const SystemHealthPanel: React.FC = () => {
             <div>
               <span className="font-bold text-[#f1f3f7]">Role-Based Access Control (RBAC):</span>
               <p className="text-[#8e96a8] mt-0.5">
-                8 Role tervalidasi di sisi server Firestore Rules (SUPER_ADMIN, RM, KACAB, KAOPS, KAPOS, ADM, CMO, ADMIN_BPKB).
+                8 Role tervalidasi di sisi server Firestore Rules (SUPER_ADMIN, RM, KACAB, KAOPS, KAPOS, ADM, CMO, ADM_BPKB).
               </p>
             </div>
           </div>
@@ -279,7 +279,7 @@ export const SystemHealthPanel: React.FC = () => {
             <div>
               <span className="font-bold text-[#f1f3f7]">Jaminan Privasi BPKB (48 Jam):</span>
               <p className="text-[#8e96a8] mt-0.5">
-                Akses data nasabah oleh ADMIN_BPKB dibatasi maksimal 2x24 jam sejak pembuatan data untuk menjaga privasi.
+                Akses data nasabah oleh ADM_BPKB dibatasi maksimal 2x24 jam sejak pembuatan data untuk menjaga privasi.
               </p>
             </div>
           </div>
