@@ -46,6 +46,10 @@ interface AuthContextType {
   canManageUsers: boolean;
   isViewOnly: boolean;
   canViewAllBranches: boolean;
+  isAdmDe: boolean;
+  canAccessKontrolSales: boolean;
+  canInputSalesRecord: boolean;
+  canValidateSalesRecord: boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -443,8 +447,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // CMO, KAPOS, ADM, KAOPS, SUPER_ADMIN can input FU
   const canInputFU = role === 'CMO' || role === 'KAPOS' || role === 'ADM' || role === 'KAOPS' || role === 'SUPER_ADMIN';
   
-  // Stage 1: ADM & SUPER_ADMIN can review/verify documents and approve to PENDING
-  const canReviewMediator = role === 'ADM' || role === 'SUPER_ADMIN';
+  // Stage 1: ADM, KAPOS & SUPER_ADMIN can review/verify documents and approve to PENDING
+  const canReviewMediator = role === 'ADM' || role === 'KAPOS' || role === 'SUPER_ADMIN';
 
   // Stage 2: KAPOS & SUPER_ADMIN (and KAOPS) can input official KD MED and activate (status AKTIF)
   const canInputKdMed = role === 'KAPOS' || role === 'SUPER_ADMIN' || role === 'KAOPS';
@@ -453,18 +457,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const canValidateKdMed = canReviewMediator || canInputKdMed;
 
   // Mediator Editing RBAC:
-  // 1. KAPOS & CMO: can only edit mediators with status 'BELUM_AKTIF'
-  // 2. ADM: can edit mediators with status 'BELUM_AKTIF' and 'PENDING'
+  // 1. CMO: can edit mediators with status 'BELUM_AKTIF'
+  // 2. ADM & KAPOS: can edit mediators with status 'BELUM_AKTIF' and 'PENDING'
   // 3. KAOPS & SUPER_ADMIN: can edit all mediators including 'AKTIF', 'INAKTIF', and 'DITOLAK'
   const canEditMediator = (mediatorStatus?: MediatorStatus): boolean => {
     if (!currentUser || !role) return false;
     if (role === 'SUPER_ADMIN' || role === 'KAOPS') return true;
     if (!mediatorStatus) return false;
 
-    if (role === 'CMO' || role === 'KAPOS') {
+    if (role === 'CMO') {
       return mediatorStatus === 'BELUM_AKTIF';
     }
-    if (role === 'ADM') {
+    if (role === 'ADM' || role === 'KAPOS') {
       return mediatorStatus === 'BELUM_AKTIF' || mediatorStatus === 'PENDING';
     }
     return false;
@@ -484,6 +488,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // RM and SUPER_ADMIN see all branches
   const canViewAllBranches = role === 'RM' || role === 'SUPER_ADMIN';
+
+  // Kontrol Sales & ADM_DE RBAC
+  const isAdmDe = role === 'ADM_DE';
+  const canAccessKontrolSales = role === 'ADM_DE' || role === 'ADM' || role === 'KAOPS' || role === 'KACAB' || role === 'RM' || role === 'SUPER_ADMIN';
+  const canInputSalesRecord = role === 'ADM' || role === 'KAOPS' || role === 'SUPER_ADMIN';
+  const canValidateSalesRecord = role === 'ADM_DE' || role === 'SUPER_ADMIN';
 
   return (
     <AuthContext.Provider
@@ -515,7 +525,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         canDeleteMediator,
         canManageUsers,
         isViewOnly,
-        canViewAllBranches
+        canViewAllBranches,
+        isAdmDe,
+        canAccessKontrolSales,
+        canInputSalesRecord,
+        canValidateSalesRecord
       }}
     >
       {children}

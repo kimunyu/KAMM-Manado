@@ -1,0 +1,120 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "ex_customers",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "kd_cabang", "order": "ASCENDING" },
+        { "fieldPath": "created_at", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "ex_customers",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "kd_cabang", "order": "ASCENDING" },
+        { "fieldPath": "kd_pos", "order": "ASCENDING" },
+        { "fieldPath": "created_at", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "ex_customers",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "status_kredit_lunas", "order": "ASCENDING" },
+        { "fieldPath": "created_at", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "ex_customers",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "assigned_cmo_id", "order": "ASCENDING" },
+        { "fieldPath": "created_at", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "ex_customers",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "kd_pos", "order": "ASCENDING" },
+        { "fieldPath": "is_drip_active", "order": "ASCENDING" },
+        { "fieldPath": "created_at", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "fu_logs",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "kd_med", "order": "ASCENDING" },
+        { "fieldPath": "created_at", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "fu_logs",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "actor_kd_ao", "order": "ASCENDING" },
+        { "fieldPath": "created_at", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "mediators",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "kd_cabang", "order": "ASCENDING" },
+        { "fieldPath": "kd_med", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "mediators",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "kd_cabang", "order": "ASCENDING" },
+        { "fieldPath": "kd_posko", "order": "ASCENDING" },
+        { "fieldPath": "kd_med", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "mediators",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "kd_med", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "audit_logs",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "category", "order": "ASCENDING" },
+        { "fieldPath": "timestamp", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "audit_logs",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "actor_role", "order": "ASCENDING" },
+        { "fieldPath": "timestamp", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "ex_customer_fu_logs",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "ex_customer_id", "order": "ASCENDING" },
+        { "fieldPath": "created_at", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "ex_customer_fu_logs",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "cmo_id", "order": "ASCENDING" },
+        { "fieldPath": "created_at", "order": "DESCENDING" }
+      ]
+    }
+  ],
+  "fieldOverrides": []
+}

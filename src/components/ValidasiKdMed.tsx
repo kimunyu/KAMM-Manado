@@ -1,4 +1,6 @@
 import React, { useState, useMemo } from 'react';
+import { DataTable } from './DataTable';
+import { ColumnDef } from './DataTable/types';
 import { MediatorKontrak } from '../types';
 import { useAuth } from '../context/AuthContext';
 import { DatabaseService } from '../services/storage';
@@ -50,9 +52,7 @@ export const ValidasiKdMed: React.FC<ValidasiKdMedProps> = ({
   const isPoskoRestricted = !isNational && !!userPosko;
 
   // Sub-tabs: 'review' (BELUM_AKTIF) vs 'activation' (PENDING)
-  const [activeStage, setActiveStage] = useState<'review' | 'activation'>(
-    isKapos && !isAdm && !isSuperAdmin ? 'activation' : 'review'
-  );
+  const [activeStage, setActiveStage] = useState<'review' | 'activation'>('review');
 
   const [searchTerm, setSearchTerm] = useState('');
   const [cabangFilter, setCabangFilter] = useState('ALL');
@@ -255,6 +255,160 @@ export const ValidasiKdMed: React.FC<ValidasiKdMedProps> = ({
     }
   };
 
+  // Universal DataTable Column Definitions for Validasi KD MED
+  const validasiColumns: ColumnDef<MediatorKontrak>[] = useMemo(() => [
+    {
+      key: 'kd_med',
+      header: 'Kode Pendaftaran',
+      sticky: 'left',
+      sortable: true,
+      hideable: false,
+      width: 'min-w-[150px]',
+      render: (med) => (
+        <span className={`px-2.5 py-0.5 rounded-lg text-xs font-mono font-bold ${
+          med.status === 'BELUM_AKTIF'
+            ? 'bg-blue-950/70 text-blue-300 border border-blue-800/60'
+            : 'bg-amber-950/70 text-amber-300 border border-amber-800/60'
+        }`}>
+          {med.kd_med}
+        </span>
+      )
+    },
+    {
+      key: 'nama_mediator',
+      header: 'Nama Mediator',
+      sortable: true,
+      width: 'min-w-[200px]',
+      render: (med) => (
+        <div>
+          <div className="font-bold text-[#f1f3f7]">{med.nama_mediator}</div>
+          {med.catatan_admin && (
+            <div className="text-[11px] text-[#8e96a8] truncate max-w-xs italic mt-0.5" title={med.catatan_admin}>
+              "{med.catatan_admin}"
+            </div>
+          )}
+        </div>
+      )
+    },
+    {
+      key: 'no_tlpn',
+      header: 'Kontak / WA',
+      width: 'min-w-[140px]',
+      render: (med) => (
+        <span className="text-[#c2c7d0] font-medium font-mono">
+          {med.no_tlpn}
+        </span>
+      )
+    },
+    {
+      key: 'kd_cabang',
+      header: 'Cabang / Posko',
+      sortable: true,
+      width: 'min-w-[140px]',
+      render: (med) => (
+        <div>
+          <div className="font-semibold text-[#f1f3f7]">{med.kd_cabang}</div>
+          <div className="text-[10px] text-[#6b7280]">{med.kd_posko || 'Bebas Posko'}</div>
+        </div>
+      )
+    },
+    {
+      key: 'created_by_user',
+      header: 'Pendaftar (AO)',
+      width: 'min-w-[160px]',
+      render: (med) => (
+        <div className="text-[#c2c7d0]">
+          <span className="font-medium">{med.created_by_user || '-'}</span>
+          <span className="text-[10px] text-[#6b7280] block">Role: {med.created_by_role || '-'} (AO: {med.kd_ao || '-'})</span>
+        </div>
+      )
+    },
+    {
+      key: 'created_at',
+      header: 'Tgl Pengajuan',
+      sortable: true,
+      width: 'min-w-[130px]',
+      render: (med) => (
+        <span className="font-mono text-[#8e96a8]">
+          {formatDateIndo(med.created_at)}
+        </span>
+      )
+    },
+    {
+      key: 'actions',
+      header: 'Aksi',
+      sticky: 'right',
+      align: 'right',
+      hideable: false,
+      width: 'min-w-[180px]',
+      render: (med) => (
+        <div className="flex items-center justify-end space-x-1.5 whitespace-nowrap">
+          {canEditMediator(med.status) && (
+            <button
+              id={`btn-koreksi-${med.kd_med}`}
+              onClick={() => onEditMediator(med)}
+              className="px-2.5 py-1.5 rounded-xl bg-[#181a24] hover:bg-[#202534] text-[#c2c7d0] hover:text-[#f1f3f7] border border-[#272d3e] text-xs font-semibold transition-colors flex items-center space-x-1 cursor-pointer"
+              title="Koreksi Data Mediator"
+            >
+              <Edit3 className="h-3.5 w-3.5 text-amber-400" />
+              <span>Koreksi</span>
+            </button>
+          )}
+
+          {activeStage === 'review' ? (
+            <>
+              {canReviewMediator && (
+                <button
+                  id={`btn-reject-${med.kd_med}`}
+                  onClick={() => handleOpenRejectModal(med)}
+                  className="px-2.5 py-1.5 rounded-xl bg-rose-950/40 hover:bg-rose-900/60 text-rose-300 border border-rose-800/50 text-xs font-semibold transition-colors flex items-center space-x-1 cursor-pointer"
+                  title="Tolak Pendaftaran"
+                >
+                  <XCircle className="h-3.5 w-3.5" />
+                  <span>Tolak</span>
+                </button>
+              )}
+
+              {canReviewMediator ? (
+                <button
+                  id={`btn-review-${med.kd_med}`}
+                  onClick={() => handleOpenReviewModal(med)}
+                  className="px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-md shadow-blue-950/40 transition-colors flex items-center space-x-1 cursor-pointer"
+                  title="Setujui Berkas & Teruskan ke KAPOS (Status PENDING)"
+                >
+                  <Check className="h-3.5 w-3.5" />
+                  <span>Tinjau & Setujui</span>
+                </button>
+              ) : (
+                <span className="text-[11px] text-[#6b7280] italic px-2.5 py-1 bg-[#0d0e12] rounded-lg border border-[#232734]">
+                  Menunggu Admin
+                </span>
+              )}
+            </>
+          ) : (
+            <>
+              {canInputKdMed ? (
+                <button
+                  id={`btn-activate-med-${med.kd_med}`}
+                  onClick={() => handleOpenActivationModal(med)}
+                  className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-md shadow-emerald-950/40 transition-colors flex items-center space-x-1 cursor-pointer"
+                  title="Input KD MED Resmi & Aktifkan Mediator"
+                >
+                  <KeyRound className="h-3.5 w-3.5" />
+                  <span>Input KD MED & Aktifkan</span>
+                </button>
+              ) : (
+                <span className="text-[11px] text-[#6b7280] italic px-2.5 py-1 bg-[#0d0e12] rounded-lg border border-[#232734]">
+                  Menunggu KAPOS / Super Admin
+                </span>
+              )}
+            </>
+          )}
+        </div>
+      )
+    }
+  ], [activeStage, canReviewMediator, canInputKdMed, onEditMediator]);
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -443,160 +597,17 @@ export const ValidasiKdMed: React.FC<ValidasiKdMedProps> = ({
           </span>
         </div>
 
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
-            <thead>
-              <tr className="bg-[#0e1015] border-b border-[#232734] text-[11px] font-bold text-[#8e96a8] uppercase tracking-wider">
-                <th className="py-3.5 px-4">Kode Pendaftaran</th>
-                <th className="py-3.5 px-4">Nama Mediator</th>
-                <th className="py-3.5 px-4">Kontak / WA</th>
-                <th className="py-3.5 px-4">Cabang / Posko</th>
-                <th className="py-3.5 px-4">Pendaftar (AO)</th>
-                <th className="py-3.5 px-4">Tgl Pengajuan</th>
-                <th className="py-3.5 px-4 text-right">Aksi</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-[#1f2330] text-xs">
-              {currentList.length === 0 ? (
-                <tr>
-                  <td colSpan={7} className="py-12 text-center text-[#8e96a8]">
-                    <div className="max-w-xs mx-auto space-y-2">
-                      <CheckCircle2 className="h-8 w-8 mx-auto text-emerald-400" />
-                      <p className="font-semibold text-[#f1f3f7]">
-                        {activeStage === 'review'
-                          ? 'Tidak ada berkas BELUM AKTIF yang menunggu review'
-                          : 'Tidak ada mediator PENDING yang menunggu penetapan KD MED'}
-                      </p>
-                      <p className="text-xs text-[#8e96a8]">
-                        Semua data telah diproses sesuai alur kerja.
-                      </p>
-                    </div>
-                  </td>
-                </tr>
-              ) : (
-                currentList.map((med) => {
-                  return (
-                    <tr key={med.kd_med || med.temp_id} className="hover:bg-[#181b24] transition-colors">
-                      {/* Kode Pendaftaran */}
-                      <td className="py-3.5 px-4 font-mono font-bold">
-                        <span className={`px-2.5 py-0.5 rounded-lg text-xs ${
-                          med.status === 'BELUM_AKTIF'
-                            ? 'bg-blue-950/70 text-blue-300 border border-blue-800/60'
-                            : 'bg-amber-950/70 text-amber-300 border border-amber-800/60'
-                        }`}>
-                          {med.kd_med}
-                        </span>
-                      </td>
-
-                      {/* Nama */}
-                      <td className="py-3.5 px-4">
-                        <div className="font-bold text-[#f1f3f7]">{med.nama_mediator}</div>
-                        {med.catatan_admin && (
-                          <div className="text-[11px] text-[#8e96a8] truncate max-w-xs italic mt-0.5">
-                            "{med.catatan_admin}"
-                          </div>
-                        )}
-                      </td>
-
-                      {/* Kontak */}
-                      <td className="py-3.5 px-4 text-[#c2c7d0] font-medium">
-                        {med.no_tlpn}
-                      </td>
-
-                      {/* Cabang & Posko */}
-                      <td className="py-3.5 px-4">
-                        <div className="font-semibold text-[#f1f3f7]">{med.kd_cabang}</div>
-                        <div className="text-[10px] text-[#6b7280]">{med.kd_posko || 'Bebas Posko'}</div>
-                      </td>
-
-                      {/* Pendaftar */}
-                      <td className="py-3.5 px-4 text-[#c2c7d0]">
-                        <span className="font-medium">{med.created_by_user || '-'}</span>
-                        <span className="text-[10px] text-[#6b7280] block">Role: {med.created_by_role || '-'} (AO: {med.kd_ao})</span>
-                      </td>
-
-                      {/* Tanggal */}
-                      <td className="py-3.5 px-4 font-mono text-[#8e96a8]">
-                        {formatDateIndo(med.created_at)}
-                      </td>
-
-                      {/* Aksi */}
-                      <td className="py-3.5 px-4 text-right whitespace-nowrap">
-                        <div className="flex items-center justify-end space-x-1.5">
-                          {/* Koreksi Data (Edit) */}
-                          {canEditMediator(med.status) && (
-                            <button
-                              id={`btn-koreksi-${med.kd_med}`}
-                              onClick={() => onEditMediator(med)}
-                              className="px-2.5 py-1.5 rounded-xl bg-[#181a24] hover:bg-[#202534] text-[#c2c7d0] hover:text-[#f1f3f7] border border-[#272d3e] text-xs font-semibold transition-colors flex items-center space-x-1 cursor-pointer"
-                              title="Koreksi Data Mediator"
-                            >
-                              <Edit3 className="h-3.5 w-3.5 text-amber-400" />
-                              <span>Koreksi</span>
-                            </button>
-                          )}
-
-                          {activeStage === 'review' ? (
-                            <>
-                              {/* Tolak Button */}
-                              {canReviewMediator && (
-                                <button
-                                  id={`btn-reject-${med.kd_med}`}
-                                  onClick={() => handleOpenRejectModal(med)}
-                                  className="px-2.5 py-1.5 rounded-xl bg-rose-950/40 hover:bg-rose-900/60 text-rose-300 border border-rose-800/50 text-xs font-semibold transition-colors flex items-center space-x-1 cursor-pointer"
-                                  title="Tolak Pendaftaran"
-                                >
-                                  <XCircle className="h-3.5 w-3.5" />
-                                  <span>Tolak</span>
-                                </button>
-                              )}
-
-                              {/* Review & Approve Button (Admin) */}
-                              {canReviewMediator ? (
-                                <button
-                                  id={`btn-review-${med.kd_med}`}
-                                  onClick={() => handleOpenReviewModal(med)}
-                                  className="px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-md shadow-blue-950/40 transition-colors flex items-center space-x-1 cursor-pointer"
-                                  title="Setujui Berkas & Teruskan ke KAPOS (Status PENDING)"
-                                >
-                                  <Check className="h-3.5 w-3.5" />
-                                  <span>Tinjau & Setujui</span>
-                                </button>
-                              ) : (
-                                <span className="text-[11px] text-[#6b7280] italic px-2.5 py-1 bg-[#0d0e12] rounded-lg border border-[#232734]">
-                                  Menunggu Admin
-                                </span>
-                              )}
-                            </>
-                          ) : (
-                            <>
-                              {/* Input KD MED & Aktivasi (KAPOS & Super Admin) */}
-                              {canInputKdMed ? (
-                                <button
-                                  id={`btn-activate-med-${med.kd_med}`}
-                                  onClick={() => handleOpenActivationModal(med)}
-                                  className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-md shadow-emerald-950/40 transition-colors flex items-center space-x-1 cursor-pointer"
-                                  title="Input KD MED Resmi & Aktifkan Mediator"
-                                >
-                                  <KeyRound className="h-3.5 w-3.5" />
-                                  <span>Input KD MED & Aktifkan</span>
-                                </button>
-                              ) : (
-                                <span className="text-[11px] text-[#6b7280] italic px-2.5 py-1 bg-[#0d0e12] rounded-lg border border-[#232734]">
-                                  Menunggu KAPOS / Super Admin
-                                </span>
-                              )}
-                            </>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
+        <DataTable<MediatorKontrak>
+          tableKey={`validasi-kd-med-${activeStage}-table`}
+          columns={validasiColumns}
+          data={currentList}
+          keyExtractor={(med) => med.kd_med || med.temp_id}
+          emptyTitle={activeStage === 'review' ? 'Tidak Ada Berkas BELUM AKTIF' : 'Tidak Ada Mediator PENDING'}
+          emptyDescription={activeStage === 'review' ? 'Tidak ada berkas BELUM AKTIF yang menunggu review oleh Admin.' : 'Tidak ada mediator PENDING yang menunggu penetapan KD MED.'}
+          title={activeStage === 'review' ? 'Tahap 1: Verifikasi Berkas (Admin)' : 'Tahap 2: Input KD MED & Aktivasi (KAPOS)'}
+          subtitle={`Menampilkan ${currentList.length} mediator menunggu tindakan`}
+          initialPageSize={10}
+        />
       </div>
 
       {/* MODAL 1: TAHAP 1 - PENINJAUAN OLEH ADMIN (BELUM_AKTIF -> PENDING) */}

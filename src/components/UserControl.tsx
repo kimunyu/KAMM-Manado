@@ -1,4 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
+import { DataTable } from './DataTable';
+import { ColumnDef } from './DataTable/types';
 import { User, UserRole } from '../types';
 import { useAuth } from '../context/AuthContext';
 import { DatabaseService } from '../services/storage';
@@ -315,6 +317,234 @@ export const UserControl: React.FC<UserControlProps> = ({ onRefresh }) => {
       setProvisioningUserId(null);
     }
   };
+
+  // Universal DataTable Column Definitions for User Management
+  const userTableColumns: ColumnDef<User>[] = useMemo(() => [
+    {
+      key: 'nama',
+      header: 'Nama & Username',
+      sticky: 'left',
+      sortable: true,
+      hideable: false,
+      width: 'min-w-[200px]',
+      render: (u) => {
+        const isCurrent = u.id === currentUser?.id;
+        return (
+          <div>
+            <div className="font-bold text-[#f1f3f7] flex items-center space-x-1.5">
+              <span>{u.nama}</span>
+              {isCurrent && (
+                <span className="text-[10px] bg-blue-950/80 text-blue-300 border border-blue-800/60 px-2 py-0.5 rounded-full font-semibold">
+                  (Anda)
+                </span>
+              )}
+            </div>
+            <div className="text-[11px] text-[#6b7280] font-mono">@{u.username} • {u.id}</div>
+          </div>
+        );
+      }
+    },
+    {
+      key: 'role',
+      header: 'Role Akses',
+      sortable: true,
+      width: 'min-w-[130px]',
+      render: (u) => (
+        <span className={`px-2.5 py-0.5 rounded-lg font-bold text-[11px] border ${
+          u.role === 'SUPER_ADMIN' ? 'bg-purple-950/80 text-purple-300 border-purple-800/60' :
+          (u.role === 'ADM_BPKB' || u.role === 'ADMIN_BPKB') ? 'bg-amber-950/80 text-amber-300 border-amber-800/60' :
+          u.role === 'KAPOS' ? 'bg-emerald-950/80 text-emerald-300 border-emerald-800/60' :
+          u.role === 'ADM' ? 'bg-blue-950/80 text-blue-300 border-blue-800/60' :
+          u.role === 'CMO' ? 'bg-cyan-950/80 text-cyan-300 border-cyan-800/60' :
+          u.role === 'KAOPS' ? 'bg-indigo-950/80 text-indigo-300 border-indigo-800/60' :
+          'bg-slate-900/80 text-slate-300 border-slate-700/60'
+        }`}>
+          {u.role === 'ADMIN_BPKB' ? 'ADM BPKB' : u.role === 'ADM_BPKB' ? 'ADM BPKB' : u.role}
+        </span>
+      )
+    },
+    {
+      key: 'password',
+      header: 'Password Saat Ini',
+      width: 'min-w-[170px]',
+      render: (u) => {
+        const isPasswordVisible = !visiblePasswords[u.id];
+        return (
+          <div className="flex items-center space-x-2">
+            <div className="bg-[#0d0e12] px-2.5 py-1 rounded-lg border border-[#272d3e] font-mono text-xs text-[#f1f3f7] flex items-center space-x-1.5">
+              <Key className="h-3.5 w-3.5 text-amber-400 shrink-0" />
+              <span>
+                {isPasswordVisible ? (u.password || 'test1234') : '••••••••'}
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => togglePasswordVisibility(u.id)}
+              className="p-1 rounded-lg text-[#8e96a8] hover:text-[#f1f3f7] hover:bg-[#202534] transition-colors cursor-pointer"
+              title={isPasswordVisible ? 'Sembunyikan Password' : 'Lihat Password'}
+            >
+              {isPasswordVisible ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+            </button>
+          </div>
+        );
+      }
+    },
+    {
+      key: 'kd_ao',
+      header: 'Kode AO',
+      sortable: true,
+      width: 'min-w-[100px]',
+      render: (u) => (
+        <span className="font-mono font-bold text-purple-300">
+          {u.kd_ao || '-'}
+        </span>
+      )
+    },
+    {
+      key: 'kd_cabang',
+      header: 'Cabang / Posko',
+      sortable: true,
+      width: 'min-w-[150px]',
+      render: (u) => (
+        u.kd_cabang ? (
+          <div>
+            <span className="font-semibold text-[#f1f3f7]">{u.kd_cabang}</span>
+            <span className="text-[11px] text-[#6b7280] block">{u.kd_posko || '-'}</span>
+          </div>
+        ) : (
+          <span className="text-[#6b7280] italic">Semua Cabang (Nasional)</span>
+        )
+      )
+    },
+    {
+      key: 'firebase_uid',
+      header: 'Firebase Auth (Email & UID)',
+      width: 'min-w-[220px]',
+      render: (u) => {
+        const authEval = UserProvisioningService.evaluateUserStatus(u, allUsers);
+        const derivedEmail = deriveUserAuthEmail(u);
+        const isThisProvisioning = provisioningUserId === u.id;
+
+        return authEval.status === 'MIGRATED' ? (
+          <div className="space-y-1">
+            <div className="flex items-center space-x-1.5">
+              <span className="inline-flex items-center space-x-1 text-[10px] font-bold text-emerald-300 bg-emerald-950/80 px-2 py-0.5 rounded-md border border-emerald-800/70">
+                <CheckCircle2 className="h-3 w-3 text-emerald-400 shrink-0" />
+                <span>Terhubung</span>
+              </span>
+              <button
+                type="button"
+                onClick={() => copyToClipboard(u.email || derivedEmail, `email-${u.id}`)}
+                className="p-0.5 text-[#8e96a8] hover:text-purple-300 transition-colors"
+                title="Salin Email Firebase"
+              >
+                {copiedId === `email-${u.id}` ? (
+                  <Check className="h-3 w-3 text-emerald-400" />
+                ) : (
+                  <Copy className="h-3 w-3" />
+                )}
+              </button>
+            </div>
+            <span className="text-[11px] font-mono text-purple-300/90 block truncate max-w-[200px]" title={u.email || derivedEmail}>
+              {u.email || derivedEmail}
+            </span>
+            {u.firebase_uid && (
+              <span className="text-[10px] font-mono text-[#6b7280] block truncate max-w-[180px]" title={u.firebase_uid}>
+                UID: {u.firebase_uid.slice(0, 10)}...
+              </span>
+            )}
+          </div>
+        ) : (
+          <div className="space-y-1.5">
+            <div className="flex items-center space-x-1.5">
+              <span className="inline-flex items-center space-x-1 text-[10px] font-semibold text-amber-300 bg-amber-950/80 px-2 py-0.5 rounded-md border border-amber-800/70">
+                <AlertCircle className="h-3 w-3 text-amber-400 shrink-0" />
+                <span>Belum Terhubung</span>
+              </span>
+            </div>
+            <span className="text-[11px] font-mono text-[#8e96a8] block truncate max-w-[200px]" title={derivedEmail}>
+              Target: {derivedEmail}
+            </span>
+            <button
+              type="button"
+              disabled={isThisProvisioning || isBulkProvisioning}
+              onClick={() => handleProvisionSingle(u)}
+              className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-lg bg-purple-600/30 hover:bg-purple-600/50 text-purple-200 border border-purple-700/60 font-semibold text-[10px] transition-all cursor-pointer disabled:opacity-50"
+            >
+              {isThisProvisioning ? (
+                <>
+                  <Loader2 className="h-3 w-3 animate-spin text-purple-400" />
+                  <span>Membuat...</span>
+                </>
+              ) : (
+                <>
+                  <Zap className="h-3 w-3 text-amber-400" />
+                  <span>Buat Firebase UID</span>
+                </>
+              )}
+            </button>
+          </div>
+        );
+      }
+    },
+    {
+      key: 'status',
+      header: 'Status',
+      align: 'center',
+      sortable: true,
+      width: 'min-w-[100px]',
+      render: (u) => (
+        <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${
+          u.status === 'AKTIF'
+            ? 'bg-emerald-950/70 text-emerald-300 border-emerald-800/60'
+            : 'bg-rose-950/70 text-rose-300 border-rose-800/60'
+        }`}>
+          {u.status}
+        </span>
+      )
+    },
+    {
+      key: 'actions',
+      header: 'Aksi',
+      sticky: 'right',
+      align: 'right',
+      hideable: false,
+      width: 'min-w-[130px]',
+      render: (u) => {
+        const isCurrent = u.id === currentUser?.id;
+        return (
+          <div className="flex items-center justify-end space-x-1.5">
+            <button
+              id={`btn-reset-pass-${u.id}`}
+              onClick={() => setUserToReset(u)}
+              className="p-1.5 text-amber-400 hover:bg-amber-950/50 border border-transparent hover:border-amber-800/50 rounded-xl transition-colors cursor-pointer"
+              title="Reset Password ke test1234"
+            >
+              <RotateCcw className="h-4 w-4" />
+            </button>
+            <button
+              id={`btn-edit-user-${u.id}`}
+              onClick={() => handleOpenEdit(u)}
+              className="p-1.5 text-blue-400 hover:bg-blue-950/50 border border-transparent hover:border-blue-800/50 rounded-xl transition-colors cursor-pointer"
+              title="Edit Pengguna & Role"
+            >
+              <Edit3 className="h-4 w-4" />
+            </button>
+            {!isCurrent && (
+              <button
+                id={`btn-del-user-${u.id}`}
+                onClick={() => handleDeleteUser(u)}
+                className="p-1.5 text-rose-400 hover:bg-rose-950/50 border border-transparent hover:border-rose-800/50 rounded-xl transition-colors cursor-pointer"
+                title="Hapus Pengguna"
+              >
+                <Trash2 className="h-4 w-4" />
+              </button>
+            )}
+          </div>
+        );
+      }
+    }
+  ], [currentUser?.id, visiblePasswords, allUsers, provisioningUserId, isBulkProvisioning, copiedId]);
 
   return (
     <div className="space-y-6">
@@ -633,241 +863,17 @@ export const UserControl: React.FC<UserControlProps> = ({ onRefresh }) => {
               </div>
             </div>
 
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className="bg-[#0e1015] border-b border-[#232734] text-[11px] font-bold text-[#8e96a8] uppercase tracking-wider">
-                    <th className="py-3.5 px-4">Nama & Username</th>
-                    <th className="py-3.5 px-4">Role Akses</th>
-                    <th className="py-3.5 px-4">Password Saat Ini</th>
-                    <th className="py-3.5 px-4">Kode AO</th>
-                    <th className="py-3.5 px-4">Cabang / Posko</th>
-                    <th className="py-3.5 px-4">Firebase Auth (Email & UID)</th>
-                    <th className="py-3.5 px-4 text-center">Status</th>
-                    <th className="py-3.5 px-4 text-right">Aksi</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-[#1f2330] text-xs">
-                  {filteredUsers.length === 0 ? (
-                    <tr>
-                      <td colSpan={8} className="py-12 px-4 text-center">
-                        <div className="flex flex-col items-center justify-center space-y-3">
-                          <div className="p-3.5 rounded-full bg-[#1c1f2a] border border-[#272d3e] text-[#8e96a8]">
-                            <Search className="h-6 w-6" />
-                          </div>
-                          <div>
-                            <p className="text-sm font-bold text-[#f1f3f7]">Tidak Ada Pengguna Ditemukan</p>
-                            <p className="text-xs text-[#8e96a8] mt-1">
-                              {searchQuery ? `Tidak ada hasil untuk pencarian "${searchQuery}"` : 'Tidak ada data pengguna yang sesuai dengan filter yang dipilih.'}
-                            </p>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={handleResetFilters}
-                            className="mt-2 px-4 py-2 bg-purple-600/20 hover:bg-purple-600/30 text-purple-300 border border-purple-800/60 rounded-xl text-xs font-bold transition-all cursor-pointer"
-                          >
-                            Reset Filter & Pencarian
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ) : (
-                    filteredUsers.map((u) => {
-                      const isCurrent = u.id === currentUser?.id;
-                      const isPasswordVisible = !visiblePasswords[u.id];
-                      const authEval = UserProvisioningService.evaluateUserStatus(u, allUsers);
-                      const derivedEmail = deriveUserAuthEmail(u);
-                      const isThisProvisioning = provisioningUserId === u.id;
-
-                      return (
-                        <tr key={u.id} className="hover:bg-[#181b24] transition-colors">
-                          {/* Name & Username */}
-                          <td className="py-3.5 px-4">
-                            <div className="font-bold text-[#f1f3f7] flex items-center space-x-1.5">
-                              <span>{u.nama}</span>
-                              {isCurrent && (
-                                <span className="text-[10px] bg-blue-950/80 text-blue-300 border border-blue-800/60 px-2 py-0.5 rounded-full font-semibold">
-                                  (Anda)
-                                </span>
-                              )}
-                            </div>
-                            <div className="text-[11px] text-[#6b7280] font-mono">@{u.username} • {u.id}</div>
-                          </td>
-
-                          {/* Role */}
-                          <td className="py-3.5 px-4">
-                            <span className={`px-2.5 py-0.5 rounded-lg font-bold text-[11px] border ${
-                              u.role === 'SUPER_ADMIN' ? 'bg-purple-950/80 text-purple-300 border-purple-800/60' :
-                              (u.role === 'ADM_BPKB' || u.role === 'ADMIN_BPKB') ? 'bg-amber-950/80 text-amber-300 border-amber-800/60' :
-                              u.role === 'KAPOS' ? 'bg-emerald-950/80 text-emerald-300 border-emerald-800/60' :
-                              u.role === 'ADM' ? 'bg-blue-950/80 text-blue-300 border-blue-800/60' :
-                              u.role === 'CMO' ? 'bg-cyan-950/80 text-cyan-300 border-cyan-800/60' :
-                              u.role === 'KAOPS' ? 'bg-indigo-950/80 text-indigo-300 border-indigo-800/60' :
-                              'bg-slate-900/80 text-slate-300 border-slate-700/60'
-                            }`}>
-                              {u.role === 'ADMIN_BPKB' ? 'ADM BPKB' : u.role === 'ADM_BPKB' ? 'ADM BPKB' : u.role}
-                            </span>
-                          </td>
-
-                          {/* Password (Visible to Super Admin) */}
-                          <td className="py-3.5 px-4">
-                            <div className="flex items-center space-x-2">
-                              <div className="bg-[#0d0e12] px-2.5 py-1 rounded-lg border border-[#272d3e] font-mono text-xs text-[#f1f3f7] flex items-center space-x-1.5">
-                                <Key className="h-3.5 w-3.5 text-amber-400 shrink-0" />
-                                <span>
-                                  {isPasswordVisible ? (u.password || 'test1234') : '••••••••'}
-                                </span>
-                              </div>
-
-                              <button
-                                type="button"
-                                onClick={() => togglePasswordVisibility(u.id)}
-                                className="p-1 rounded-lg text-[#8e96a8] hover:text-[#f1f3f7] hover:bg-[#202534] transition-colors cursor-pointer"
-                                title={isPasswordVisible ? 'Sembunyikan Password' : 'Lihat Password'}
-                              >
-                                {isPasswordVisible ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
-                              </button>
-                            </div>
-                          </td>
-
-                          {/* Kode AO */}
-                          <td className="py-3.5 px-4 font-mono font-bold text-purple-300">
-                            {u.kd_ao || '-'}
-                          </td>
-
-                          {/* Cabang / Posko */}
-                          <td className="py-3.5 px-4">
-                            {u.kd_cabang ? (
-                              <div>
-                                <span className="font-semibold text-[#f1f3f7]">{u.kd_cabang}</span>
-                                <span className="text-[11px] text-[#6b7280] block">{u.kd_posko || '-'}</span>
-                              </div>
-                            ) : (
-                              <span className="text-[#6b7280] italic">Semua Cabang (Nasional)</span>
-                            )}
-                          </td>
-
-                          {/* Firebase Auth Mapping Column */}
-                          <td className="py-3.5 px-4">
-                            {authEval.status === 'MIGRATED' ? (
-                              <div className="space-y-1">
-                                <div className="flex items-center space-x-1.5">
-                                  <span className="inline-flex items-center space-x-1 text-[10px] font-bold text-emerald-300 bg-emerald-950/80 px-2 py-0.5 rounded-md border border-emerald-800/70">
-                                    <CheckCircle2 className="h-3 w-3 text-emerald-400 shrink-0" />
-                                    <span>Terhubung</span>
-                                  </span>
-
-                                  <button
-                                    type="button"
-                                    onClick={() => copyToClipboard(u.email || derivedEmail, `email-${u.id}`)}
-                                    className="p-0.5 text-[#8e96a8] hover:text-purple-300 transition-colors"
-                                    title="Salin Email Firebase"
-                                  >
-                                    {copiedId === `email-${u.id}` ? (
-                                      <Check className="h-3 w-3 text-emerald-400" />
-                                    ) : (
-                                      <Copy className="h-3 w-3" />
-                                    )}
-                                  </button>
-                                </div>
-                                <span className="text-[11px] font-mono text-purple-300/90 block truncate max-w-[200px]" title={u.email || derivedEmail}>
-                                  {u.email || derivedEmail}
-                                </span>
-                                {u.firebase_uid && (
-                                  <span className="text-[10px] font-mono text-[#6b7280] block truncate max-w-[180px]" title={u.firebase_uid}>
-                                    UID: {u.firebase_uid.slice(0, 10)}...
-                                  </span>
-                                )}
-                              </div>
-                            ) : (
-                              <div className="space-y-1.5">
-                                <div className="flex items-center space-x-1.5">
-                                  <span className="inline-flex items-center space-x-1 text-[10px] font-semibold text-amber-300 bg-amber-950/80 px-2 py-0.5 rounded-md border border-amber-800/70">
-                                    <AlertCircle className="h-3 w-3 text-amber-400 shrink-0" />
-                                    <span>Belum Terhubung</span>
-                                  </span>
-                                </div>
-
-                                <span className="text-[11px] font-mono text-[#8e96a8] block truncate max-w-[200px]" title={derivedEmail}>
-                                  Target: {derivedEmail}
-                                </span>
-
-                                <button
-                                  type="button"
-                                  disabled={isThisProvisioning || isBulkProvisioning}
-                                  onClick={() => handleProvisionSingle(u)}
-                                  className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-lg bg-purple-600/30 hover:bg-purple-600/50 text-purple-200 border border-purple-700/60 font-semibold text-[10px] transition-all cursor-pointer disabled:opacity-50"
-                                >
-                                  {isThisProvisioning ? (
-                                    <>
-                                      <Loader2 className="h-3 w-3 animate-spin text-purple-400" />
-                                      <span>Membuat...</span>
-                                    </>
-                                  ) : (
-                                    <>
-                                      <Zap className="h-3 w-3 text-amber-400" />
-                                      <span>Buat Firebase UID</span>
-                                    </>
-                                  )}
-                                </button>
-                              </div>
-                            )}
-                          </td>
-
-                          {/* Status */}
-                          <td className="py-3.5 px-4 text-center">
-                            <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${
-                              u.status === 'AKTIF'
-                                ? 'bg-emerald-950/70 text-emerald-300 border-emerald-800/60'
-                                : 'bg-rose-950/70 text-rose-300 border-rose-800/60'
-                            }`}>
-                              {u.status}
-                            </span>
-                          </td>
-
-                          {/* Actions */}
-                          <td className="py-3.5 px-4 text-right">
-                            <div className="flex items-center justify-end space-x-1.5">
-                              {/* Reset Password Button */}
-                              <button
-                                id={`btn-reset-pass-${u.id}`}
-                                onClick={() => setUserToReset(u)}
-                                className="p-1.5 text-amber-400 hover:bg-amber-950/50 border border-transparent hover:border-amber-800/50 rounded-xl transition-colors cursor-pointer"
-                                title="Reset Password ke test1234"
-                              >
-                                <RotateCcw className="h-4 w-4" />
-                              </button>
-
-                              {/* Edit User Button */}
-                              <button
-                                id={`btn-edit-user-${u.id}`}
-                                onClick={() => handleOpenEdit(u)}
-                                className="p-1.5 text-blue-400 hover:bg-blue-950/50 border border-transparent hover:border-blue-800/50 rounded-xl transition-colors cursor-pointer"
-                                title="Edit Pengguna & Role"
-                              >
-                                <Edit3 className="h-4 w-4" />
-                              </button>
-
-                              {/* Delete User Button */}
-                              {!isCurrent && (
-                                <button
-                                  id={`btn-del-user-${u.id}`}
-                                  onClick={() => handleDeleteUser(u)}
-                                  className="p-1.5 text-rose-400 hover:bg-rose-950/50 border border-transparent hover:border-rose-800/50 rounded-xl transition-colors cursor-pointer"
-                                  title="Hapus Pengguna"
-                                >
-                                  <Trash2 className="h-4 w-4" />
-                                </button>
-                              )}
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })
-                  )}
-                </tbody>
-              </table>
-            </div>
+            <DataTable<User>
+              tableKey="user-control-table"
+              columns={userTableColumns}
+              data={filteredUsers}
+              keyExtractor={(u) => u.id}
+              emptyTitle="Tidak Ada Pengguna Ditemukan"
+              emptyDescription={searchQuery ? `Tidak ada hasil untuk pencarian "${searchQuery}"` : 'Tidak ada data pengguna yang sesuai dengan filter yang dipilih.'}
+              title="Daftar Akun Pengguna"
+              subtitle={`Menampilkan ${filteredUsers.length} dari ${allUsers.length} pengguna terdaftar`}
+              initialPageSize={10}
+            />
           </div>
         </div>
       )}
@@ -990,12 +996,17 @@ export const UserControl: React.FC<UserControlProps> = ({ onRefresh }) => {
                       if (!kdAo || kdAo === 'MN.72') setKdAo('ADM BPKB');
                       if (!username) setUsername('admbpkb');
                     }
+                    if (!editingUser && newRole === 'ADM_DE') {
+                      if (!kdAo || kdAo === 'MN.72') setKdAo('ADM DE');
+                      if (!username) setUsername('admde');
+                    }
                   }}
                   className="w-full p-2.5 bg-[#0d0e12] border border-[#272d3e] text-[#e0e4eb] rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500/50 font-semibold"
                 >
                   <option value="CMO">CMO (Registrasi + Input FU)</option>
                   <option value="KAPOS">KAPOS (Registrasi + Input FU + Penugasan CMO)</option>
                   <option value="ADM">ADM (Registrasi + Koreksi Data + FU Ex-Customer)</option>
+                  <option value="ADM_DE">ADM_DE (Admin Data Entry - Validasi Kontrol Sales Nasional)</option>
                   <option value="ADM_BPKB">ADM BPKB (Input Jaminan BPKB - Akses Nasional 2x24 Jam)</option>
                   <option value="KAOPS">KAOPS (Validasi KD MED + Aktivasi + FU)</option>
                   <option value="KACAB">KACAB (Monitoring View-Only Cabang)</option>
@@ -1004,7 +1015,7 @@ export const UserControl: React.FC<UserControlProps> = ({ onRefresh }) => {
                 </select>
               </div>
 
-              {role !== 'SUPER_ADMIN' && role !== 'RM' && role !== 'ADM_BPKB' && role !== 'ADMIN_BPKB' ? (
+              {role !== 'SUPER_ADMIN' && role !== 'RM' && role !== 'ADM_BPKB' && role !== 'ADMIN_BPKB' && role !== 'ADM_DE' ? (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <label className="block font-bold text-[#c2c7d0] mb-1">

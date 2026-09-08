@@ -13,22 +13,35 @@ interface MediatorEditModalProps {
 export const MediatorEditModal: React.FC<MediatorEditModalProps> = ({ mediator, onClose, onSuccess }) => {
   const { allCabang, allPosko, currentUser, canEditMediator } = useAuth();
 
+  const [namaMediator, setNamaMediator] = useState(mediator?.nama_mediator || '');
+  const [noTlpn, setNoTlpn] = useState(mediator?.no_tlpn || '');
+  const [kdAo, setKdAo] = useState(mediator?.kd_ao || '');
+  const [kdCabang, setKdCabang] = useState(mediator?.kd_cabang || '');
+  const [kdPosko, setKdPosko] = useState(mediator?.kd_posko || '');
+  const [status, setStatus] = useState<MediatorStatus>(mediator?.status || 'BELUM AKTIF');
+  const [catatanAdmin, setCatatanAdmin] = useState(mediator?.catatan_admin || '');
+  const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  React.useEffect(() => {
+    if (mediator) {
+      setNamaMediator(mediator.nama_mediator);
+      setNoTlpn(mediator.no_tlpn);
+      setKdAo(mediator.kd_ao || '');
+      setKdCabang(mediator.kd_cabang);
+      setKdPosko(mediator.kd_posko || '');
+      setStatus(mediator.status);
+      setCatatanAdmin(mediator.catatan_admin || '');
+      setFeedback(null);
+    }
+  }, [mediator]);
+
   if (!mediator) return null;
 
   const role = currentUser?.role;
   const isSuperAdminOrKaops = role === 'SUPER_ADMIN' || role === 'KAOPS';
   const isAdm = role === 'ADM';
   const isCmoOrKapos = role === 'CMO' || role === 'KAPOS';
-
-  const [namaMediator, setNamaMediator] = useState(mediator.nama_mediator);
-  const [noTlpn, setNoTlpn] = useState(mediator.no_tlpn);
-  const [kdAo, setKdAo] = useState(mediator.kd_ao || '');
-  const [kdCabang, setKdCabang] = useState(mediator.kd_cabang);
-  const [kdPosko, setKdPosko] = useState(mediator.kd_posko || '');
-  const [status, setStatus] = useState<MediatorStatus>(mediator.status);
-  const [catatanAdmin, setCatatanAdmin] = useState(mediator.catatan_admin || '');
-  const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
-  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const isEditable = canEditMediator(mediator.status);
   const availablePosko = allPosko.filter(p => !kdCabang || p.kd_cabang.toUpperCase() === kdCabang.toUpperCase());

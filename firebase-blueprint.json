@@ -148,6 +148,33 @@
         "target_id": { "type": "string" }
       },
       "required": ["id", "timestamp", "actor_id", "actor_name", "actor_role", "category", "action", "description"]
+    },
+    "sales_control_records": {
+      "title": "SalesControlRecords",
+      "description": "Customer disbursement records and ADM_DE validation status in sales control module",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "no_psb": { "type": "string" },
+        "tgl_cair": { "type": "string" },
+        "tgl_jt": { "type": "string" },
+        "nama_konsumen": { "type": "string" },
+        "no_wa": { "type": "string" },
+        "status": { "type": "string" },
+        "keterangan": { "type": "string" },
+        "cabang_id": { "type": "string" },
+        "posko_id": { "type": "string" },
+        "kd_cabang": { "type": "string" },
+        "kd_posko": { "type": "string" },
+        "created_by": { "type": "string" },
+        "created_by_uid": { "type": "string" },
+        "created_by_name": { "type": "string" },
+        "created_at": { "type": "string" },
+        "updated_at": { "type": "string" },
+        "updated_by": { "type": "string" },
+        "updated_by_uid": { "type": "string" }
+      },
+      "required": ["id", "no_psb", "tgl_cair", "nama_konsumen", "no_wa", "status", "cabang_id", "posko_id", "created_by", "created_at"]
     }
   },
   "firestore": {
@@ -186,6 +213,10 @@
     "audit_logs": {
       "entity": "audit_logs",
       "description": "System audit trail collection"
+    },
+    "sales_control_records": {
+      "entity": "sales_control_records",
+      "description": "Sales control customer disbursement collection"
     }
   }
 }

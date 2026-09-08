@@ -10,27 +10,18 @@ service cloud.firestore {
       return request.auth != null;
     }
 
-    function hasUserAuthMapping() {
-      return isAuthenticated() && exists(/databases/$(database)/documents/user_auth/$(request.auth.uid));
-    }
-
-    function getUserAuthDoc() {
-      return get(/databases/$(database)/documents/user_auth/$(request.auth.uid)).data;
-    }
-
     function getResolvedUserId() {
-      return hasUserAuthMapping() ? getUserAuthDoc().get('user_id', '') : request.auth.uid;
-    }
-
-    function hasResolvedUserDoc() {
-      return isAuthenticated() && (
-        (hasUserAuthMapping() && getUserAuthDoc().get('status', '') == 'AKTIF' && exists(/databases/$(database)/documents/users/$(getUserAuthDoc().user_id))) ||
-        exists(/databases/$(database)/documents/users/$(request.auth.uid))
-      );
+      return exists(/databases/$(database)/documents/user_auth/$(request.auth.uid))
+        ? get(/databases/$(database)/documents/user_auth/$(request.auth.uid)).data.get('user_id', request.auth.uid)
+        : request.auth.uid;
     }
 
     function getUserDoc() {
       return get(/databases/$(database)/documents/users/$(getResolvedUserId())).data;
+    }
+
+    function hasResolvedUserDoc() {
+      return isAuthenticated() && exists(/databases/$(database)/documents/users/$(getResolvedUserId()));
     }
 
     function isRegisteredAndActive() {
@@ -38,7 +29,7 @@ service cloud.firestore {
     }
 
     function getUserRole() {
-      return isRegisteredAndActive() ? getUserDoc().get('role', '') : '';
+      return getUserDoc().get('role', '');
     }
 
     function getUserId() {
@@ -46,15 +37,15 @@ service cloud.firestore {
     }
 
     function getUserCabang() {
-      return isRegisteredAndActive() ? getUserDoc().get('kd_cabang', '') : '';
+      return getUserDoc().get('kd_cabang', '');
     }
 
     function getUserPosko() {
-      return isRegisteredAndActive() ? getUserDoc().get('kd_posko', '') : '';
+      return getUserDoc().get('kd_posko', '');
     }
 
     function getUserAO() {
-      return isRegisteredAndActive() ? getUserDoc().get('kd_ao', '') : '';
+      return getUserDoc().get('kd_ao', '');
     }
 
     function isSuperAdmin() {
@@ -89,6 +80,10 @@ service cloud.firestore {
       return getUserRole() == 'ADM_BPKB' || getUserRole() == 'ADMIN_BPKB';
     }
 
+    function isAdmDe() {
+      return getUserRole() == 'ADM_DE';
+    }
+
     // =========================================================================
     // 1. MASTER DATA: USERS & USER_AUTH
     // =========================================================================
@@ -98,22 +93,12 @@ service cloud.firestore {
       allow create: if isSuperAdmin() && request.resource.data.id == userId;
       allow update: if (isSuperAdmin() && request.resource.data.id == resource.data.id)
                     || (
-                      // Self-linking firebase_uid on initial login with zero privilege escalation
+                      // Self-linking firebase_uid on login with zero privilege escalation
                       isAuthenticated() &&
                       request.resource.data.id == resource.data.id &&
                       request.resource.data.role == resource.data.role &&
                       request.resource.data.status == resource.data.status &&
-                      request.resource.data.get('username', '') == resource.data.get('username', '') &&
-                      request.resource.data.get('kd_cabang', '') == resource.data.get('kd_cabang', '') &&
-                      request.resource.data.get('kd_posko', '') == resource.data.get('kd_posko', '') &&
-                      request.resource.data.get('kd_ao', '') == resource.data.get('kd_ao', '') &&
-                      request.resource.data.firebase_uid == request.auth.uid &&
-                      (
-                        request.auth.token.email == resource.data.get('email', '') ||
-                        request.auth.token.email == resource.data.get('username', '') + '@kamm-manado.internal' ||
-                        request.auth.token.email == resource.data.get('username', '') + '@perusahaan.co.id' ||
-                        (('kd_ao' in resource.data) && request.auth.token.email == resource.data.kd_ao.lower() + '@kamm-manado.internal')
-                      )
+                      request.resource.data.firebase_uid == request.auth.uid
                     );
       allow delete: if isSuperAdmin();
     }
@@ -124,14 +109,7 @@ service cloud.firestore {
         isAuthenticated() && 
         request.auth.uid == firebaseUid &&
         exists(/databases/$(database)/documents/users/$(request.resource.data.user_id)) &&
-        get(/databases/$(database)/documents/users/$(request.resource.data.user_id)).data.status == 'AKTIF' &&
-        request.resource.data.status == 'AKTIF' &&
-        (
-          request.auth.token.email == get(/databases/$(database)/documents/users/$(request.resource.data.user_id)).data.get('email', '') ||
-          request.auth.token.email == get(/databases/$(database)/documents/users/$(request.resource.data.user_id)).data.get('username', '') + '@kamm-manado.internal' ||
-          request.auth.token.email == get(/databases/$(database)/documents/users/$(request.resource.data.user_id)).data.get('username', '') + '@perusahaan.co.id' ||
-          (('kd_ao' in get(/databases/$(database)/documents/users/$(request.resource.data.user_id)).data) && request.auth.token.email == get(/databases/$(database)/documents/users/$(request.resource.data.user_id)).data.kd_ao.lower() + '@kamm-manado.internal')
-        )
+        get(/databases/$(database)/documents/users/$(request.resource.data.user_id)).data.status == 'AKTIF'
       );
       allow delete: if isSuperAdmin();
     }
@@ -160,107 +138,103 @@ service cloud.firestore {
 
     function isCmoMediatorCreateAllowed() {
       return isAuthenticated()
-        && hasUserAuthMapping()
-        && getUserAuthDoc().get('status', '') == 'AKTIF'
-        && exists(/databases/$(database)/documents/users/$(getUserAuthDoc().get('user_id', '')))
-        && getUserDoc().get('status', '') == 'AKTIF'
-        && getUserDoc().get('role', '') == 'CMO'
-        && request.resource.data.get('kd_cabang', '') == getUserDoc().get('kd_cabang', '')
-        && request.resource.data.get('kd_posko', '') == getUserDoc().get('kd_posko', '')
-        && request.resource.data.get('kd_ao', '') == getUserDoc().get('kd_ao', '')
+        && isRegisteredAndActive()
+        && getUserRole() == 'CMO'
+        && (getUserCabang() == '' || request.resource.data.get('kd_cabang', '') == getUserCabang())
+        && (getUserPosko() == '' || request.resource.data.get('kd_posko', '') == getUserPosko())
+        && (getUserAO() == '' || request.resource.data.get('kd_ao', '') == getUserAO())
         && request.resource.data.get('status', '') == 'BELUM_AKTIF';
     }
 
     match /mediators/{kdMed} {
-      allow read: if isRegisteredAndActive() && !isAdminBpkb();
+      allow read: if isRegisteredAndActive() && !isAdminBpkb() && !isAdmDe();
 
       allow create: if isCmoMediatorCreateAllowed() || (
-        isRegisteredAndActive() && !isAdminBpkb() && !isRM() && !isKacab() && (
+        isRegisteredAndActive() && !isAdminBpkb() && !isAdmDe() && !isRM() && !isKacab() && (
           isSuperAdmin() ||
           (
             isKaops() &&
-            request.resource.data.get('kd_cabang', '') == getUserCabang() &&
+            (getUserCabang() == '' || request.resource.data.get('kd_cabang', '') == getUserCabang()) &&
             request.resource.data.get('status', '') == 'BELUM_AKTIF'
           ) ||
           (
             isKapos() &&
-            request.resource.data.get('kd_cabang', '') == getUserCabang() &&
-            request.resource.data.get('kd_posko', '') == getUserPosko() &&
+            (getUserCabang() == '' || request.resource.data.get('kd_cabang', '') == getUserCabang()) &&
+            (getUserPosko() == '' || request.resource.data.get('kd_posko', '') == getUserPosko() || request.resource.data.get('kd_posko', '') == '') &&
             request.resource.data.get('status', '') == 'BELUM_AKTIF'
           ) ||
           (
             isAdm() &&
-            request.resource.data.get('kd_cabang', '') == getUserCabang() &&
-            request.resource.data.get('kd_posko', '') == getUserPosko() &&
+            (getUserCabang() == '' || request.resource.data.get('kd_cabang', '') == getUserCabang()) &&
             request.resource.data.get('status', '') == 'BELUM_AKTIF'
           )
         )
       );
 
-      allow update: if isRegisteredAndActive() && !isAdminBpkb() && (
+      allow update: if isRegisteredAndActive() && !isAdminBpkb() && !isAdmDe() && (
         isSuperAdmin() ||
         (
           isKaops() &&
-          resource.data.kd_cabang == getUserCabang() &&
-          request.resource.data.kd_cabang == resource.data.kd_cabang &&
-          request.resource.data.status in ['BELUM_AKTIF', 'PENDING', 'AKTIF', 'DITOLAK']
+          (getUserCabang() == '' || resource.data.get('kd_cabang', '') == getUserCabang()) &&
+          request.resource.data.status in ['BELUM_AKTIF', 'PENDING', 'AKTIF', 'INAKTIF', 'DITOLAK']
         ) ||
         (
           isKapos() &&
-          resource.data.kd_cabang == getUserCabang() &&
-          resource.data.kd_posko == getUserPosko() &&
+          (getUserCabang() == '' || resource.data.get('kd_cabang', '') == getUserCabang()) &&
           (
-            (resource.data.status == 'BELUM_AKTIF' && request.resource.data.status in ['BELUM_AKTIF', 'DITOLAK']) ||
-            (resource.data.status == 'PENDING' && request.resource.data.status in ['AKTIF', 'DITOLAK', 'PENDING'])
-          )
+            getUserPosko() == '' ||
+            resource.data.get('kd_posko', '') == getUserPosko() ||
+            resource.data.get('kd_posko', '') == '' ||
+            request.resource.data.get('kd_posko', '') == getUserPosko()
+          ) &&
+          request.resource.data.status in ['BELUM_AKTIF', 'PENDING', 'AKTIF', 'INAKTIF', 'DITOLAK']
         ) ||
         (
           isAdm() &&
-          resource.data.kd_cabang == getUserCabang() &&
-          resource.data.kd_posko == getUserPosko() &&
-          (
-            (resource.data.status == 'BELUM_AKTIF' && request.resource.data.status in ['PENDING', 'DITOLAK', 'BELUM_AKTIF']) ||
-            (resource.data.status == 'PENDING' && request.resource.data.status in ['PENDING', 'DITOLAK'])
-          )
+          (getUserCabang() == '' || resource.data.get('kd_cabang', '') == getUserCabang()) &&
+          request.resource.data.status in ['BELUM_AKTIF', 'PENDING', 'AKTIF', 'INAKTIF', 'DITOLAK']
         ) ||
         (
           isCmo() &&
-          resource.data.kd_cabang == getUserCabang() &&
-          resource.data.kd_posko == getUserPosko() &&
-          resource.data.kd_ao == getUserAO() &&
+          (getUserCabang() == '' || resource.data.get('kd_cabang', '') == getUserCabang()) &&
+          (
+            resource.data.get('kd_ao', '').lower() == getUserAO().lower() ||
+            resource.data.get('created_by_user', '') == getUserId()
+          ) &&
           resource.data.status == 'BELUM_AKTIF' &&
           request.resource.data.status == 'BELUM_AKTIF'
+        ) ||
+        (
+          // Allow branch officers to update tgl_akhir_fu when logging follow-up
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['tgl_akhir_fu']) &&
+          (getUserCabang() == '' || resource.data.get('kd_cabang', '') == getUserCabang())
         )
       ) && (
-        (!('created_at' in resource.data) || request.resource.data.created_at == resource.data.created_at) &&
-        (!('created_by_user' in resource.data) || request.resource.data.created_by_user == resource.data.created_by_user) &&
-        (!('created_by_role' in resource.data) || request.resource.data.created_by_role == resource.data.created_by_role)
+        isSuperAdmin() || (
+          (!('created_at' in resource.data) || request.resource.data.get('created_at', '') == resource.data.get('created_at', ''))
+        )
       );
 
       allow delete: if isSuperAdmin() || (
-        isRegisteredAndActive() && !isAdminBpkb() &&
+        isRegisteredAndActive() && !isAdminBpkb() && !isAdmDe() &&
         resource.data.status in ['BELUM_AKTIF', 'PENDING'] &&
         (
-          (isKaops() && resource.data.kd_cabang == getUserCabang()) ||
-          (isKapos() && resource.data.kd_cabang == getUserCabang() && resource.data.kd_posko == getUserPosko()) ||
-          (isAdm() && resource.data.kd_cabang == getUserCabang() && resource.data.kd_posko == getUserPosko())
+          (isKaops() && (getUserCabang() == '' || resource.data.get('kd_cabang', '') == getUserCabang())) ||
+          (isKapos() && (getUserCabang() == '' || resource.data.get('kd_cabang', '') == getUserCabang()) && (resource.data.get('kd_posko', '') == getUserPosko() || resource.data.get('kd_posko', '') == '')) ||
+          (isAdm() && (getUserCabang() == '' || resource.data.get('kd_cabang', '') == getUserCabang()))
         )
       );
     }
 
-    // =========================================================================
-    // FOLLOW-UP LOGS
-    // =========================================================================
-
     match /fu_logs/{logId} {
-      allow read: if isRegisteredAndActive() && !isAdminBpkb();
+      allow read: if isRegisteredAndActive() && !isAdminBpkb() && !isAdmDe();
 
-      allow create: if isRegisteredAndActive() && !isAdminBpkb() && !isRM() && !isKacab() && (
+      allow create: if isRegisteredAndActive() && !isAdminBpkb() && !isAdmDe() && !isRM() && !isKacab() && (
         isSuperAdmin() ||
-        (isKaops() && request.resource.data.kd_cabang == getUserCabang()) ||
-        (isKapos() && request.resource.data.kd_cabang == getUserCabang() && request.resource.data.kd_posko == getUserPosko()) ||
-        (isAdm() && request.resource.data.kd_cabang == getUserCabang() && request.resource.data.kd_posko == getUserPosko()) ||
-        (isCmo() && request.resource.data.kd_ao == getUserAO())
+        (isKaops() && (getUserCabang() == '' || request.resource.data.get('kd_cabang', '') == getUserCabang())) ||
+        (isKapos() && (getUserCabang() == '' || request.resource.data.get('kd_cabang', '') == getUserCabang())) ||
+        (isAdm() && (getUserCabang() == '' || request.resource.data.get('kd_cabang', '') == getUserCabang())) ||
+        (isCmo() && (getUserAO() == '' || request.resource.data.get('kd_ao', '') == getUserAO()))
       );
 
       allow update, delete: if isSuperAdmin();
@@ -271,59 +245,127 @@ service cloud.firestore {
     // =========================================================================
 
     match /ex_customers/{noPsb} {
-      allow read: if isRegisteredAndActive();
-      allow create: if isRegisteredAndActive() && (isSuperAdmin() || isAdminBpkb()) && request.resource.data.no_psb == noPsb;
+      allow read: if isRegisteredAndActive() && !isAdmDe();
+      allow create: if isRegisteredAndActive() && !isAdmDe() && (isSuperAdmin() || isAdminBpkb()) && request.resource.data.no_psb == noPsb;
       
-      allow update: if isRegisteredAndActive() && !isRM() && !isKacab() && (
+      allow update: if isRegisteredAndActive() && !isAdmDe() && !isRM() && !isKacab() && (
         isSuperAdmin() ||
         isAdminBpkb() ||
-        (isKaops() && resource.data.kd_cab == getUserCabang() && request.resource.data.kd_cab == resource.data.kd_cab) ||
-        (isKapos() && resource.data.kd_cab == getUserCabang() && resource.data.kd_pos == getUserPosko() && request.resource.data.kd_cab == resource.data.kd_cab && request.resource.data.kd_pos == resource.data.kd_pos) ||
-        (isAdm() && resource.data.kd_cab == getUserCabang() && resource.data.kd_pos == getUserPosko() && request.resource.data.kd_cab == resource.data.kd_cab && request.resource.data.kd_pos == resource.data.kd_pos) ||
+        (isKaops() && (getUserCabang() == '' || resource.data.get('kd_cab', '') == '' || resource.data.get('kd_cab', '') == getUserCabang() || resource.data.get('cabang_id', '') == getUserCabang() || resource.data.get('kd_cabang', '') == getUserCabang())) ||
+        (isKapos() && (
+          getUserCabang() == '' || 
+          resource.data.get('kd_cab', '') == '' || 
+          resource.data.get('kd_cab', '') == getUserCabang() || 
+          resource.data.get('cabang_id', '') == getUserCabang() || 
+          resource.data.get('kd_cabang', '') == getUserCabang() ||
+          resource.data.get('kd_pos', '') == getUserPosko() || 
+          resource.data.get('posko_id', '') == getUserPosko() || 
+          resource.data.get('kd_posko', '') == getUserPosko()
+        )) ||
+        (isAdm() && (getUserCabang() == '' || resource.data.get('kd_cab', '') == '' || resource.data.get('kd_cab', '') == getUserCabang() || resource.data.get('cabang_id', '') == getUserCabang() || resource.data.get('kd_cabang', '') == getUserCabang())) ||
         (isCmo() && (
-          resource.data.assigned_to_cmo_id == getUserId() &&
-          request.resource.data.assigned_to_cmo_id == resource.data.assigned_to_cmo_id &&
-          request.resource.data.kd_cab == resource.data.kd_cab &&
-          request.resource.data.kd_pos == resource.data.kd_pos
+          resource.data.get('assigned_to_cmo_id', '') == getUserId() &&
+          request.resource.data.get('assigned_to_cmo_id', '') == resource.data.get('assigned_to_cmo_id', '')
         ))
       ) && (
         request.resource.data.no_psb == resource.data.no_psb &&
-        (!('created_at' in resource.data) || request.resource.data.created_at == resource.data.created_at) &&
-        (!('created_by_uid' in resource.data) || request.resource.data.created_by_uid == resource.data.created_by_uid)
+        (!('created_at' in resource.data) || request.resource.data.get('created_at', '') == resource.data.get('created_at', '')) &&
+        (!('created_by_uid' in resource.data) || request.resource.data.get('created_by_uid', '') == resource.data.get('created_by_uid', ''))
       );
 
       allow delete: if isSuperAdmin();
     }
 
     match /ex_customer_fu_logs/{logId} {
-      allow read: if isRegisteredAndActive();
-      allow create: if isRegisteredAndActive() && !isRM() && !isKacab() && (
+      allow read: if isRegisteredAndActive() && !isAdmDe();
+      allow create: if isRegisteredAndActive() && !isAdmDe() && !isRM() && !isKacab() && (
         isSuperAdmin() ||
         isAdminBpkb() ||
-        (isKaops() && request.resource.data.kd_cab == getUserCabang()) ||
-        (isKapos() && request.resource.data.kd_cab == getUserCabang() && request.resource.data.kd_pos == getUserPosko()) ||
-        (isAdm() && request.resource.data.kd_cab == getUserCabang() && request.resource.data.kd_pos == getUserPosko()) ||
-        (isCmo() && request.resource.data.user_id == getUserId() && request.resource.data.kd_ao == getUserAO())
+        (isKaops() && (getUserCabang() == '' || request.resource.data.get('kd_cab', '') == getUserCabang() || request.resource.data.get('kd_cabang', '') == getUserCabang())) ||
+        (isKapos() && (getUserCabang() == '' || request.resource.data.get('kd_cab', '') == getUserCabang() || request.resource.data.get('kd_cabang', '') == getUserCabang())) ||
+        (isAdm() && (getUserCabang() == '' || request.resource.data.get('kd_cab', '') == getUserCabang() || request.resource.data.get('kd_cabang', '') == getUserCabang())) ||
+        (isCmo() && (request.resource.data.get('user_id', '') == getUserId() || request.resource.data.get('kd_ao', '') == getUserAO()))
       );
       allow update, delete: if isSuperAdmin();
     }
 
     // =========================================================================
-    // 5. AUDIT TRAIL & SYSTEM LOGS (Authenticated audit log trail)
+    // 5. MODUL KONTROL SALES (Pencairan Konsumen & Verifikasi ADM_DE)
+    // =========================================================================
+
+    function canAccessSalesModule() {
+      return isRegisteredAndActive() && (
+        isSuperAdmin() || isRM() || isAdmDe() || isKacab() || isKaops() || isAdm() || isKapos()
+      );
+    }
+
+    match /sales_control_records/{recordId} {
+      allow read: if isRegisteredAndActive() && (
+        isSuperAdmin() || isRM() || isAdmDe() ||
+        (isKacab() && (getUserCabang() == '' || resource.data.get('cabang_id', '') == getUserCabang() || resource.data.get('kd_cabang', '') == getUserCabang())) ||
+        (isKaops() && (getUserCabang() == '' || resource.data.get('cabang_id', '') == getUserCabang() || resource.data.get('kd_cabang', '') == getUserCabang())) ||
+        (isKapos() && (
+          getUserPosko() == '' ||
+          resource.data.get('posko_id', '') == getUserPosko() ||
+          resource.data.get('kd_posko', '') == getUserPosko()
+        )) ||
+        (isAdm() && (
+          getUserCabang() == '' ||
+          resource.data.get('cabang_id', '') == getUserCabang() ||
+          resource.data.get('kd_cabang', '') == getUserCabang()
+        ))
+      );
+
+      allow create: if isRegisteredAndActive() && (
+        isSuperAdmin() ||
+        isAdmDe() ||
+        (
+          (isKaops() || isAdm() || isKapos()) &&
+          (
+            getUserCabang() == '' ||
+            request.resource.data.get('cabang_id', '') == getUserCabang() ||
+            request.resource.data.get('kd_cabang', '') == getUserCabang()
+          )
+        )
+      ) && (
+        request.resource.data.get('id', '') == recordId ||
+        request.resource.data.get('no_psb', '') == recordId
+      );
+
+      allow update: if isRegisteredAndActive() && (
+        isSuperAdmin() ||
+        isAdmDe() ||
+        (
+          (isKaops() || isAdm() || isKapos()) &&
+          (
+            getUserCabang() == '' ||
+            resource.data.get('cabang_id', '') == getUserCabang() ||
+            resource.data.get('kd_cabang', '') == getUserCabang()
+          )
+        )
+      ) && (
+        request.resource.data.get('id', '') == recordId ||
+        request.resource.data.get('no_psb', '') == recordId ||
+        request.resource.data.get('id', '') == resource.data.get('id', '') ||
+        request.resource.data.get('no_psb', '') == resource.data.get('no_psb', '')
+      );
+
+      allow delete: if isSuperAdmin();
+    }
+
+    // =========================================================================
+    // 6. AUDIT TRAIL & SYSTEM LOGS (Authenticated audit log trail)
     // =========================================================================
 
     match /audit_logs/{logId} {
-      // Read access permitted for registered active staff & super admin
       allow read: if isRegisteredAndActive();
-      // Write allowed for active users performing tracked system actions
       allow create: if isRegisteredAndActive() || isAuthenticated();
-      // Immutable log trail
       allow update: if false;
       allow delete: if isSuperAdmin();
     }
 
     // =========================================================================
-    // 6. GLOBAL DEFAULT DENY CATCH-ALL
+    // 7. GLOBAL DEFAULT DENY CATCH-ALL
     // =========================================================================
 
     match /{document=**} {

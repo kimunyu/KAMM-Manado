@@ -4,6 +4,7 @@ export type UserRole =
   | 'ADM' 
   | 'ADM_BPKB'
   | 'ADMIN_BPKB' // Backward compatibility alias
+  | 'ADM_DE'
   | 'KAOPS' 
   | 'KACAB' 
   | 'RM' 
@@ -11,6 +12,10 @@ export type UserRole =
 
 export const isAdmBpkbRole = (role?: string | null): boolean => {
   return role === 'ADM_BPKB' || role === 'ADMIN_BPKB';
+};
+
+export const isAdmDeRole = (role?: string | null): boolean => {
+  return role === 'ADM_DE';
 };
 
 export type StatusKreditLunas = 
@@ -129,6 +134,7 @@ export type AuditActionCategory =
   | 'FOLLOW_UP'            // Input FU Mediator
   | 'EX_CUSTOMER'          // Input BPKB, Penugasan CMO, FU Ex-Customer, Import/Export
   | 'MASTER_DATA'          // Cabang, Posko
+  | 'KONTROL_SALES'        // Pencairan Konsumen, Validasi ADM_DE, Update Status
   | 'SYSTEM';              // Backup, Restore, Health Check
 
 export interface AuditLog {
@@ -178,6 +184,7 @@ export type MediatorStatus =
 export interface MediatorKontrak {
   kd_med: string; // Manually inputted by KAOPS or SUPER_ADMIN, temporary pending code if PENDING
   temp_id?: string; // Internal unique ID
+  firestore_id?: string; // Real Firestore Document ID if synced
   nama_mediator: string; // Max 100 chars
   no_tlpn: string;
   status: MediatorStatus; // 'PENDING' -> 'AKTIF'

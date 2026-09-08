@@ -5,6 +5,7 @@ import { AuditService } from './auditService';
 import { 
   collection, 
   doc, 
+  getDoc,
   setDoc, 
   deleteDoc, 
   onSnapshot, 
@@ -220,8 +221,8 @@ export function startFirebaseSync(currentUser: User | null = null, authenticated
     }, (err) => console.warn('[FS-SYNC-ERROR] collection=posko onSnapshot error:', err));
     activeSyncUnsubscribers.push(unsubPosko);
 
-    // 4. Sync Mediators (Isolated: ADM_BPKB is forbidden from mediator collection)
-    if (currentUser.role !== 'ADM_BPKB' && currentUser.role !== 'ADMIN_BPKB') {
+    // 4. Sync Mediators (Isolated: ADM_BPKB and ADM_DE are forbidden from mediator collection)
+    if (currentUser.role !== 'ADM_BPKB' && currentUser.role !== 'ADMIN_BPKB' && currentUser.role !== 'ADM_DE') {
       console.log(
         "[CROSS-DEVICE-SYNC]",
         {
@@ -246,7 +247,13 @@ export function startFirebaseSync(currentUser: User | null = null, authenticated
             }))
           }
         );
-        const cloudMediators: MediatorKontrak[] = snapshot.docs.map(docSnap => docSnap.data() as MediatorKontrak);
+        const cloudMediators: MediatorKontrak[] = snapshot.docs.map(docSnap => {
+          const data = docSnap.data() as MediatorKontrak;
+          return {
+            ...data,
+            firestore_id: docSnap.id
+          };
+        });
         saveToStorage(STORAGE_KEYS.MEDIATORS, cloudMediators);
         notifyAllListeners();
       }, (err) => {
@@ -257,7 +264,7 @@ export function startFirebaseSync(currentUser: User | null = null, authenticated
       });
       activeSyncUnsubscribers.push(unsubMediators);
 
-      // 5. Sync FU Logs (Isolated: ADM_BPKB is forbidden from fu_logs collection)
+      // 5. Sync FU Logs (Isolated: ADM_BPKB and ADM_DE are forbidden from fu_logs collection)
       console.log(`[FS-SYNC-DEBUG] collection=fu_logs operation=onSnapshot firebaseAuthUid=${currentAuthUid} businessUserId=${currentUser.id} role=${currentUser.role} status=${currentUser.status} activeSyncKey=${syncKey}`);
       const fuLogsCol = collection(db, 'fu_logs');
       const unsubFuLogs = onSnapshot(fuLogsCol, (snapshot) => {
@@ -269,27 +276,29 @@ export function startFirebaseSync(currentUser: User | null = null, authenticated
       activeSyncUnsubscribers.push(unsubFuLogs);
     }
 
-    // 6. Sync Ex-Customers
-    console.log(`[FS-SYNC-DEBUG] collection=ex_customers operation=onSnapshot firebaseAuthUid=${currentAuthUid} businessUserId=${currentUser.id} role=${currentUser.role} status=${currentUser.status} activeSyncKey=${syncKey}`);
-    const exCustCol = collection(db, 'ex_customers');
-    const unsubExCust = onSnapshot(exCustCol, (snapshot) => {
-      console.log(`[FS-SNAPSHOT] collection=ex_customers documentCount=${snapshot.size}`);
-      const cloudEx: ExCustomer[] = snapshot.docs.map(docSnap => docSnap.data() as ExCustomer);
-      saveToStorage(STORAGE_KEYS.EX_CUSTOMERS, cloudEx);
-      notifyAllListeners();
-    }, (err) => console.warn('[FS-SYNC-ERROR] collection=ex_customers onSnapshot error:', err));
-    activeSyncUnsubscribers.push(unsubExCust);
+    // 6. Sync Ex-Customers (Isolated: ADM_DE forbidden)
+    if (currentUser.role !== 'ADM_DE') {
+      console.log(`[FS-SYNC-DEBUG] collection=ex_customers operation=onSnapshot firebaseAuthUid=${currentAuthUid} businessUserId=${currentUser.id} role=${currentUser.role} status=${currentUser.status} activeSyncKey=${syncKey}`);
+      const exCustCol = collection(db, 'ex_customers');
+      const unsubExCust = onSnapshot(exCustCol, (snapshot) => {
+        console.log(`[FS-SNAPSHOT] collection=ex_customers documentCount=${snapshot.size}`);
+        const cloudEx: ExCustomer[] = snapshot.docs.map(docSnap => docSnap.data() as ExCustomer);
+        saveToStorage(STORAGE_KEYS.EX_CUSTOMERS, cloudEx);
+        notifyAllListeners();
+      }, (err) => console.warn('[FS-SYNC-ERROR] collection=ex_customers onSnapshot error:', err));
+      activeSyncUnsubscribers.push(unsubExCust);
 
-    // 7. Sync Ex-Customer FU Logs
-    console.log(`[FS-SYNC-DEBUG] collection=ex_customer_fu_logs operation=onSnapshot firebaseAuthUid=${currentAuthUid} businessUserId=${currentUser.id} role=${currentUser.role} status=${currentUser.status} activeSyncKey=${syncKey}`);
-    const exLogsCol = collection(db, 'ex_customer_fu_logs');
-    const unsubExLogs = onSnapshot(exLogsCol, (snapshot) => {
-      console.log(`[FS-SNAPSHOT] collection=ex_customer_fu_logs documentCount=${snapshot.size}`);
-      const cloudExLogs: ExCustomerFULog[] = snapshot.docs.map(docSnap => docSnap.data() as ExCustomerFULog);
-      saveToStorage(STORAGE_KEYS.EX_CUSTOMER_FU_LOGS, cloudExLogs);
-      notifyAllListeners();
-    }, (err) => console.warn('[FS-SYNC-ERROR] collection=ex_customer_fu_logs onSnapshot error:', err));
-    activeSyncUnsubscribers.push(unsubExLogs);
+      // 7. Sync Ex-Customer FU Logs (Isolated: ADM_DE forbidden)
+      console.log(`[FS-SYNC-DEBUG] collection=ex_customer_fu_logs operation=onSnapshot firebaseAuthUid=${currentAuthUid} businessUserId=${currentUser.id} role=${currentUser.role} status=${currentUser.status} activeSyncKey=${syncKey}`);
+      const exLogsCol = collection(db, 'ex_customer_fu_logs');
+      const unsubExLogs = onSnapshot(exLogsCol, (snapshot) => {
+        console.log(`[FS-SNAPSHOT] collection=ex_customer_fu_logs documentCount=${snapshot.size}`);
+        const cloudExLogs: ExCustomerFULog[] = snapshot.docs.map(docSnap => docSnap.data() as ExCustomerFULog);
+        saveToStorage(STORAGE_KEYS.EX_CUSTOMER_FU_LOGS, cloudExLogs);
+        notifyAllListeners();
+      }, (err) => console.warn('[FS-SYNC-ERROR] collection=ex_customer_fu_logs onSnapshot error:', err));
+      activeSyncUnsubscribers.push(unsubExLogs);
+    }
 
     // 8. Sync Audit Logs
     AuditService.startSync(currentUser, currentAuthUid);
@@ -810,6 +819,51 @@ export const DatabaseService = {
     return { success: true, message: 'User berhasil dihapus.' };
   },
 
+  // Helper to resolve the exact Firestore document ID for a mediator
+  async resolveMediatorDocId(mediator: MediatorKontrak): Promise<string> {
+    if (!db) {
+      return sanitizeDocId(mediator.firestore_id || mediator.kd_med || mediator.temp_id || 'unknown');
+    }
+
+    // 1. If we already have the exact firestore doc id recorded from a snapshot
+    if (mediator.firestore_id) {
+      return sanitizeDocId(mediator.firestore_id);
+    }
+
+    const cleanKdMed = mediator.kd_med ? sanitizeDocId(mediator.kd_med) : '';
+    const cleanTempId = mediator.temp_id ? sanitizeDocId(mediator.temp_id) : '';
+
+    // 2. Check if cleanKdMed document exists in Firestore (especially for active/imported mediators)
+    if (cleanKdMed && !cleanKdMed.startsWith('DRAFT-') && !cleanKdMed.startsWith('PENDING-')) {
+      try {
+        const snap = await getDoc(doc(db, 'mediators', cleanKdMed));
+        if (snap.exists()) {
+          return cleanKdMed;
+        }
+      } catch {
+        // ignore error and proceed
+      }
+    }
+
+    // 3. Check if cleanTempId document exists in Firestore
+    if (cleanTempId) {
+      try {
+        const snap = await getDoc(doc(db, 'mediators', cleanTempId));
+        if (snap.exists()) {
+          return cleanTempId;
+        }
+      } catch {
+        // ignore error and proceed
+      }
+    }
+
+    // 4. Default heuristic: active/validated mediators use kd_med, unvalidated/drafts use temp_id
+    if (cleanKdMed && !cleanKdMed.startsWith('DRAFT-') && !cleanKdMed.startsWith('PENDING-')) {
+      return cleanKdMed;
+    }
+    return cleanTempId || cleanKdMed || 'unknown';
+  },
+
   // Mediator Management
   getMediators(): MediatorKontrak[] {
     return getInitialOrStored<MediatorKontrak[]>(STORAGE_KEYS.MEDIATORS, INITIAL_MEDIATORS);
@@ -1049,8 +1103,8 @@ export const DatabaseService = {
     };
 
     if (db) {
+      const docId = await this.resolveMediatorDocId(mediators[index]);
       try {
-        const docId = sanitizeDocId(updatedMed.temp_id || updatedMed.kd_med);
         await setDoc(doc(db, 'mediators', docId), cleanForFirestore(updatedMed), { merge: true });
         logFirestoreWrite({
           collection: 'mediators',
@@ -1060,7 +1114,7 @@ export const DatabaseService = {
       } catch (err: any) {
         logFirestoreWrite({
           collection: 'mediators',
-          documentId: updatedMed.temp_id || updatedMed.kd_med,
+          documentId: docId,
           result: 'FAILED',
           errorCode: err?.code,
           errorMessage: err?.message
@@ -1104,8 +1158,8 @@ export const DatabaseService = {
     };
 
     if (db) {
+      const docId = await this.resolveMediatorDocId(mediators[index]);
       try {
-        const docId = sanitizeDocId(updatedMed.temp_id || updatedMed.kd_med);
         await setDoc(doc(db, 'mediators', docId), cleanForFirestore(updatedMed), { merge: true });
         logFirestoreWrite({
           collection: 'mediators',
@@ -1115,7 +1169,7 @@ export const DatabaseService = {
       } catch (err: any) {
         logFirestoreWrite({
           collection: 'mediators',
-          documentId: updatedMed.temp_id || updatedMed.kd_med,
+          documentId: docId,
           result: 'FAILED',
           errorCode: err?.code,
           errorMessage: err?.message
@@ -1174,8 +1228,8 @@ export const DatabaseService = {
     };
 
     if (db) {
+      const docId = await this.resolveMediatorDocId(mediators[index]);
       try {
-        const docId = sanitizeDocId(updatedMed.temp_id || updatedMed.kd_med);
         await setDoc(doc(db, 'mediators', docId), cleanForFirestore(updatedMed), { merge: true });
         logFirestoreWrite({
           collection: 'mediators',
@@ -1185,7 +1239,7 @@ export const DatabaseService = {
       } catch (err: any) {
         logFirestoreWrite({
           collection: 'mediators',
-          documentId: updatedMed.temp_id || updatedMed.kd_med,
+          documentId: docId,
           result: 'FAILED',
           errorCode: err?.code,
           errorMessage: err?.message
@@ -1246,18 +1300,18 @@ export const DatabaseService = {
 
     // Authorization checks
     if (role) {
-      if (role === 'CMO' || role === 'KAPOS') {
+      if (role === 'CMO') {
         if (currentMed.status !== 'BELUM_AKTIF') {
           return {
             success: false,
             message: `Role ${role} hanya berhak mengedit data mediator dengan status Pendaftaran Baru (BELUM AKTIF). Data dengan status "${currentMed.status}" terkunci.`
           };
         }
-      } else if (role === 'ADM') {
+      } else if (role === 'ADM' || role === 'KAPOS') {
         if (currentMed.status !== 'BELUM_AKTIF' && currentMed.status !== 'PENDING') {
           return {
             success: false,
-            message: `Role ADM hanya berhak mengedit mediator berstatus Pendaftaran Baru (BELUM AKTIF) dan Peninjauan Berkas (PENDING). Status "${currentMed.status}" terkunci.`
+            message: `Role ${role} hanya berhak mengedit mediator berstatus Pendaftaran Baru (BELUM AKTIF) dan Peninjauan Berkas (PENDING). Status "${currentMed.status}" terkunci.`
           };
         }
       } else if (role !== 'KAOPS' && role !== 'SUPER_ADMIN') {
@@ -1284,9 +1338,17 @@ export const DatabaseService = {
     };
 
     if (db) {
+      const docId = await this.resolveMediatorDocId(currentMed);
       try {
-        const docId = sanitizeDocId(updatedMed.temp_id || updatedMed.kd_med);
-        await setDoc(doc(db, 'mediators', docId), cleanForFirestore(updatedMed), { merge: true });
+        const payloadToSave: any = {
+          ...currentMed,
+          ...updatedMed,
+          created_at: currentMed.created_at || updatedMed.created_at || new Date().toISOString(),
+          created_by_user: currentMed.created_by_user || updatedMed.created_by_user || 'SYSTEM',
+          created_by_role: currentMed.created_by_role || updatedMed.created_by_role || 'SUPER_ADMIN'
+        };
+
+        await setDoc(doc(db, 'mediators', docId), cleanForFirestore(payloadToSave), { merge: true });
         logFirestoreWrite({
           collection: 'mediators',
           documentId: docId,
@@ -1296,7 +1358,7 @@ export const DatabaseService = {
       } catch (err: any) {
         logFirestoreWrite({
           collection: 'mediators',
-          documentId: updatedMed.temp_id || updatedMed.kd_med,
+          documentId: docId,
           role,
           result: 'FAILED',
           errorCode: err?.code,
@@ -1320,9 +1382,12 @@ export const DatabaseService = {
     const target = mediators.find(m => m.kd_med === kd_med || m.temp_id === kd_med);
 
     if (db && target) {
+      const docId = await this.resolveMediatorDocId(target);
       try {
-        const docId = sanitizeDocId(target.temp_id || target.kd_med);
         await deleteDoc(doc(db, 'mediators', docId));
+        if (target.temp_id && sanitizeDocId(target.temp_id) !== docId) {
+          await deleteDoc(doc(db, 'mediators', sanitizeDocId(target.temp_id))).catch(() => {});
+        }
         logFirestoreWrite({
           collection: 'mediators',
           documentId: docId,
@@ -1331,7 +1396,7 @@ export const DatabaseService = {
       } catch (err: any) {
         logFirestoreWrite({
           collection: 'mediators',
-          documentId: target.temp_id || target.kd_med,
+          documentId: docId,
           result: 'FAILED',
           errorCode: err?.code,
           errorMessage: err?.message
@@ -1539,7 +1604,7 @@ export const DatabaseService = {
           result: 'SUCCESS'
         });
 
-        const medDocId = sanitizeDocId(mediator.temp_id || mediator.kd_med);
+        const medDocId = await this.resolveMediatorDocId(mediator);
         await setDoc(
           doc(db, 'mediators', medDocId),
           cleanForFirestore({ tgl_akhir_fu: todayIsoDate }),

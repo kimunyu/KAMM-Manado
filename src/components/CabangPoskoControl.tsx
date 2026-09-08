@@ -1,4 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
+import { DataTable } from './DataTable';
+import { ColumnDef } from './DataTable/types';
 import { Cabang, Posko } from '../types';
 import { useAuth } from '../context/AuthContext';
 import { DatabaseService } from '../services/storage';
@@ -175,6 +177,162 @@ export const CabangPoskoControl: React.FC<CabangPoskoControlProps> = ({ onRefres
     p.kd_cabang.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
+  // Universal DataTable Column Definitions for Cabang
+  const cabangColumns: ColumnDef<Cabang>[] = useMemo(() => [
+    {
+      key: 'kd_cabang',
+      header: 'Kode Cabang',
+      sticky: 'left',
+      sortable: true,
+      hideable: false,
+      width: 'min-w-[120px]',
+      render: (c) => (
+        <span className="font-mono font-bold text-blue-400">
+          {c.kd_cabang}
+        </span>
+      )
+    },
+    {
+      key: 'nama_cabang',
+      header: 'Nama Cabang',
+      sortable: true,
+      width: 'min-w-[200px]',
+      render: (c) => (
+        <span className="font-bold text-[#f1f3f7]">
+          {c.nama_cabang}
+        </span>
+      )
+    },
+    {
+      key: 'wilayah',
+      header: 'Wilayah',
+      sortable: true,
+      width: 'min-w-[140px]',
+      render: (c) => (
+        <span className="text-[#a6adbb]">
+          {c.wilayah || 'Wilayah 1'}
+        </span>
+      )
+    },
+    {
+      key: 'posko_count',
+      header: 'Jml Posko',
+      align: 'center',
+      width: 'min-w-[110px]',
+      render: (c) => {
+        const countPosko = allPosko.filter(p => p.kd_cabang === c.kd_cabang).length;
+        return (
+          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-950/60 text-blue-300 border border-blue-800/60">
+            {countPosko} Posko
+          </span>
+        );
+      }
+    },
+    {
+      key: 'actions',
+      header: 'Aksi',
+      sticky: 'right',
+      align: 'right',
+      hideable: false,
+      width: 'min-w-[100px]',
+      render: (c) => (
+        <div className="flex items-center justify-end space-x-1">
+          <button
+            id={`btn-edit-cabang-${c.kd_cabang}`}
+            onClick={() => handleOpenEditCabang(c)}
+            className="p-1.5 text-amber-400 hover:bg-amber-950/50 rounded-lg transition-colors cursor-pointer"
+            title="Edit Cabang"
+          >
+            <Edit3 className="h-3.5 w-3.5" />
+          </button>
+          <button
+            id={`btn-del-cabang-${c.kd_cabang}`}
+            onClick={() => handleDeleteCabang(c.kd_cabang, c.nama_cabang)}
+            className="p-1.5 text-rose-400 hover:bg-rose-950/50 rounded-lg transition-colors cursor-pointer"
+            title="Hapus Cabang"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      )
+    }
+  ], [allPosko]);
+
+  // Universal DataTable Column Definitions for Posko
+  const poskoColumns: ColumnDef<Posko>[] = useMemo(() => [
+    {
+      key: 'kd_posko',
+      header: 'Kode Posko',
+      sticky: 'left',
+      sortable: true,
+      hideable: false,
+      width: 'min-w-[120px]',
+      render: (p) => (
+        <span className="font-mono font-bold text-emerald-400">
+          {p.kd_posko}
+        </span>
+      )
+    },
+    {
+      key: 'nama_posko',
+      header: 'Nama Posko',
+      sortable: true,
+      width: 'min-w-[200px]',
+      render: (p) => (
+        <span className="font-bold text-[#f1f3f7]">
+          {p.nama_posko}
+        </span>
+      )
+    },
+    {
+      key: 'kd_cabang',
+      header: 'Cabang Induk',
+      sortable: true,
+      width: 'min-w-[220px]',
+      render: (p) => {
+        const branchObj = allCabang.find(c => c.kd_cabang === p.kd_cabang);
+        return (
+          <div>
+            <span className="font-semibold text-blue-300 font-mono bg-blue-950/60 px-2 py-0.5 rounded border border-blue-800/60 text-[11px]">
+              {p.kd_cabang}
+            </span>
+            <span className="text-[11px] text-[#8e96a8] ml-1.5">
+              {branchObj?.nama_cabang || ''}
+            </span>
+          </div>
+        );
+      }
+    },
+    {
+      key: 'actions',
+      header: 'Aksi',
+      sticky: 'right',
+      align: 'right',
+      hideable: false,
+      width: 'min-w-[100px]',
+      render: (p) => (
+        <div className="flex items-center justify-end space-x-1">
+          <button
+            id={`btn-edit-posko-${p.kd_posko}`}
+            onClick={() => handleOpenEditPosko(p)}
+            className="p-1.5 text-amber-400 hover:bg-amber-950/50 rounded-lg transition-colors cursor-pointer"
+            title="Edit Posko"
+          >
+            <Edit3 className="h-3.5 w-3.5" />
+          </button>
+          <button
+            id={`btn-del-posko-${p.kd_posko}`}
+            onClick={() => handleDeletePosko(p.kd_posko, p.nama_posko)}
+            className="p-1.5 text-rose-400 hover:bg-rose-950/50 rounded-lg transition-colors cursor-pointer"
+            title="Hapus Posko"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      )
+    }
+  ], [allCabang]);
+
   return (
     <div className="bg-[#13151c] rounded-2xl border border-[#232734] p-5 shadow-md space-y-4">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-3 border-b border-[#232734]">
@@ -256,137 +414,32 @@ export const CabangPoskoControl: React.FC<CabangPoskoControlProps> = ({ onRefres
 
       {/* CABANG TABLE */}
       {activeSubTab === 'cabang' && (
-        <div className="overflow-x-auto rounded-xl border border-[#232734]">
-          <table className="w-full text-left border-collapse">
-            <thead>
-              <tr className="bg-[#0e1015] border-b border-[#232734] text-[11px] font-bold text-[#8e96a8] uppercase tracking-wider">
-                <th className="py-2.5 px-3.5">Kode Cabang</th>
-                <th className="py-2.5 px-3.5">Nama Cabang</th>
-                <th className="py-2.5 px-3.5">Wilayah</th>
-                <th className="py-2.5 px-3.5 text-center">Jml Posko</th>
-                <th className="py-2.5 px-3.5 text-right">Aksi</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-[#1f2330] text-xs">
-              {filteredCabang.length === 0 ? (
-                <tr>
-                  <td colSpan={5} className="py-6 text-center text-[#6b7280]">
-                    Tidak ada data cabang yang sesuai.
-                  </td>
-                </tr>
-              ) : (
-                filteredCabang.map((c) => {
-                  const countPosko = allPosko.filter(p => p.kd_cabang === c.kd_cabang).length;
-                  return (
-                    <tr key={c.kd_cabang} className="hover:bg-[#181b24] transition-colors">
-                      <td className="py-2.5 px-3.5 font-mono font-bold text-blue-400">
-                        {c.kd_cabang}
-                      </td>
-                      <td className="py-2.5 px-3.5 font-bold text-[#f1f3f7]">
-                        {c.nama_cabang}
-                      </td>
-                      <td className="py-2.5 px-3.5 text-[#a6adbb]">
-                        {c.wilayah || 'Wilayah 1'}
-                      </td>
-                      <td className="py-2.5 px-3.5 text-center">
-                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-950/60 text-blue-300 border border-blue-800/60">
-                          {countPosko} Posko
-                        </span>
-                      </td>
-                      <td className="py-2.5 px-3.5 text-right">
-                        <div className="flex items-center justify-end space-x-1">
-                          <button
-                            id={`btn-edit-cabang-${c.kd_cabang}`}
-                            onClick={() => handleOpenEditCabang(c)}
-                            className="p-1.5 text-amber-400 hover:bg-amber-950/50 rounded-lg transition-colors cursor-pointer"
-                            title="Edit Cabang"
-                          >
-                            <Edit3 className="h-3.5 w-3.5" />
-                          </button>
-                          <button
-                            id={`btn-del-cabang-${c.kd_cabang}`}
-                            onClick={() => handleDeleteCabang(c.kd_cabang, c.nama_cabang)}
-                            className="p-1.5 text-rose-400 hover:bg-rose-950/50 rounded-lg transition-colors cursor-pointer"
-                            title="Hapus Cabang"
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
+        <DataTable<Cabang>
+          tableKey="cabang-management-table"
+          columns={cabangColumns}
+          data={filteredCabang}
+          keyExtractor={(c) => c.kd_cabang}
+          emptyTitle="Tidak Ada Data Cabang"
+          emptyDescription={searchTerm ? `Tidak ada cabang yang sesuai dengan pencarian "${searchTerm}"` : 'Belum ada data cabang terdaftar.'}
+          title="Master Data Cabang"
+          subtitle={`Menampilkan ${filteredCabang.length} dari ${allCabang.length} cabang`}
+          initialPageSize={10}
+        />
       )}
 
       {/* POSKO TABLE */}
       {activeSubTab === 'posko' && (
-        <div className="overflow-x-auto rounded-xl border border-[#232734]">
-          <table className="w-full text-left border-collapse">
-            <thead>
-              <tr className="bg-[#0e1015] border-b border-[#232734] text-[11px] font-bold text-[#8e96a8] uppercase tracking-wider">
-                <th className="py-2.5 px-3.5">Kode Posko</th>
-                <th className="py-2.5 px-3.5">Nama Posko</th>
-                <th className="py-2.5 px-3.5">Cabang Induk</th>
-                <th className="py-2.5 px-3.5 text-right">Aksi</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-[#1f2330] text-xs">
-              {filteredPosko.length === 0 ? (
-                <tr>
-                  <td colSpan={4} className="py-6 text-center text-[#6b7280]">
-                    Tidak ada data posko yang sesuai.
-                  </td>
-                </tr>
-              ) : (
-                filteredPosko.map((p) => {
-                  const branchObj = allCabang.find(c => c.kd_cabang === p.kd_cabang);
-                  return (
-                    <tr key={p.kd_posko} className="hover:bg-[#181b24] transition-colors">
-                      <td className="py-2.5 px-3.5 font-mono font-bold text-emerald-400">
-                        {p.kd_posko}
-                      </td>
-                      <td className="py-2.5 px-3.5 font-bold text-[#f1f3f7]">
-                        {p.nama_posko}
-                      </td>
-                      <td className="py-2.5 px-3.5">
-                        <span className="font-semibold text-blue-300 font-mono bg-blue-950/60 px-2 py-0.5 rounded border border-blue-800/60 text-[11px]">
-                          {p.kd_cabang}
-                        </span>
-                        <span className="text-[11px] text-[#8e96a8] ml-1.5">
-                          {branchObj?.nama_cabang || ''}
-                        </span>
-                      </td>
-                      <td className="py-2.5 px-3.5 text-right">
-                        <div className="flex items-center justify-end space-x-1">
-                          <button
-                            id={`btn-edit-posko-${p.kd_posko}`}
-                            onClick={() => handleOpenEditPosko(p)}
-                            className="p-1.5 text-amber-400 hover:bg-amber-950/50 rounded-lg transition-colors cursor-pointer"
-                            title="Edit Posko"
-                          >
-                            <Edit3 className="h-3.5 w-3.5" />
-                          </button>
-                          <button
-                            id={`btn-del-posko-${p.kd_posko}`}
-                            onClick={() => handleDeletePosko(p.kd_posko, p.nama_posko)}
-                            className="p-1.5 text-rose-400 hover:bg-rose-950/50 rounded-lg transition-colors cursor-pointer"
-                            title="Hapus Posko"
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
+        <DataTable<Posko>
+          tableKey="posko-management-table"
+          columns={poskoColumns}
+          data={filteredPosko}
+          keyExtractor={(p) => p.kd_posko}
+          emptyTitle="Tidak Ada Data Posko"
+          emptyDescription={searchTerm ? `Tidak ada posko yang sesuai dengan pencarian "${searchTerm}"` : 'Belum ada data posko terdaftar.'}
+          title="Master Data Posko"
+          subtitle={`Menampilkan ${filteredPosko.length} dari ${allPosko.length} posko`}
+          initialPageSize={10}
+        />
       )}
 
       {/* MODAL ADD / EDIT CABANG */}

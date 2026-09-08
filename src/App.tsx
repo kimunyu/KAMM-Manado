@@ -3,7 +3,7 @@ import { AuthProvider, useAuth } from './context/AuthContext';
 import { DatabaseService } from './services/storage';
 import { MediatorKontrak, FULog, ExCustomer, ExCustomerFULog, Cabang, Posko, User } from './types';
 import { Header } from './components/Header';
-import { Sidebar, ActiveTab } from './components/Sidebar';
+import { Sidebar, ActiveTab, ModuleId } from './components/Sidebar';
 import { Dashboard } from './components/Dashboard';
 import { DaftarMediator } from './components/DaftarMediator';
 import { RegistrasiMediator } from './components/RegistrasiMediator';
@@ -11,18 +11,60 @@ import { ValidasiKdMed } from './components/ValidasiKdMed';
 import { FollowUpModule } from './components/FollowUpModule';
 import { UserControl } from './components/UserControl';
 import { ExCustomerControl } from './components/ExCustomerControl';
+import { KontrolSalesModule } from './modules/kontrol-sales';
 import { MediatorDetailModal } from './components/MediatorDetailModal';
 import { MediatorEditModal } from './components/MediatorEditModal';
 import { LoginModal } from './components/LoginModal';
 import { ChangePasswordModal } from './components/ChangePasswordModal';
 import { UserProfileModal } from './components/UserProfileModal';
 
+const TAB_TO_MODULE_MAP: Record<ActiveTab, ModuleId> = {
+  'kontrol-sales': 'sales',
+  'dashboard': 'mediator',
+  'daftar-mediator': 'mediator',
+  'registrasi': 'mediator',
+  'validasi': 'mediator',
+  'follow-up': 'mediator',
+  'ex-customer': 'ex-customer',
+  'user-control': 'master-data',
+};
+
+const MODULE_DEFAULT_TAB: Record<ModuleId, ActiveTab> = {
+  'sales': 'kontrol-sales',
+  'mediator': 'dashboard',
+  'ex-customer': 'ex-customer',
+  'master-data': 'user-control',
+};
+
 function MainApp() {
   const { currentUser, canValidateKdMed, canRegisterMediator, canInputFU, canManageUsers } = useAuth();
 
-  const [activeTab, setActiveTab] = useState<ActiveTab>(
-    (currentUser?.role === 'ADM_BPKB' || currentUser?.role === 'ADMIN_BPKB') ? 'ex-customer' : 'dashboard'
-  );
+  const [activeTab, setActiveTab] = useState<ActiveTab>(() => {
+    if (currentUser?.role === 'ADM_DE') return 'kontrol-sales';
+    if (currentUser?.role === 'ADM_BPKB' || currentUser?.role === 'ADMIN_BPKB') return 'ex-customer';
+    return 'dashboard';
+  });
+
+  const [activeModule, setActiveModule] = useState<ModuleId>(() => {
+    if (currentUser?.role === 'ADM_DE') return 'sales';
+    if (currentUser?.role === 'ADM_BPKB' || currentUser?.role === 'ADMIN_BPKB') return 'ex-customer';
+    return 'mediator';
+  });
+
+  // Keep activeModule synchronized with activeTab
+  useEffect(() => {
+    const mapped = TAB_TO_MODULE_MAP[activeTab];
+    if (mapped && mapped !== activeModule) {
+      setActiveModule(mapped);
+    }
+  }, [activeTab]);
+
+  const handleSelectModule = (moduleId: ModuleId) => {
+    setActiveModule(moduleId);
+    if (TAB_TO_MODULE_MAP[activeTab] !== moduleId) {
+      setActiveTab(MODULE_DEFAULT_TAB[moduleId]);
+    }
+  };
   const [mediators, setMediators] = useState<MediatorKontrak[]>([]);
   const [fuLogs, setFuLogs] = useState<FULog[]>([]);
   const [exCustomers, setExCustomers] = useState<ExCustomer[]>([]);
@@ -67,6 +109,10 @@ function MainApp() {
 
   // Safeguard tab switching when role changes and user loses access to current tab
   useEffect(() => {
+    if (currentUser?.role === 'ADM_DE') {
+      setActiveTab('kontrol-sales');
+      return;
+    }
     if (currentUser?.role === 'ADM_BPKB' || currentUser?.role === 'ADMIN_BPKB') {
       setActiveTab('ex-customer');
       return;
@@ -143,6 +189,8 @@ function MainApp() {
           activeTab={activeTab}
           setActiveTab={setActiveTab}
           pendingCount={pendingCount}
+          activeModule={activeModule}
+          setActiveModule={handleSelectModule}
         />
 
         {/* Content Area */}
@@ -203,6 +251,14 @@ function MainApp() {
               allExCustomers={exCustomers}
               allExCustomerLogs={exCustomerLogs}
               onRefresh={loadDatabase}
+            />
+          )}
+
+          {activeTab === 'kontrol-sales' && (
+            <KontrolSalesModule
+              currentUser={currentUser}
+              allCabang={allCabang}
+              allPosko={allPosko}
             />
           )}
         </main>

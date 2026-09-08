@@ -27,6 +27,7 @@ import {
 import { ActiveTab } from './Sidebar';
 import { ImportMediatorModal } from './ImportMediatorModal';
 import { ConfirmDeleteModal } from './ConfirmDeleteModal';
+import { DataTable, ColumnDef } from './DataTable';
 
 interface DaftarMediatorProps {
   mediators: MediatorKontrak[];
@@ -212,6 +213,200 @@ export const DaftarMediator: React.FC<DaftarMediatorProps> = ({
     link.click();
     document.body.removeChild(link);
   };
+
+  // Columns Definition for Universal DataTable
+  const columns: ColumnDef<MediatorKontrak>[] = useMemo(() => [
+    {
+      key: 'kd_med',
+      header: 'KD MED',
+      sticky: 'left',
+      sortable: true,
+      hideable: false,
+      width: 'min-w-[140px]',
+      render: (med) => {
+        if (med.status === 'BELUM_AKTIF') {
+          return (
+            <div className="inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-lg bg-blue-950/70 text-blue-300 border border-blue-800/60 text-xs font-mono font-bold">
+              <FileText className="h-3 w-3 text-blue-400" />
+              <span>{med.kd_med}</span>
+            </div>
+          );
+        }
+        if (med.status === 'PENDING') {
+          return (
+            <div className="inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-lg bg-amber-950/60 text-amber-300 border border-amber-800/60 text-xs font-mono font-bold">
+              <Clock className="h-3 w-3 text-amber-400" />
+              <span>{med.kd_med}</span>
+            </div>
+          );
+        }
+        if (med.status === 'DITOLAK') {
+          return (
+            <span className="text-rose-300 bg-rose-950/70 px-2.5 py-0.5 rounded-lg font-semibold border border-rose-800/60 text-xs font-mono font-bold">
+              {med.kd_med}
+            </span>
+          );
+        }
+        return (
+          <span className="text-emerald-300 bg-emerald-950/70 px-2.5 py-0.5 rounded-lg font-semibold border border-emerald-800/60 text-xs font-mono font-bold">
+            {med.kd_med}
+          </span>
+        );
+      }
+    },
+    {
+      key: 'nama_mediator',
+      header: 'NAMA MEDIATOR',
+      sortable: true,
+      width: 'min-w-[200px]',
+      render: (med) => (
+        <div>
+          <div className="font-semibold text-[#f1f3f7] text-sm max-w-xs truncate" title={med.nama_mediator}>
+            {med.nama_mediator}
+          </div>
+          <div className="text-[11px] text-[#8e96a8] flex items-center space-x-1 mt-0.5">
+            <span>📞 {med.no_tlpn}</span>
+          </div>
+        </div>
+      )
+    },
+    {
+      key: 'status',
+      header: 'STATUS',
+      align: 'center',
+      sortable: true,
+      width: 'min-w-[150px]',
+      render: (med) => {
+        if (med.status === 'BELUM_AKTIF') {
+          return (
+            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-blue-950/80 text-blue-300 border border-blue-800/70">
+              BELUM AKTIF (Review)
+            </span>
+          );
+        }
+        if (med.status === 'PENDING') {
+          return (
+            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-950/80 text-amber-300 border border-amber-800/70">
+              PENDING (Input KD MED)
+            </span>
+          );
+        }
+        if (med.status === 'AKTIF') {
+          return (
+            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-950/80 text-emerald-300 border border-emerald-800/70">
+              <CheckCircle2 className="h-3 w-3 mr-1 text-emerald-400" />
+              AKTIF
+            </span>
+          );
+        }
+        if (med.status === 'INAKTIF') {
+          return (
+            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-[#1a1d27] text-[#8e96a8] border border-[#2e3446]">
+              INAKTIF
+            </span>
+          );
+        }
+        return (
+          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-rose-950/80 text-rose-300 border border-rose-800/70">
+            DITOLAK
+          </span>
+        );
+      }
+    },
+    {
+      key: 'tgl_akhir_fu',
+      header: 'TGL AKHIR FU',
+      sortable: true,
+      width: 'min-w-[160px]',
+      render: (med) => {
+        const fuCat = categorizeFU(med.tgl_akhir_fu);
+        const fuBadge = getFUCategoryBadge(fuCat);
+        return (
+          <div className="space-y-1">
+            <div className="font-medium text-[#f1f3f7]">
+              {formatDateIndo(med.tgl_akhir_fu)}
+            </div>
+            <div>
+              <span className={`inline-block text-[10px] font-semibold px-2 py-0.5 rounded-md border ${fuBadge.bg} ${fuBadge.textCol} ${fuBadge.border}`}>
+                {fuBadge.text}
+              </span>
+            </div>
+          </div>
+        );
+      }
+    },
+    {
+      key: 'kd_cabang',
+      header: 'CABANG / AO',
+      align: 'center',
+      width: 'min-w-[130px]',
+      render: (med) => (
+        <div>
+          <div className="text-[#c2c7d0] font-medium text-xs">{med.kd_cabang}</div>
+          <div className="text-[10px] text-[#6b7280]">{med.kd_posko} | AO: {med.kd_ao}</div>
+        </div>
+      )
+    },
+    {
+      key: 'actions',
+      header: 'AKSI',
+      sticky: 'right',
+      align: 'right',
+      hideable: false,
+      width: 'min-w-[140px]',
+      render: (med) => (
+        <div className="flex items-center justify-end space-x-1.5">
+          {canInputFU && (
+            <button
+              id={`btn-fu-med-${med.kd_med}`}
+              onClick={() => onSelectMediatorForFU(med.kd_med)}
+              className="p-1.5 text-blue-400 hover:bg-blue-950/60 hover:text-blue-300 rounded-lg transition-colors cursor-pointer"
+              title="Input Follow-Up (FU)"
+            >
+              <PhoneCall className="h-4 w-4" />
+            </button>
+          )}
+
+          <button
+            id={`btn-detail-med-${med.kd_med}`}
+            onClick={() => onViewDetail(med)}
+            className="p-1.5 text-[#8e96a8] hover:text-[#f1f3f7] hover:bg-[#1f2330] rounded-lg transition-colors cursor-pointer"
+            title="Lihat Detail Lengkap"
+          >
+            <Eye className="h-4 w-4" />
+          </button>
+
+          {canEditMediator(med.status) && (
+            <button
+              id={`btn-edit-med-${med.kd_med}`}
+              onClick={() => onEditMediator(med)}
+              className="p-1.5 text-amber-400 hover:bg-amber-950/60 hover:text-amber-300 rounded-lg transition-colors cursor-pointer"
+              title={
+                currentUser?.role === 'SUPER_ADMIN' || currentUser?.role === 'KAOPS'
+                  ? 'Edit / Koreksi Data Mediator (Akses Penuh)'
+                  : currentUser?.role === 'ADM'
+                  ? 'Edit / Koreksi Data Mediator (Status Baru / Pending)'
+                  : 'Edit / Koreksi Data Mediator (Status Baru)'
+              }
+            >
+              <Edit3 className="h-4 w-4" />
+            </button>
+          )}
+
+          {canDeleteMediator && (
+            <button
+              id={`btn-del-med-${med.kd_med}`}
+              onClick={() => setMediatorToDelete(med)}
+              className="p-1.5 text-rose-400 hover:bg-rose-950/60 hover:text-rose-300 rounded-lg transition-colors cursor-pointer"
+              title="Hapus Data (SUPER_ADMIN)"
+            >
+              <Trash2 className="h-4 w-4" />
+            </button>
+          )}
+        </div>
+      )
+    }
+  ], [canInputFU, canEditMediator, canDeleteMediator, currentUser?.role, onSelectMediatorForFU, onViewDetail, onEditMediator]);
 
   return (
     <div className="space-y-5">
@@ -481,245 +676,43 @@ export const DaftarMediator: React.FC<DaftarMediatorProps> = ({
         )}
       </div>
 
-      {/* SPECIFIED MAIN TABLE: [KD MED | NAMA MEDIATOR | STATUS | TGL AKHIR FU] */}
-      <div className="bg-[#13151c] rounded-2xl border border-[#232734] shadow-md overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
-            <thead>
-              <tr className="bg-[#0e1015] border-b border-[#232734] text-[11px] font-bold text-[#8e96a8] uppercase tracking-wider">
-                {/* 1. KD MED */}
-                <th className="py-3.5 px-4">
-                  <button
-                    id="btn-sort-kd-med"
-                    onClick={() => setSortOrder(prev => prev === 'asc' ? 'desc' : 'asc')}
-                    className="flex items-center space-x-1 text-[#c2c7d0] hover:text-blue-400 font-bold cursor-pointer"
-                    title="Klik untuk ubah urutan"
-                  >
-                    <span>KD MED</span>
-                    {sortOrder === 'asc' ? (
-                      <ArrowUp className="h-3.5 w-3.5 text-blue-400" />
-                    ) : (
-                      <ArrowDown className="h-3.5 w-3.5 text-blue-400" />
-                    )}
-                  </button>
-                </th>
-
-                {/* 2. NAMA MEDIATOR */}
-                <th className="py-3.5 px-4">NAMA MEDIATOR</th>
-
-                {/* 3. STATUS */}
-                <th className="py-3.5 px-4 text-center">STATUS</th>
-
-                {/* 4. TGL AKHIR FU */}
-                <th className="py-3.5 px-4">TGL AKHIR FU</th>
-
-                {/* Additional context & actions */}
-                <th className="py-3.5 px-4 text-center">CABANG / AO</th>
-                <th className="py-3.5 px-4 text-right">AKSI</th>
-              </tr>
-            </thead>
-
-            <tbody className="divide-y divide-[#1f2330] text-xs">
-              {filteredAndSortedMediators.length === 0 ? (
-                <tr>
-                  <td colSpan={6} className="py-14 text-center text-[#8e96a8]">
-                    <div className="max-w-md mx-auto space-y-3">
-                      <div className="p-3 bg-[#181a24] rounded-2xl w-fit mx-auto border border-[#272d3e] text-blue-400">
-                        <FileSpreadsheet className="h-8 w-8" />
-                      </div>
-                      <p className="font-bold text-[#f1f3f7] text-base">Belum Ada Data Mediator</p>
-                      <p className="text-xs text-[#8e96a8] leading-relaxed">
-                        Mulai input data mediator secara manual atau langsung unggah seluruh data agen yang sudah Anda miliki menggunakan file CSV/Excel.
-                      </p>
-                      <div className="flex items-center justify-center space-x-2 pt-2">
-                        {currentUser?.role === 'SUPER_ADMIN' && (
-                          <button
-                            id="btn-empty-state-import"
-                            onClick={() => setIsImportModalOpen(true)}
-                            className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl text-xs flex items-center space-x-1.5 shadow-lg shadow-blue-950/40 transition-colors cursor-pointer"
-                          >
-                            <UploadCloud className="h-4 w-4" />
-                            <span>Import Berkas CSV</span>
-                          </button>
-                        )}
-                        {canRegisterMediator && (
-                          <button
-                            id="btn-empty-state-reg"
-                            onClick={() => onNavigate('registrasi')}
-                            className="px-4 py-2 bg-[#1c202d] hover:bg-[#252b3d] text-[#e0e4eb] font-semibold rounded-xl text-xs border border-[#2d3448] flex items-center space-x-1.5 transition-colors cursor-pointer"
-                          >
-                            <Plus className="h-4 w-4" />
-                            <span>Registrasi Manual</span>
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  </td>
-                </tr>
-              ) : (
-                filteredAndSortedMediators.map((med, idx) => {
-                  const fuCat = categorizeFU(med.tgl_akhir_fu);
-                  const fuBadge = getFUCategoryBadge(fuCat);
-                  const isPending = med.status === 'PENDING';
-
-                  return (
-                    <tr 
-                      key={med.kd_med || med.temp_id || idx}
-                      className="hover:bg-[#181b24]/90 transition-colors group"
-                    >
-                      {/* Column 1: KD MED */}
-                      <td className="py-3.5 px-4 font-mono font-bold">
-                        {med.status === 'BELUM_AKTIF' ? (
-                          <div className="inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-lg bg-blue-950/70 text-blue-300 border border-blue-800/60 text-xs font-mono">
-                            <FileText className="h-3 w-3 text-blue-400" />
-                            <span>{med.kd_med}</span>
-                          </div>
-                        ) : med.status === 'PENDING' ? (
-                          <div className="inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-lg bg-amber-950/60 text-amber-300 border border-amber-800/60 text-xs font-mono">
-                            <Clock className="h-3 w-3 text-amber-400" />
-                            <span>{med.kd_med}</span>
-                          </div>
-                        ) : med.status === 'DITOLAK' ? (
-                          <span className="text-rose-300 bg-rose-950/70 px-2.5 py-0.5 rounded-lg font-semibold border border-rose-800/60 text-xs font-mono">
-                            {med.kd_med}
-                          </span>
-                        ) : (
-                          <span className="text-emerald-300 bg-emerald-950/70 px-2.5 py-0.5 rounded-lg font-semibold border border-emerald-800/60 text-xs font-mono">
-                            {med.kd_med}
-                          </span>
-                        )}
-                      </td>
-
-                      {/* Column 2: NAMA MEDIATOR */}
-                      <td className="py-3.5 px-4">
-                        <div className="font-semibold text-[#f1f3f7] text-sm max-w-xs truncate">
-                          {med.nama_mediator}
-                        </div>
-                        <div className="text-[11px] text-[#8e96a8] flex items-center space-x-1 mt-0.5">
-                          <span>📞 {med.no_tlpn}</span>
-                        </div>
-                      </td>
-
-                      {/* Column 3: STATUS */}
-                      <td className="py-3.5 px-4 text-center">
-                        {med.status === 'BELUM_AKTIF' && (
-                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-blue-950/80 text-blue-300 border border-blue-800/70">
-                            BELUM AKTIF (Review)
-                          </span>
-                        )}
-                        {med.status === 'PENDING' && (
-                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-950/80 text-amber-300 border border-amber-800/70">
-                            PENDING (Input KD MED)
-                          </span>
-                        )}
-                        {med.status === 'AKTIF' && (
-                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-950/80 text-emerald-300 border border-emerald-800/70">
-                            <CheckCircle2 className="h-3 w-3 mr-1 text-emerald-400" />
-                            AKTIF
-                          </span>
-                        )}
-                        {med.status === 'INAKTIF' && (
-                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-[#1a1d27] text-[#8e96a8] border border-[#2e3446]">
-                            INAKTIF
-                          </span>
-                        )}
-                        {med.status === 'DITOLAK' && (
-                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-rose-950/80 text-rose-300 border border-rose-800/70">
-                            DITOLAK
-                          </span>
-                        )}
-                      </td>
-
-                      {/* Column 4: TGL AKHIR FU */}
-                      <td className="py-3.5 px-4">
-                        <div className="space-y-1">
-                          <div className="font-medium text-[#f1f3f7]">
-                            {formatDateIndo(med.tgl_akhir_fu)}
-                          </div>
-                          <div>
-                            <span className={`inline-block text-[10px] font-semibold px-2 py-0.5 rounded-md border ${fuBadge.bg} ${fuBadge.textCol} ${fuBadge.border}`}>
-                              {fuBadge.text}
-                            </span>
-                          </div>
-                        </div>
-                      </td>
-
-                      {/* Cabang / AO Context */}
-                      <td className="py-3.5 px-4 text-center">
-                        <div className="text-[#c2c7d0] font-medium text-xs">{med.kd_cabang}</div>
-                        <div className="text-[10px] text-[#6b7280]">{med.kd_posko} | AO: {med.kd_ao}</div>
-                      </td>
-
-                      {/* Actions */}
-                      <td className="py-3.5 px-4 text-right">
-                        <div className="flex items-center justify-end space-x-1.5">
-                          {/* Quick Follow-Up Button */}
-                          {canInputFU && (
-                            <button
-                              id={`btn-fu-med-${med.kd_med}`}
-                              onClick={() => onSelectMediatorForFU(med.kd_med)}
-                              className="p-1.5 text-blue-400 hover:bg-blue-950/60 hover:text-blue-300 rounded-lg transition-colors cursor-pointer"
-                              title="Input Follow-Up (FU)"
-                            >
-                              <PhoneCall className="h-4 w-4" />
-                            </button>
-                          )}
-
-                          {/* Detail Button */}
-                          <button
-                            id={`btn-detail-med-${med.kd_med}`}
-                            onClick={() => onViewDetail(med)}
-                            className="p-1.5 text-[#8e96a8] hover:text-[#f1f3f7] hover:bg-[#1f2330] rounded-lg transition-colors cursor-pointer"
-                            title="Lihat Detail Lengkap"
-                          >
-                            <Eye className="h-4 w-4" />
-                          </button>
-
-                          {/* Edit Button (Role & Status Restricted) */}
-                          {canEditMediator(med.status) && (
-                            <button
-                              id={`btn-edit-med-${med.kd_med}`}
-                              onClick={() => onEditMediator(med)}
-                              className="p-1.5 text-amber-400 hover:bg-amber-950/60 hover:text-amber-300 rounded-lg transition-colors cursor-pointer"
-                              title={
-                                currentUser?.role === 'SUPER_ADMIN' || currentUser?.role === 'KAOPS'
-                                  ? 'Edit / Koreksi Data Mediator (Akses Penuh)'
-                                  : currentUser?.role === 'ADM'
-                                  ? 'Edit / Koreksi Data Mediator (Status Baru / Pending)'
-                                  : 'Edit / Koreksi Data Mediator (Status Baru)'
-                              }
-                            >
-                              <Edit3 className="h-4 w-4" />
-                            </button>
-                          )}
-
-                          {/* Delete Button (SUPER_ADMIN only) */}
-                          {canDeleteMediator && (
-                            <button
-                              id={`btn-del-med-${med.kd_med}`}
-                              onClick={() => setMediatorToDelete(med)}
-                              className="p-1.5 text-rose-400 hover:bg-rose-950/60 hover:text-rose-300 rounded-lg transition-colors cursor-pointer"
-                              title="Hapus Data (SUPER_ADMIN)"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </button>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
-
-        {/* Footer info */}
-        <div className="p-3.5 bg-[#0e1015] border-t border-[#232734] text-xs text-[#8e96a8] flex items-center justify-between">
-          <span>Menampilkan {filteredAndSortedMediators.length} dari {mediators.length} total mediator</span>
-          <span>Urutan: KD MED ({sortOrder === 'asc' ? 'A-Z Menanjak' : 'Z-A Menurun'})</span>
-        </div>
-      </div>
+      {/* UNIVERSAL PAGINATED DATATABLE */}
+      <DataTable<MediatorKontrak>
+        tableKey="mediator-kontrak-table"
+        columns={columns}
+        data={filteredAndSortedMediators}
+        keyExtractor={(med, idx) => med.kd_med || med.temp_id || String(idx)}
+        emptyIcon={<FileSpreadsheet className="h-8 w-8 text-blue-400" />}
+        emptyTitle="Belum Ada Data Mediator"
+        emptyDescription="Mulai input data mediator secara manual atau langsung unggah seluruh data agen yang sudah Anda miliki menggunakan file CSV/Excel."
+        emptyAction={
+          <div className="flex items-center justify-center space-x-2 pt-2">
+            {currentUser?.role === "SUPER_ADMIN" && (
+              <button
+                id="btn-empty-state-import"
+                onClick={() => setIsImportModalOpen(true)}
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl text-xs flex items-center space-x-1.5 shadow-lg shadow-blue-950/40 transition-colors cursor-pointer"
+              >
+                <UploadCloud className="h-4 w-4" />
+                <span>Import Berkas CSV</span>
+              </button>
+            )}
+            {canRegisterMediator && (
+              <button
+                id="btn-empty-state-reg"
+                onClick={() => onNavigate("registrasi")}
+                className="px-4 py-2 bg-[#1c202d] hover:bg-[#252b3d] text-[#e0e4eb] font-semibold rounded-xl text-xs border border-[#2d3448] flex items-center space-x-1.5 transition-colors cursor-pointer"
+              >
+                <Plus className="h-4 w-4" />
+                <span>Registrasi Manual</span>
+              </button>
+            )}
+          </div>
+        }
+        title="Daftar Mediator Kontrak"
+        subtitle={`Total ${filteredAndSortedMediators.length} mediator`}
+        initialPageSize={25}
+      />
 
       {/* Import Modal */}
       <ImportMediatorModal

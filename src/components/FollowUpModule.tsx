@@ -1,8 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { MediatorKontrak, FULog, HasilFU } from '../types';
 import { useAuth } from '../context/AuthContext';
 import { DatabaseService } from '../services/storage';
 import { formatDateTimeIndo, formatDateIndo } from '../utils/dateUtils';
+import { DataTable } from './DataTable';
+import { ColumnDef } from './DataTable/types';
 import { 
   PhoneCall, 
   Search, 
@@ -181,6 +183,100 @@ export const FollowUpModule: React.FC<FollowUpModuleProps> = ({
   const mediatorLogs = selectedMediator 
     ? DatabaseService.getFULogsByMediator(selectedMediator.kd_med)
     : [];
+
+  const fuTableColumns: ColumnDef<FULog>[] = useMemo(() => [
+    {
+      key: 'tgl_fu',
+      header: 'WAKTU FU',
+      sticky: 'left',
+      sortable: true,
+      width: 'min-w-[170px]',
+      render: (log) => (
+        <span className="whitespace-nowrap font-mono text-[#8e96a8]">
+          {formatDateTimeIndo(log.tgl_fu)}
+        </span>
+      )
+    },
+    {
+      key: 'kd_med',
+      header: 'KD MED',
+      sortable: true,
+      hideable: false,
+      width: 'min-w-[130px]',
+      render: (log) => (
+        <span className="font-mono font-bold text-blue-400">
+          {log.kd_med}
+        </span>
+      )
+    },
+    {
+      key: 'nama_mediator',
+      header: 'NAMA MEDIATOR',
+      sortable: true,
+      width: 'min-w-[180px]',
+      render: (log) => (
+        <span className="font-semibold text-[#f1f3f7]">
+          {log.nama_mediator}
+        </span>
+      )
+    },
+    {
+      key: 'hasil_fu',
+      header: 'HASIL FU',
+      sortable: true,
+      width: 'min-w-[180px]',
+      render: (log) => (
+        <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-semibold border ${
+          log.hasil_fu.includes('ada respon') && !log.hasil_fu.includes('tidak ada respon')
+            ? 'bg-emerald-950/70 text-emerald-300 border-emerald-800/60'
+            : log.hasil_fu.includes('tidak ada respon')
+            ? 'bg-amber-950/70 text-amber-300 border-amber-800/60'
+            : 'bg-rose-950/70 text-rose-300 border-rose-800/60'
+        }`}>
+          {log.hasil_fu}
+        </span>
+      )
+    },
+    {
+      key: 'catatan_fu',
+      header: 'CATATAN FU',
+      width: 'min-w-[220px]',
+      render: (log) => (
+        <span className="text-[#c2c7d0] italic truncate block max-w-xs" title={log.catatan_fu}>
+          "{log.catatan_fu}"
+        </span>
+      )
+    },
+    {
+      key: 'user_fu',
+      header: 'PETUGAS / AO',
+      width: 'min-w-[150px]',
+      render: (log) => (
+        <div className="text-[#c2c7d0]">
+          <span className="font-medium block">{log.user_fu}</span>
+          <span className="text-[10px] text-[#6b7280] block">{log.kd_cabang} / {log.kd_ao}</span>
+        </div>
+      )
+    },
+    {
+      key: 'actions',
+      header: 'AKSI',
+      sticky: 'right',
+      align: 'right',
+      hideable: false,
+      width: 'min-w-[120px]',
+      render: (log) => (
+        <button
+          id={`btn-detail-fu-${log.id}`}
+          onClick={() => setSelectedLogDetail(log)}
+          className="px-2.5 py-1 rounded-xl bg-blue-950/60 text-blue-300 hover:bg-blue-900/60 border border-blue-800/60 text-xs font-semibold transition-colors inline-flex items-center space-x-1 cursor-pointer"
+        >
+          <Eye className="h-3 w-3" />
+          <span>Lihat Detail</span>
+        </button>
+      )
+    }
+  ], []);
 
   return (
     <div className="space-y-6">
@@ -454,106 +550,18 @@ export const FollowUpModule: React.FC<FollowUpModuleProps> = ({
         </div>
       </div>
 
-      {/* SPEC REQUIREMENT: BOTTOM TABLE SHOWING LAST 5 FU LOGS SORTED BY NEWEST + 'LIHAT DETAIL' BUTTON */}
-      <div className="bg-[#13151c] rounded-2xl border border-[#232734] shadow-md overflow-hidden">
-        <div className="p-4 border-b border-[#232734] flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-          <div>
-            <h2 className="text-sm font-bold text-[#f1f3f7] flex items-center space-x-2">
-              <History className="h-4 w-4 text-blue-400" />
-              <span>5 Log Follow-Up (FU) Terakhir</span>
-            </h2>
-            <p className="text-xs text-[#8e96a8]">
-              Riwayat 5 aktivitas kontak mediator terbaru sistem terurut waktu terkini
-            </p>
-          </div>
-
-          <div className="flex items-center space-x-2">
-            <span className="text-xs text-[#8e96a8]">Total Log Sistem: {DatabaseService.getFULogs().length}</span>
-          </div>
-        </div>
-
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
-            <thead>
-              <tr className="bg-[#0e1015] border-b border-[#232734] text-[11px] font-bold text-[#8e96a8] uppercase tracking-wider">
-                <th className="py-3 px-4">Waktu FU</th>
-                <th className="py-3 px-4">KD MED</th>
-                <th className="py-3 px-4">Nama Mediator</th>
-                <th className="py-3 px-4">Hasil FU</th>
-                <th className="py-3 px-4">Catatan FU (Max 100)</th>
-                <th className="py-3 px-4">Petugas / AO</th>
-                <th className="py-3 px-4 text-right">Aksi</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-[#1f2330] text-xs">
-              {last5Logs.length === 0 ? (
-                <tr>
-                  <td colSpan={7} className="py-8 text-center text-[#8e96a8]">
-                    Belum ada riwayat log Follow-Up.
-                  </td>
-                </tr>
-              ) : (
-                last5Logs.map((log) => {
-                  return (
-                    <tr key={log.id} className="hover:bg-[#181b24] transition-colors">
-                      {/* Waktu FU */}
-                      <td className="py-3 px-4 whitespace-nowrap font-mono text-[#8e96a8]">
-                        {formatDateTimeIndo(log.tgl_fu)}
-                      </td>
-
-                      {/* KD MED */}
-                      <td className="py-3 px-4 font-mono font-bold text-blue-400">
-                        {log.kd_med}
-                      </td>
-
-                      {/* Nama Mediator */}
-                      <td className="py-3 px-4 font-semibold text-[#f1f3f7]">
-                        {log.nama_mediator}
-                      </td>
-
-                      {/* Hasil FU */}
-                      <td className="py-3 px-4">
-                        <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-semibold border ${
-                          log.hasil_fu.includes('ada respon') && !log.hasil_fu.includes('tidak ada respon')
-                            ? 'bg-emerald-950/70 text-emerald-300 border-emerald-800/60'
-                            : log.hasil_fu.includes('tidak ada respon')
-                            ? 'bg-amber-950/70 text-amber-300 border-amber-800/60'
-                            : 'bg-rose-950/70 text-rose-300 border-rose-800/60'
-                        }`}>
-                          {log.hasil_fu}
-                        </span>
-                      </td>
-
-                      {/* Catatan FU */}
-                      <td className="py-3 px-4 text-[#c2c7d0] max-w-xs truncate" title={log.catatan_fu}>
-                        "{log.catatan_fu}"
-                      </td>
-
-                      {/* Petugas */}
-                      <td className="py-3 px-4 text-[#c2c7d0]">
-                        <span className="font-medium">{log.user_fu}</span>
-                        <span className="text-[10px] text-[#6b7280] block">{log.kd_cabang} / {log.kd_ao}</span>
-                      </td>
-
-                      {/* SPEC REQUIREMENT: 'Lihat Detail' button */}
-                      <td className="py-3 px-4 text-right">
-                        <button
-                          id={`btn-detail-fu-${log.id}`}
-                          onClick={() => setSelectedLogDetail(log)}
-                          className="px-2.5 py-1 rounded-xl bg-blue-950/60 text-blue-300 hover:bg-blue-900/60 border border-blue-800/60 text-xs font-semibold transition-colors inline-flex items-center space-x-1 cursor-pointer"
-                        >
-                          <Eye className="h-3 w-3" />
-                          <span>Lihat Detail</span>
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
+      {/* SPEC REQUIREMENT: BOTTOM TABLE SHOWING LAST FU LOGS WITH UNIVERSAL PAGINATED DATATABLE */}
+      <DataTable<FULog>
+        tableKey="followup-logs-table"
+        columns={fuTableColumns}
+        data={last5Logs}
+        keyExtractor={(log) => log.id}
+        emptyTitle="Belum Ada Riwayat Log FU"
+        emptyDescription="Belum ada aktivitas follow-up yang tercatat pada sistem."
+        title="Riwayat Log Follow-Up (FU)"
+        subtitle={`Menampilkan ${last5Logs.length} aktivitas terbaru`}
+        initialPageSize={10}
+      />
 
       {/* DETAIL MODAL: LIHAT DETAIL LOG FU */}
       {selectedLogDetail && (

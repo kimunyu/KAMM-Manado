@@ -2,6 +2,8 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { AuditLog, AuditActionCategory, UserRole } from '../types';
 import { AuditService } from '../services/auditService';
 import { formatDateWita, formatDateTimeWita, formatRelativeTimeWita } from '../utils/formatters';
+import { DataTable } from './DataTable';
+import { ColumnDef } from './DataTable/types';
 import { 
   ShieldCheck, 
   Search, 
@@ -108,6 +110,101 @@ export const AuditTrailPanel: React.FC = () => {
         return { label: 'Sistem', bg: 'bg-slate-800 text-slate-300 border-slate-700', icon: FileText };
     }
   };
+
+  const auditColumns: ColumnDef<AuditLog>[] = useMemo(() => [
+    {
+      key: 'timestamp',
+      header: 'Waktu (WITA)',
+      sticky: 'left',
+      sortable: true,
+      width: 'min-w-[170px]',
+      render: (log) => (
+        <div>
+          <span className="font-mono text-xs text-[#f1f3f7] block">
+            {formatDateTimeWita(log.timestamp)}
+          </span>
+          <span className="text-[10px] text-[#6b7280]">
+            {formatRelativeTimeWita(log.timestamp)}
+          </span>
+        </div>
+      )
+    },
+    {
+      key: 'category',
+      header: 'Kategori & Aksi',
+      sortable: true,
+      width: 'min-w-[190px]',
+      render: (log) => {
+        const catBadge = getCategoryBadge(log.category);
+        const Icon = catBadge.icon;
+        return (
+          <div className="space-y-1">
+            <div className="flex items-center space-x-1.5">
+              <span className={`inline-flex items-center space-x-1 text-[10px] font-bold px-2 py-0.5 rounded-full border ${catBadge.bg}`}>
+                <Icon className="h-3 w-3 mr-1" />
+                {catBadge.label}
+              </span>
+              {log.target_id && (
+                <span className="text-[10px] font-mono bg-[#1f2433] text-indigo-300 px-1.5 py-0.5 rounded border border-[#2e374f]">
+                  {log.target_id}
+                </span>
+              )}
+            </div>
+            <span className="text-xs font-bold text-[#f1f3f7] block">{log.action}</span>
+          </div>
+        );
+      }
+    },
+    {
+      key: 'description',
+      header: 'Deskripsi Aktivitas',
+      width: 'min-w-[280px]',
+      render: (log) => {
+        const isExpanded = expandedLogId === log.id;
+        return (
+          <div className="space-y-1.5">
+            <p className="text-xs text-[#c2c7d0] leading-relaxed">
+              {log.description}
+            </p>
+            {log.metadata && Object.keys(log.metadata).length > 0 && (
+              <div>
+                <button
+                  type="button"
+                  onClick={() => setExpandedLogId(isExpanded ? null : log.id)}
+                  className="inline-flex items-center space-x-1 text-[10px] text-indigo-400 hover:text-indigo-300 font-semibold cursor-pointer"
+                >
+                  {isExpanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                  <span>{isExpanded ? 'Tutup Payload' : 'Lihat Payload JSON'}</span>
+                </button>
+                {isExpanded && (
+                  <div className="mt-2 p-2.5 bg-[#0f1117] border border-[#232734] rounded-xl text-xs font-mono text-emerald-400 overflow-x-auto max-w-lg">
+                    <pre>{JSON.stringify(log.metadata, null, 2)}</pre>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        );
+      }
+    },
+    {
+      key: 'actor_name',
+      header: 'Pelaksana (User)',
+      sortable: true,
+      width: 'min-w-[170px]',
+      render: (log) => (
+        <div>
+          <span className="font-semibold text-[#f1f3f7] flex items-center space-x-1">
+            <User className="h-3 w-3 text-indigo-400 shrink-0" />
+            <span>{log.actor_name}</span>
+          </span>
+          <span className="text-[11px] text-[#8e96a8] block">
+            {log.actor_role}{log.actor_kd_ao ? ` • ${log.actor_kd_ao}` : ''}
+          </span>
+        </div>
+      )
+    }
+  ], [expandedLogId]);
 
   return (
     <div className="space-y-6">
@@ -226,88 +323,18 @@ export const AuditTrailPanel: React.FC = () => {
         </div>
       </div>
 
-      {/* Log List */}
-      <div className="bg-[#13151c] border border-[#232734] rounded-2xl overflow-hidden shadow-lg">
-        {filteredLogs.length === 0 ? (
-          <div className="p-12 text-center text-[#8e96a8]">
-            <Activity className="h-8 w-8 mx-auto text-[#4b5563] mb-2" />
-            <p className="text-sm font-medium">Tidak ada riwayat aktivitas yang sesuai filter.</p>
-            <p className="text-xs text-[#6b7280] mt-1">Setiap aksi pengguna akan otomatis tercatat di sini secara real-time.</p>
-          </div>
-        ) : (
-          <div className="divide-y divide-[#1f2330]">
-            {filteredLogs.map((log) => {
-              const catBadge = getCategoryBadge(log.category);
-              const Icon = catBadge.icon;
-              const isExpanded = expandedLogId === log.id;
-
-              return (
-                <div 
-                  key={log.id} 
-                  className="p-4 hover:bg-[#181a24]/80 transition-colors"
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex items-start space-x-3 min-w-0">
-                      <div className="p-2 rounded-xl bg-[#1c202d] border border-[#2a3044] text-[#c2c7d0] shrink-0 mt-0.5">
-                        <Icon className="h-4 w-4" />
-                      </div>
-                      <div className="min-w-0">
-                        <div className="flex flex-wrap items-center gap-1.5 mb-1">
-                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${catBadge.bg}`}>
-                            {catBadge.label}
-                          </span>
-                          <span className="text-xs font-bold text-[#f1f3f7]">
-                            {log.action}
-                          </span>
-                          {log.target_id && (
-                            <span className="text-[11px] font-mono bg-[#1f2433] text-indigo-300 px-1.5 py-0.5 rounded border border-[#2e374f]">
-                              {log.target_id}
-                            </span>
-                          )}
-                        </div>
-                        <p className="text-xs text-[#c2c7d0] leading-relaxed">
-                          {log.description}
-                        </p>
-                        <div className="flex items-center gap-3 text-[11px] text-[#8e96a8] mt-2">
-                          <span className="font-medium text-[#e0e4eb] flex items-center gap-1">
-                            <User className="h-3 w-3 text-indigo-400" />
-                            {log.actor_name}
-                            <span className="text-[#8e96a8] font-normal">({log.actor_role}{log.actor_kd_ao ? ` - ${log.actor_kd_ao}` : ''})</span>
-                          </span>
-                          <span className="flex items-center gap-1">
-                            <Clock className="h-3 w-3 text-[#6b7280]" />
-                            {formatDateTimeWita(log.timestamp)}
-                            <span className="text-[#6b7280] hidden sm:inline">({formatRelativeTimeWita(log.timestamp)})</span>
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Expand Details button if metadata exists */}
-                    {log.metadata && Object.keys(log.metadata).length > 0 && (
-                      <button
-                        onClick={() => setExpandedLogId(isExpanded ? null : log.id)}
-                        className="p-1.5 text-[#8e96a8] hover:text-[#f1f3f7] hover:bg-[#1f2433] rounded-lg transition-colors cursor-pointer shrink-0"
-                        title="Lihat metadata teknis"
-                      >
-                        {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                      </button>
-                    )}
-                  </div>
-
-                  {/* Expanded Metadata */}
-                  {isExpanded && log.metadata && (
-                    <div className="mt-3 ml-11 p-3 bg-[#0f1117] border border-[#232734] rounded-xl text-xs font-mono text-[#a6adbb] overflow-x-auto animate-fade-in">
-                      <div className="text-[10px] text-[#6b7280] uppercase tracking-wider mb-1 font-bold">Metadata / Detail Payload:</div>
-                      <pre className="text-[11px] text-emerald-400">{JSON.stringify(log.metadata, null, 2)}</pre>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
+      {/* Log List - Universal Paginated DataTable */}
+      <DataTable<AuditLog>
+        tableKey="audit-trail-logs-table"
+        columns={auditColumns}
+        data={filteredLogs}
+        keyExtractor={(log) => log.id}
+        emptyTitle="Tidak Ada Riwayat Aktivitas"
+        emptyDescription="Tidak ada riwayat aktivitas yang sesuai filter. Setiap aksi pengguna akan otomatis tercatat di sini secara real-time."
+        title="Daftar Log Audit Trail"
+        subtitle={`Menampilkan ${filteredLogs.length} dari ${logs.length} catatan aktivitas`}
+        initialPageSize={25}
+      />
     </div>
   );
 };

@@ -11,6 +11,8 @@ import {
 import { DatabaseService } from '../services/storage';
 import { ImportBpkbModal } from './ImportBpkbModal';
 import { ConfirmDeleteModal } from './ConfirmDeleteModal';
+import { DataTable } from './DataTable';
+import { ColumnDef } from './DataTable/types';
 import { generateBpkbCSVTemplate } from '../utils/csvParser';
 import { 
   ShieldCheck, 
@@ -63,11 +65,19 @@ export const ExCustomerControl: React.FC<ExCustomerControlProps> = ({
 }) => {
   // Helper for ADM BPKB role
   const isAdmBpkb = currentUser.role === 'ADM_BPKB' || currentUser.role === 'ADMIN_BPKB';
+  const canAccessMasterDataEx = currentUser.role === 'SUPER_ADMIN' || currentUser.role === 'RM' || isAdmBpkb;
 
   // Navigation tabs for Ex-Customer module
   const [activeTab, setActiveTab] = useState<'drip' | 'input_bpkb' | 'my_assignments' | 'master' | 'logs'>(
     isAdmBpkb ? 'input_bpkb' : currentUser.role === 'CMO' ? 'my_assignments' : 'drip'
   );
+
+  // Safety fallback if activeTab is 'master' but role is not authorized
+  React.useEffect(() => {
+    if (!canAccessMasterDataEx && activeTab === 'master') {
+      setActiveTab(isAdmBpkb ? 'input_bpkb' : currentUser.role === 'CMO' ? 'my_assignments' : 'drip');
+    }
+  }, [canAccessMasterDataEx, activeTab, isAdmBpkb, currentUser.role]);
 
   // Selected Branch & Posko filters
   const [selectedCabang, setSelectedCabang] = useState<string>(currentUser.kd_cabang || allCabang[0]?.kd_cabang || 'C16');
@@ -346,6 +356,358 @@ export const ExCustomerControl: React.FC<ExCustomerControlProps> = ({
     return `https://wa.me/${clean}?text=${greeting}`;
   };
 
+  // Universal DataTable Column Definitions
+  const bpkbColumns: ColumnDef<ExCustomer>[] = useMemo(() => [
+    {
+      key: 'no_psb',
+      header: 'No. PSB',
+      sticky: 'left',
+      sortable: true,
+      hideable: false,
+      width: 'min-w-[150px]',
+      render: (item) => (
+        <span className="font-mono font-bold text-[#f1f3f7]">{item.no_psb}</span>
+      )
+    },
+    {
+      key: 'nama_konsumen',
+      header: 'Nama Konsumen',
+      sortable: true,
+      width: 'min-w-[200px]',
+      render: (item) => (
+        <div>
+          <span className="font-semibold text-[#f1f3f7] block">{item.nama_konsumen}</span>
+          <span className="block text-[10px] text-[#6b7280]">
+            {item.kd_cab} • {item.kd_pos}
+          </span>
+        </div>
+      )
+    },
+    {
+      key: 'no_telepon',
+      header: 'No. Telepon',
+      width: 'min-w-[140px]',
+      render: (item) => (
+        <span className="font-mono text-[#c2c7d0]">{item.no_telepon}</span>
+      )
+    },
+    {
+      key: 'tgl_bpkb_sdk',
+      header: 'Tgl Serah BPKB',
+      sortable: true,
+      width: 'min-w-[140px]',
+      render: (item) => (
+        <span className="text-[#8e96a8]">{item.tgl_bpkb_sdk}</span>
+      )
+    },
+    {
+      key: 'status_kredit_lunas',
+      header: 'Status Lunas',
+      sortable: true,
+      width: 'min-w-[150px]',
+      render: (item) => (
+        <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold border ${
+          item.status_kredit_lunas === 'Lebih Awal' ? 'bg-emerald-950/70 text-emerald-300 border-emerald-800/60' :
+          item.status_kredit_lunas === 'Tepat Waktu' ? 'bg-blue-950/70 text-blue-300 border-blue-800/60' :
+          'bg-amber-950/70 text-amber-300 border-amber-800/60'
+        }`}>
+          {item.status_kredit_lunas}
+        </span>
+      )
+    },
+    {
+      key: 'remainingHours',
+      header: 'Sisa Akses Edit',
+      align: 'center',
+      width: 'min-w-[150px]',
+      render: (item) => {
+        const canEdit = adminBpkbData.canEdit(item);
+        const remHours = adminBpkbData.remainingHours(item);
+        return canEdit ? (
+          <span className="inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-950/60 text-amber-300 border border-amber-800/60">
+            <Clock className="h-3 w-3 text-amber-400" />
+            <span>{remHours} Jam Tersisa</span>
+          </span>
+        ) : (
+          <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-gray-900 text-gray-500 border border-gray-800">
+            Terkunci
+          </span>
+        );
+      }
+    },
+    {
+      key: 'actions',
+      header: 'Aksi',
+      sticky: 'right',
+      align: 'right',
+      hideable: false,
+      width: 'min-w-[130px]',
+      render: (item) => {
+        const canEdit = adminBpkbData.canEdit(item);
+        return (
+          <div className="flex items-center justify-end space-x-1.5">
+            {canEdit && (
+              <button
+                id={`btn-edit-ex-${item.no_psb}`}
+                onClick={() => setEditingCustomer(item)}
+                className="px-2.5 py-1 bg-[#1f2330] hover:bg-[#2a3042] text-amber-300 text-xs font-semibold rounded-lg border border-[#373e54] transition-colors cursor-pointer inline-flex items-center space-x-1"
+              >
+                <Edit3 className="h-3 w-3" />
+                <span>Edit</span>
+              </button>
+            )}
+            {currentUser.role === 'SUPER_ADMIN' && (
+              <button
+                id={`btn-delete-ex-hist-${item.no_psb}`}
+                onClick={() => setCustomerToDelete(item)}
+                className="p-1.5 bg-[#1c1417] hover:bg-rose-950 text-rose-400 hover:text-rose-300 rounded-lg border border-rose-900/60 transition-colors cursor-pointer inline-flex items-center"
+                title="Hapus Data Ex-Customer (Super Admin)"
+              >
+                <Trash2 className="h-3 w-3" />
+              </button>
+            )}
+          </div>
+        );
+      }
+    }
+  ], [adminBpkbData, currentUser.role]);
+
+  const exCustomerColumns: ColumnDef<ExCustomer>[] = useMemo(() => [
+    {
+      key: 'nama_konsumen',
+      header: 'No. PSB & Konsumen',
+      sticky: 'left',
+      sortable: true,
+      hideable: false,
+      width: 'min-w-[220px]',
+      render: (item) => (
+        <div>
+          <div className="font-bold text-[#f1f3f7]">{item.nama_konsumen}</div>
+          <div className="font-mono text-[11px] text-amber-400/90">{item.no_psb}</div>
+          <div className="text-[10px] text-[#6b7280]">
+            Tgl BPKB: {item.tgl_bpkb_sdk} • Posko: {item.kd_pos}
+          </div>
+        </div>
+      )
+    },
+    {
+      key: 'no_telepon',
+      header: 'Kontak / WhatsApp',
+      width: 'min-w-[170px]',
+      render: (item) => (
+        <div>
+          <div className="font-mono font-medium text-[#f1f3f7] flex items-center space-x-1.5">
+            <span>{item.no_telepon}</span>
+          </div>
+          <a
+            href={getCleanWhatsappLink(item.no_telepon, item.nama_konsumen)}
+            target="_blank"
+            rel="noreferrer"
+            className="mt-1 inline-flex items-center space-x-1 text-[11px] text-emerald-400 hover:text-emerald-300 font-semibold hover:underline"
+          >
+            <Send className="h-3 w-3" />
+            <span>Hubungi WA</span>
+          </a>
+        </div>
+      )
+    },
+    {
+      key: 'status_kredit_lunas',
+      header: 'Status Pelunasan',
+      sortable: true,
+      width: 'min-w-[150px]',
+      render: (item) => (
+        <span className={`px-2.5 py-0.5 rounded-lg text-[10px] font-bold border ${
+          item.status_kredit_lunas === 'Lebih Awal' ? 'bg-emerald-950/70 text-emerald-300 border-emerald-800/60' :
+          item.status_kredit_lunas === 'Tepat Waktu' ? 'bg-blue-950/70 text-blue-300 border-blue-800/60' :
+          'bg-amber-950/70 text-amber-300 border-amber-800/60'
+        }`}>
+          {item.status_kredit_lunas}
+        </span>
+      )
+    },
+    {
+      key: 'last_fu_status',
+      header: 'Status & Catatan FU',
+      width: 'min-w-[220px]',
+      render: (item) => {
+        const isFued = !!item.last_fu_date;
+        if (isFued) {
+          return (
+            <div className="space-y-1">
+              <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold border ${
+                item.last_fu_status === 'WA/Tlpn Aktif, ada respon' ? 'bg-emerald-950/70 text-emerald-300 border-emerald-800/60' :
+                item.last_fu_status === 'WA/Tlpn Aktif, tidak ada respon' ? 'bg-amber-950/70 text-amber-300 border-amber-800/60' :
+                'bg-rose-950/70 text-rose-300 border-rose-800/60'
+              }`}>
+                {item.last_fu_status}
+              </span>
+              {item.last_fu_notes && (
+                <p className="text-[11px] text-[#c2c7d0] italic line-clamp-2">
+                  "{item.last_fu_notes}"
+                </p>
+              )}
+              <span className="text-[10px] text-[#6b7280] block">
+                Oleh {item.last_fu_by_user} ({item.last_fu_by_role})
+              </span>
+            </div>
+          );
+        }
+        return (
+          <span className="text-[11px] text-amber-400/80 font-medium flex items-center space-x-1">
+            <Clock className="h-3 w-3" />
+            <span>Belum di-Follow Up</span>
+          </span>
+        );
+      }
+    },
+    {
+      key: 'assigned_to_cmo_name',
+      header: 'Penugasan CMO',
+      width: 'min-w-[160px]',
+      render: (item) => (
+        item.assigned_to_cmo_name ? (
+          <div>
+            <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-blue-950/80 text-blue-300 border border-blue-800/60">
+              {item.assigned_to_cmo_name}
+            </span>
+            {currentUser.role === 'KAPOS' && (
+              <button
+                onClick={() => handleUnassignCmo(item.no_psb)}
+                className="block mt-1 text-[10px] text-rose-400 hover:underline cursor-pointer"
+              >
+                Batal Tugas
+              </button>
+            )}
+          </div>
+        ) : (
+          <span className="text-[11px] text-[#6b7280] italic">
+            Pool Bersama Posko
+          </span>
+        )
+      )
+    },
+    {
+      key: 'actions',
+      header: 'Aksi',
+      sticky: 'right',
+      align: 'right',
+      hideable: false,
+      width: 'min-w-[160px]',
+      render: (item) => {
+        const isFued = !!item.last_fu_date;
+        return (
+          <div className="flex items-center justify-end space-x-1.5">
+            <button
+              id={`btn-fu-ex-${item.no_psb}`}
+              onClick={() => {
+                setFuModalCustomer(item);
+                setHasilFU('WA/Tlpn Aktif, ada respon');
+                setCatatanFU(item.last_fu_notes || '');
+              }}
+              className="px-2.5 py-1.5 bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 text-white text-xs font-bold rounded-xl shadow-sm transition-all cursor-pointer flex items-center space-x-1"
+            >
+              <MessageSquare className="h-3.5 w-3.5" />
+              <span>{isFued ? 'Update FU' : 'Form FU'}</span>
+            </button>
+
+            {(currentUser.role === 'KAPOS' || currentUser.role === 'SUPER_ADMIN') && (
+              <button
+                id={`btn-assign-cmo-${item.no_psb}`}
+                onClick={() => {
+                  const allowed: StatusKreditLunas[] = ['Lebih Awal', 'Tepat Waktu', 'Dalam Perhatian Khusus', 'Kurang Lancar'];
+                  if (!allowed.includes(item.status_kredit_lunas)) {
+                    alert(`Hanya konsumen kategori 'Lebih Awal', 'Tepat Waktu', 'Dalam Perhatian Khusus', dan 'Kurang Lancar' yang dapat ditugaskan ke CMO! Kategori saat ini: ${item.status_kredit_lunas}`);
+                    return;
+                  }
+                  setAssignModalCustomer(item);
+                }}
+                className="p-1.5 bg-[#1c1f2a] hover:bg-[#252a3a] text-blue-300 rounded-xl border border-[#272d3e] transition-colors cursor-pointer"
+                title="Tugaskan ke CMO"
+              >
+                <UserPlus className="h-3.5 w-3.5" />
+              </button>
+            )}
+
+            {currentUser.role === 'SUPER_ADMIN' && (
+              <button
+                id={`btn-delete-ex-${item.no_psb}`}
+                onClick={() => setCustomerToDelete(item)}
+                className="p-1.5 bg-[#1c1417] hover:bg-rose-950 text-rose-400 hover:text-rose-300 rounded-xl border border-rose-900/60 transition-colors cursor-pointer"
+                title="Hapus Data Ex-Customer (Super Admin)"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
+        );
+      }
+    }
+  ], [currentUser.role, handleUnassignCmo]);
+
+  const fuLogColumns: ColumnDef<ExCustomerFULog>[] = useMemo(() => [
+    {
+      key: 'tgl_fu',
+      header: 'Waktu FU',
+      sticky: 'left',
+      sortable: true,
+      width: 'min-w-[170px]',
+      render: (log) => (
+        <span className="text-[#8e96a8] font-mono text-[11px]">
+          {new Date(log.tgl_fu).toLocaleString('id-ID')}
+        </span>
+      )
+    },
+    {
+      key: 'nama_konsumen',
+      header: 'No. PSB & Konsumen',
+      sortable: true,
+      width: 'min-w-[200px]',
+      render: (log) => (
+        <div>
+          <span className="font-bold text-[#f1f3f7] block">{log.nama_konsumen}</span>
+          <span className="font-mono text-[10px] text-amber-400">{log.no_psb}</span>
+        </div>
+      )
+    },
+    {
+      key: 'hasil_fu',
+      header: 'Hasil Follow-Up',
+      sortable: true,
+      width: 'min-w-[180px]',
+      render: (log) => (
+        <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold border ${
+          log.hasil_fu === 'WA/Tlpn Aktif, ada respon' ? 'bg-emerald-950/70 text-emerald-300 border-emerald-800/60' :
+          log.hasil_fu === 'WA/Tlpn Aktif, tidak ada respon' ? 'bg-amber-950/70 text-amber-300 border-amber-800/60' :
+          'bg-rose-950/70 text-rose-300 border-rose-800/60'
+        }`}>
+          {log.hasil_fu}
+        </span>
+      )
+    },
+    {
+      key: 'catatan_fu',
+      header: 'Catatan (Maks 100 Karakter)',
+      width: 'min-w-[220px]',
+      render: (log) => (
+        <span className="text-[#c2c7d0] italic">
+          "{log.catatan_fu || '-'}"
+        </span>
+      )
+    },
+    {
+      key: 'user_fu',
+      header: 'Petugas FU',
+      width: 'min-w-[160px]',
+      render: (log) => (
+        <div>
+          <span className="font-semibold text-[#f1f3f7] block">{log.user_fu}</span>
+          <span className="text-[10px] text-[#6b7280] font-mono">{log.user_role} {log.kd_ao ? `• ${log.kd_ao}` : ''}</span>
+        </div>
+      )
+    }
+  ], []);
+
   return (
     <div className="space-y-6">
       {/* HEADER SECTION */}
@@ -474,8 +836,8 @@ export const ExCustomerControl: React.FC<ExCustomerControlProps> = ({
           </button>
         )}
 
-        {/* Tab: Master Data (All Ex-Customers) */}
-        {!isAdmBpkb && currentUser.role !== 'CMO' && (
+        {/* Tab: Master Data (All Ex-Customers) - Khusus Super Admin, RM, dan ADM BPKB */}
+        {canAccessMasterDataEx && (
           <button
             id="tab-ex-master"
             onClick={() => setActiveTab('master')}
@@ -765,101 +1127,15 @@ export const ExCustomerControl: React.FC<ExCustomerControlProps> = ({
               </span>
             </div>
 
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse text-xs">
-                <thead>
-                  <tr className="bg-[#0e1015] border-b border-[#232734] text-[11px] font-bold text-[#8e96a8] uppercase">
-                    <th className="py-3 px-4">No. PSB</th>
-                    <th className="py-3 px-4">Nama Konsumen</th>
-                    <th className="py-3 px-4">No. Telepon</th>
-                    <th className="py-3 px-4">Tgl Serah BPKB</th>
-                    <th className="py-3 px-4">Status Lunas</th>
-                    <th className="py-3 px-4 text-center">Sisa Akses Edit</th>
-                    <th className="py-3 px-4 text-right">Aksi</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-[#1f2330]">
-                  {adminBpkbData.data.length === 0 ? (
-                    <tr>
-                      <td colSpan={7} className="py-8 text-center text-xs text-[#8e96a8]">
-                        Belum ada data BPKB yang diinput dalam kurun 48 jam terakhir.
-                      </td>
-                    </tr>
-                  ) : (
-                    adminBpkbData.data.map(item => {
-                      const canEdit = adminBpkbData.canEdit(item);
-                      const remHours = adminBpkbData.remainingHours(item);
-
-                      return (
-                        <tr key={item.no_psb} className="hover:bg-[#181b24] transition-colors">
-                          <td className="py-3 px-4 font-mono font-bold text-[#f1f3f7]">
-                            {item.no_psb}
-                          </td>
-                          <td className="py-3 px-4 font-semibold text-[#f1f3f7]">
-                            {item.nama_konsumen}
-                            <span className="block text-[10px] text-[#6b7280]">
-                              {item.kd_cab} • {item.kd_pos}
-                            </span>
-                          </td>
-                          <td className="py-3 px-4 font-mono text-[#c2c7d0]">
-                            {item.no_telepon}
-                          </td>
-                          <td className="py-3 px-4 text-[#8e96a8]">
-                            {item.tgl_bpkb_sdk}
-                          </td>
-                          <td className="py-3 px-4">
-                            <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold border ${
-                              item.status_kredit_lunas === 'Lebih Awal' ? 'bg-emerald-950/70 text-emerald-300 border-emerald-800/60' :
-                              item.status_kredit_lunas === 'Tepat Waktu' ? 'bg-blue-950/70 text-blue-300 border-blue-800/60' :
-                              'bg-amber-950/70 text-amber-300 border-amber-800/60'
-                            }`}>
-                              {item.status_kredit_lunas}
-                            </span>
-                          </td>
-                          <td className="py-3 px-4 text-center">
-                            {canEdit ? (
-                              <span className="inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-950/60 text-amber-300 border border-amber-800/60">
-                                <Clock className="h-3 w-3 text-amber-400" />
-                                <span>{remHours} Jam Tersisa</span>
-                              </span>
-                            ) : (
-                              <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-gray-900 text-gray-500 border border-gray-800">
-                                Terkunci
-                              </span>
-                            )}
-                          </td>
-                          <td className="py-3 px-4 text-right">
-                            <div className="flex items-center justify-end space-x-1.5">
-                              {canEdit && (
-                                <button
-                                  id={`btn-edit-ex-${item.no_psb}`}
-                                  onClick={() => setEditingCustomer(item)}
-                                  className="px-2.5 py-1 bg-[#1f2330] hover:bg-[#2a3042] text-amber-300 text-xs font-semibold rounded-lg border border-[#373e54] transition-colors cursor-pointer inline-flex items-center space-x-1"
-                                >
-                                  <Edit3 className="h-3 w-3" />
-                                  <span>Edit</span>
-                                </button>
-                              )}
-
-                              {currentUser.role === 'SUPER_ADMIN' && (
-                                <button
-                                  id={`btn-delete-ex-hist-${item.no_psb}`}
-                                  onClick={() => setCustomerToDelete(item)}
-                                  className="p-1.5 bg-[#1c1417] hover:bg-rose-950 text-rose-400 hover:text-rose-300 rounded-lg border border-rose-900/60 transition-colors cursor-pointer inline-flex items-center"
-                                  title="Hapus Data Ex-Customer (Super Admin)"
-                                >
-                                  <Trash2 className="h-3 w-3" />
-                                </button>
-                              )}
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })
-                  )}
-                </tbody>
-              </table>
-            </div>
+            <DataTable<ExCustomer>
+              tableKey="ex-customer-bpkb-table"
+              columns={bpkbColumns}
+              data={adminBpkbData.data}
+              keyExtractor={(item) => item.no_psb}
+              emptyTitle="Belum Ada Data BPKB"
+              emptyDescription="Belum ada data jaminan BPKB yang diinput dalam kurun 48 jam terakhir."
+              initialPageSize={10}
+            />
           </div>
         </div>
       )}
@@ -1010,184 +1286,18 @@ export const ExCustomerControl: React.FC<ExCustomerControlProps> = ({
             </div>
           </div>
 
-          {/* TABLE OF CONSUMERS */}
-          <div className="bg-[#13151c] rounded-2xl border border-[#232734] shadow-md overflow-hidden space-y-3">
-            <div className="p-3.5 bg-[#0d0e12] border-b border-[#232734] flex items-center justify-between text-xs text-[#8e96a8]">
-              <span>
-                Menampilkan <strong className="text-[#f1f3f7]">{filteredList.length}</strong> konsumen
-                {activeTab === 'drip' && ' dalam kuota drip hari ini (Prioritas Lunas Lebih Awal & Tepat Waktu)'}
-              </span>
-            </div>
-
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse text-xs">
-                <thead>
-                  <tr className="bg-[#0e1015] border-b border-[#232734] text-[11px] font-bold text-[#8e96a8] uppercase">
-                    <th className="py-3 px-4">No. PSB & Konsumen</th>
-                    <th className="py-3 px-4">Kontak / WhatsApp</th>
-                    <th className="py-3 px-4">Status Pelunasan</th>
-                    <th className="py-3 px-4">Status & Catatan FU</th>
-                    <th className="py-3 px-4">Penugasan CMO</th>
-                    <th className="py-3 px-4 text-right">Aksi</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-[#1f2330]">
-                  {filteredList.length === 0 ? (
-                    <tr>
-                      <td colSpan={6} className="py-12 text-center text-xs text-[#8e96a8]">
-                        Tidak ada data konsumen yang sesuai kriteria pencarian/filter.
-                      </td>
-                    </tr>
-                  ) : (
-                    filteredList.map(item => {
-                      const isFued = !!item.last_fu_date;
-
-                      return (
-                        <tr key={item.no_psb} className="hover:bg-[#181b24] transition-colors">
-                          {/* PSB & Name */}
-                          <td className="py-3.5 px-4">
-                            <div className="font-bold text-[#f1f3f7]">{item.nama_konsumen}</div>
-                            <div className="font-mono text-[11px] text-amber-400/90">{item.no_psb}</div>
-                            <div className="text-[10px] text-[#6b7280]">
-                              Tgl BPKB: {item.tgl_bpkb_sdk} • Posko: {item.kd_pos}
-                            </div>
-                          </td>
-
-                          {/* Contact */}
-                          <td className="py-3.5 px-4">
-                            <div className="font-mono font-medium text-[#f1f3f7] flex items-center space-x-1.5">
-                              <span>{item.no_telepon}</span>
-                            </div>
-                            <a
-                              href={getCleanWhatsappLink(item.no_telepon, item.nama_konsumen)}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="mt-1 inline-flex items-center space-x-1 text-[11px] text-emerald-400 hover:text-emerald-300 font-semibold hover:underline"
-                            >
-                              <Send className="h-3 w-3" />
-                              <span>Hubungi WA</span>
-                            </a>
-                          </td>
-
-                          {/* Status Kredit Lunas */}
-                          <td className="py-3.5 px-4">
-                            <span className={`px-2.5 py-0.5 rounded-lg text-[10px] font-bold border ${
-                              item.status_kredit_lunas === 'Lebih Awal' ? 'bg-emerald-950/70 text-emerald-300 border-emerald-800/60' :
-                              item.status_kredit_lunas === 'Tepat Waktu' ? 'bg-blue-950/70 text-blue-300 border-blue-800/60' :
-                              'bg-amber-950/70 text-amber-300 border-amber-800/60'
-                            }`}>
-                              {item.status_kredit_lunas}
-                            </span>
-                          </td>
-
-                          {/* Last FU Status & Notes */}
-                          <td className="py-3.5 px-4 max-w-xs">
-                            {isFued ? (
-                              <div className="space-y-1">
-                                <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold border ${
-                                  item.last_fu_status === 'WA/Tlpn Aktif, ada respon' ? 'bg-emerald-950/70 text-emerald-300 border-emerald-800/60' :
-                                  item.last_fu_status === 'WA/Tlpn Aktif, tidak ada respon' ? 'bg-amber-950/70 text-amber-300 border-amber-800/60' :
-                                  'bg-rose-950/70 text-rose-300 border-rose-800/60'
-                                }`}>
-                                  {item.last_fu_status}
-                                </span>
-                                {item.last_fu_notes && (
-                                  <p className="text-[11px] text-[#c2c7d0] italic line-clamp-2">
-                                    "{item.last_fu_notes}"
-                                  </p>
-                                )}
-                                <span className="text-[10px] text-[#6b7280] block">
-                                  Oleh {item.last_fu_by_user} ({item.last_fu_by_role})
-                                </span>
-                              </div>
-                            ) : (
-                              <span className="text-[11px] text-amber-400/80 font-medium flex items-center space-x-1">
-                                <Clock className="h-3 w-3" />
-                                <span>Belum di-Follow Up</span>
-                              </span>
-                            )}
-                          </td>
-
-                          {/* Penugasan CMO */}
-                          <td className="py-3.5 px-4">
-                            {item.assigned_to_cmo_name ? (
-                              <div>
-                                <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-blue-950/80 text-blue-300 border border-blue-800/60">
-                                  {item.assigned_to_cmo_name}
-                                </span>
-                                {currentUser.role === 'KAPOS' && (
-                                  <button
-                                    onClick={() => handleUnassignCmo(item.no_psb)}
-                                    className="block mt-1 text-[10px] text-rose-400 hover:underline cursor-pointer"
-                                  >
-                                    Batal Tugas
-                                  </button>
-                                )}
-                              </div>
-                            ) : (
-                              <span className="text-[11px] text-[#6b7280] italic">
-                                Pool Bersama Posko
-                              </span>
-                            )}
-                          </td>
-
-                          {/* Actions */}
-                          <td className="py-3.5 px-4 text-right">
-                            <div className="flex items-center justify-end space-x-1.5">
-                              {/* Direct FU Button */}
-                              <button
-                                id={`btn-fu-ex-${item.no_psb}`}
-                                onClick={() => {
-                                  setFuModalCustomer(item);
-                                  setHasilFU('WA/Tlpn Aktif, ada respon');
-                                  setCatatanFU(item.last_fu_notes || '');
-                                }}
-                                className="px-2.5 py-1.5 bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 text-white text-xs font-bold rounded-xl shadow-sm transition-all cursor-pointer flex items-center space-x-1"
-                              >
-                                <MessageSquare className="h-3.5 w-3.5" />
-                                <span>{isFued ? 'Update FU' : 'Form FU'}</span>
-                              </button>
-
-                              {/* Kapos Assign to CMO Button */}
-                              {(currentUser.role === 'KAPOS' || currentUser.role === 'SUPER_ADMIN') && (
-                                <button
-                                  id={`btn-assign-cmo-${item.no_psb}`}
-                                  onClick={() => {
-                                    const allowed: StatusKreditLunas[] = ['Lebih Awal', 'Tepat Waktu', 'Dalam Perhatian Khusus', 'Kurang Lancar'];
-                                    if (!allowed.includes(item.status_kredit_lunas)) {
-                                      alert(`Hanya konsumen kategori 'Lebih Awal', 'Tepat Waktu', 'Dalam Perhatian Khusus', dan 'Kurang Lancar' yang dapat ditugaskan ke CMO! Kategori saat ini: ${item.status_kredit_lunas}`);
-                                      return;
-                                    }
-                                    setAssignModalCustomer(item);
-                                  }}
-                                  className="p-1.5 bg-[#1c1f2a] hover:bg-[#252a3a] text-blue-300 rounded-xl border border-[#272d3e] transition-colors cursor-pointer"
-                                  title="Tugaskan ke CMO (Khusus kategori Lebih Awal, Tepat Waktu, DPK, Kurang Lancar)"
-                                >
-                                  <UserPlus className="h-3.5 w-3.5" />
-                                </button>
-                              )}
-
-                              {/* Super Admin Delete Button */}
-                              {currentUser.role === 'SUPER_ADMIN' && (
-                                <button
-                                  id={`btn-delete-ex-${item.no_psb}`}
-                                  onClick={() => setCustomerToDelete(item)}
-                                  className="p-1.5 bg-[#1c1417] hover:bg-rose-950 text-rose-400 hover:text-rose-300 rounded-xl border border-rose-900/60 transition-colors cursor-pointer"
-                                  title="Hapus Data Ex-Customer (Super Admin)"
-                                >
-                                  <Trash2 className="h-3.5 w-3.5" />
-                                </button>
-                              )}
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
+          {/* TABLE OF CONSUMERS: UNIVERSAL PAGINATED DATATABLE */}
+          <DataTable<ExCustomer>
+            tableKey="ex-customer-consumer-table"
+            columns={exCustomerColumns}
+            data={filteredList}
+            keyExtractor={(item) => item.no_psb}
+            emptyTitle="Tidak Ada Data Konsumen"
+            emptyDescription="Tidak ada data konsumen yang sesuai dengan kriteria filter yang sedang aktif."
+            title={activeTab === 'drip' ? 'Drip Feeding Harian (25 Konsumen)' : 'Master Data Ex-Customer'}
+            subtitle={`Menampilkan ${filteredList.length} konsumen`}
+            initialPageSize={25}
+          />
         </div>
       )}
 
@@ -1206,56 +1316,15 @@ export const ExCustomerControl: React.FC<ExCustomerControlProps> = ({
             </span>
           </div>
 
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse text-xs">
-              <thead>
-                <tr className="bg-[#0e1015] border-b border-[#232734] text-[11px] font-bold text-[#8e96a8] uppercase">
-                  <th className="py-3 px-4">Waktu FU</th>
-                  <th className="py-3 px-4">No. PSB & Konsumen</th>
-                  <th className="py-3 px-4">Hasil Follow-Up</th>
-                  <th className="py-3 px-4">Catatan (Maks 100 Karakter)</th>
-                  <th className="py-3 px-4">Petugas FU</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-[#1f2330]">
-                {allExCustomerLogs.length === 0 ? (
-                  <tr>
-                    <td colSpan={5} className="py-8 text-center text-xs text-[#8e96a8]">
-                      Belum ada aktivitas follow-up yang tercatat.
-                    </td>
-                  </tr>
-                ) : (
-                  allExCustomerLogs.map(log => (
-                    <tr key={log.id} className="hover:bg-[#181b24] transition-colors">
-                      <td className="py-3 px-4 text-[#8e96a8] font-mono text-[11px]">
-                        {new Date(log.tgl_fu).toLocaleString('id-ID')}
-                      </td>
-                      <td className="py-3 px-4">
-                        <span className="font-bold text-[#f1f3f7] block">{log.nama_konsumen}</span>
-                        <span className="font-mono text-[10px] text-amber-400">{log.no_psb}</span>
-                      </td>
-                      <td className="py-3 px-4">
-                        <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold border ${
-                          log.hasil_fu === 'WA/Tlpn Aktif, ada respon' ? 'bg-emerald-950/70 text-emerald-300 border-emerald-800/60' :
-                          log.hasil_fu === 'WA/Tlpn Aktif, tidak ada respon' ? 'bg-amber-950/70 text-amber-300 border-amber-800/60' :
-                          'bg-rose-950/70 text-rose-300 border-rose-800/60'
-                        }`}>
-                          {log.hasil_fu}
-                        </span>
-                      </td>
-                      <td className="py-3 px-4 text-[#c2c7d0] italic">
-                        "{log.catatan_fu || '-'}"
-                      </td>
-                      <td className="py-3 px-4">
-                        <span className="font-semibold text-[#f1f3f7] block">{log.user_fu}</span>
-                        <span className="text-[10px] text-[#6b7280] font-mono">{log.user_role} {log.kd_ao ? `• ${log.kd_ao}` : ''}</span>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
+          <DataTable<ExCustomerFULog>
+            tableKey="ex-customer-fu-logs-table"
+            columns={fuLogColumns}
+            data={allExCustomerLogs}
+            keyExtractor={(log) => log.id}
+            emptyTitle="Belum Ada Aktivitas Follow-Up"
+            emptyDescription="Belum ada riwayat follow-up yang tercatat pada sistem untuk kriteria ini."
+            initialPageSize={25}
+          />
         </div>
       )}
 
