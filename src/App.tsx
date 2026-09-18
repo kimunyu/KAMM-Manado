@@ -12,11 +12,15 @@ import { FollowUpModule } from './components/FollowUpModule';
 import { UserControl } from './components/UserControl';
 import { ExCustomerControl } from './components/ExCustomerControl';
 import { KontrolSalesModule } from './modules/kontrol-sales';
+import { SalesService } from './modules/kontrol-sales/services/salesService';
+import { SalesControlRecord } from './modules/kontrol-sales/types';
+import { checkHoldDanaSla } from './modules/kontrol-sales/utils/slaUtils';
 import { MediatorDetailModal } from './components/MediatorDetailModal';
 import { MediatorEditModal } from './components/MediatorEditModal';
 import { LoginModal } from './components/LoginModal';
 import { ChangePasswordModal } from './components/ChangePasswordModal';
 import { UserProfileModal } from './components/UserProfileModal';
+import { IdleTimeoutManager } from './components/IdleTimeoutManager';
 
 const TAB_TO_MODULE_MAP: Record<ActiveTab, ModuleId> = {
   'kontrol-sales': 'sales',
@@ -78,6 +82,7 @@ function MainApp() {
   const [preSelectedKdMedForFU, setPreSelectedKdMedForFU] = useState<string | null>(null);
   const [isManualPasswordChangeOpen, setIsManualPasswordChangeOpen] = useState(false);
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
+  const [salesRecords, setSalesRecords] = useState<SalesControlRecord[]>([]);
 
   const loadDatabase = () => {
     const meds = DatabaseService.getMediators();
@@ -106,6 +111,22 @@ function MainApp() {
       unsubscribe();
     };
   }, []);
+
+  // Real-time synchronization for sales records & SLA hold status
+  useEffect(() => {
+    const unsubscribeSales = SalesService.subscribe(
+      currentUser,
+      (updated) => {
+        setSalesRecords(updated);
+      },
+      (err) => {
+        console.warn('Sync notice sales:', err);
+      }
+    );
+    return () => {
+      unsubscribeSales();
+    };
+  }, [currentUser]);
 
   // Safeguard tab switching when role changes and user loses access to current tab
   useEffect(() => {
@@ -153,7 +174,14 @@ function MainApp() {
     return <LoginModal />;
   }
 
-  const isNational = currentUser?.role === 'SUPER_ADMIN' || currentUser?.role === 'RM';
+  // Detect whether active user still has default password or must change password
+  const userUsesDefaultPassword = Boolean(
+    currentUser.must_change_password || 
+    currentUser.password === '1234' || 
+    currentUser.password === 'test1234'
+  );
+
+  const isNational = currentUser?.role === 'SUPER_ADMIN' || currentUser?.role === 'RM' || currentUser?.role === 'ADM_DE';
   const pendingCount = mediators.filter(m => {
     if (currentUser?.role === 'ADM') {
       if (m.status !== 'BELUM_AKTIF') return false;
@@ -173,6 +201,21 @@ function MainApp() {
     return true;
   }).length;
 
+  // Calculate count of sales records currently in HOLD DANA SLA status within user scope
+  const holdSalesCount = salesRecords.filter(item => {
+    if (isNational) {
+      // Akses nasional penuh
+    } else if (currentUser?.role === 'ADM') {
+      if (currentUser.kd_cabang && item.cabang_id !== currentUser.kd_cabang) return false;
+      if (currentUser.kd_posko && item.posko_id !== currentUser.kd_posko) return false;
+    } else if (currentUser?.role === 'KAPOS') {
+      if (currentUser.kd_posko && item.posko_id !== currentUser.kd_posko) return false;
+    } else if (currentUser?.role === 'KAOPS' || currentUser?.role === 'KACAB') {
+      if (currentUser.kd_cabang && item.cabang_id !== currentUser.kd_cabang) return false;
+    }
+    return checkHoldDanaSla(item.tgl_cair, item.status).isHoldDana;
+  }).length;
+
   return (
     <div className="min-h-screen bg-[#0a0b0d] flex flex-col font-sans text-[#e0e4eb] selection:bg-blue-600 selection:text-white">
       {/* Header */}
@@ -180,6 +223,10 @@ function MainApp() {
         onRefresh={loadDatabase} 
         onOpenChangePassword={() => setIsManualPasswordChangeOpen(true)}
         onOpenProfile={() => setIsProfileModalOpen(true)}
+        activeModule={activeModule}
+        onSelectModule={handleSelectModule}
+        pendingCount={pendingCount}
+        holdSalesCount={holdSalesCount}
       />
 
       {/* Main Layout */}
@@ -189,6 +236,7 @@ function MainApp() {
           activeTab={activeTab}
           setActiveTab={setActiveTab}
           pendingCount={pendingCount}
+          holdSalesCount={holdSalesCount}
           activeModule={activeModule}
           setActiveModule={handleSelectModule}
         />
@@ -265,9 +313,10 @@ function MainApp() {
       </div>
 
       {/* MODALS */}
-      {/* Change Password Modal */}
+      {/* Mandatory / Manual Change Password Modal */}
       <ChangePasswordModal
-        isOpen={isManualPasswordChangeOpen}
+        isOpen={userUsesDefaultPassword || isManualPasswordChangeOpen}
+        isForced={userUsesDefaultPassword}
         onClose={() => setIsManualPasswordChangeOpen(false)}
         onSuccess={() => {
           setIsManualPasswordChangeOpen(false);
@@ -297,6 +346,9 @@ function MainApp() {
           onSuccess={loadDatabase}
         />
       )}
+
+      {/* Auto Session Inactivity Timeout Guard */}
+      <IdleTimeoutManager />
     </div>
   );
 }

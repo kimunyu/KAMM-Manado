@@ -9,8 +9,7 @@ import {
   UserCog,
   ChevronRight,
   Flame,
-  TrendingUp,
-  ArrowLeftRight
+  TrendingUp
 } from 'lucide-react';
 
 export type ModuleId = 'sales' | 'mediator' | 'ex-customer' | 'master-data';
@@ -29,6 +28,7 @@ interface SidebarProps {
   activeTab: ActiveTab;
   setActiveTab: (tab: ActiveTab) => void;
   pendingCount: number;
+  holdSalesCount?: number;
   activeModule: ModuleId;
   setActiveModule: (module: ModuleId) => void;
 }
@@ -37,6 +37,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   activeTab, 
   setActiveTab, 
   pendingCount,
+  holdSalesCount = 0,
   activeModule,
   setActiveModule
 }) => {
@@ -115,6 +116,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       subtitle: 'Pencairan Konsumen & SLA',
       icon: TrendingUp,
       badge: 'TRIAL',
+      counter: holdSalesCount > 0 ? holdSalesCount : undefined,
       visible: canAccessSales,
       targetTab: 'kontrol-sales' as ActiveTab,
       color: 'text-purple-400',
@@ -163,11 +165,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
     },
   ].filter(m => m.visible);
 
-  const otherModules = allModules.filter(m => m.id !== activeModule);
   const currentModConfig = allModules.find(m => m.id === activeModule) || allModules[0];
 
   return (
-    <aside className="w-full lg:w-72 bg-[#13151c] border-r border-[#232734] p-4 shrink-0 flex flex-col justify-between min-h-full">
+    <aside className="w-full lg:w-72 bg-[#13151c] border-r border-[#232734] p-4 shrink-0 flex flex-col lg:sticky lg:top-16 lg:self-start lg:h-[calc(100vh-4rem)] lg:overflow-y-auto">
       <div className="space-y-4">
         {/* Active Module Header */}
         <div className="p-3.5 bg-[#181a24] border border-[#272d3e] rounded-xl">
@@ -196,6 +197,46 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   {currentModConfig.subtitle}
                 </p>
               </div>
+            </div>
+          )}
+
+          {/* Quick Module Switcher Chips at the Top of Sidebar */}
+          {allModules.length > 1 && (
+            <div className="grid grid-cols-2 gap-1.5 mt-3 pt-2.5 border-t border-[#272d3e]">
+              {allModules.map((m) => {
+                const isCurrent = m.id === activeModule;
+                const Icon = m.icon;
+                return (
+                  <button
+                    key={`top-switch-${m.id}`}
+                    id={`top-switch-${m.id}`}
+                    onClick={() => {
+                      if (!isCurrent) {
+                        setActiveModule(m.id);
+                        setActiveTab(m.targetTab);
+                      }
+                    }}
+                    className={`flex items-center justify-between px-2 py-1.5 rounded-lg text-[11px] font-semibold transition-all text-left truncate cursor-pointer border ${
+                      isCurrent
+                        ? `${m.activeBg} ${m.activeBorder} ${m.activeText} shadow-xs`
+                        : 'bg-[#141620] hover:bg-[#1f2434] border-[#242938] hover:border-[#384158] text-[#8e96a8] hover:text-[#e0e4eb]'
+                    }`}
+                    title={`Pindah ke ${m.label}`}
+                  >
+                    <div className="flex items-center space-x-1.5 min-w-0 truncate">
+                      <Icon className={`h-3.5 w-3.5 shrink-0 ${isCurrent ? m.activeText : m.color}`} />
+                      <span className="truncate">{m.label.replace('Kontrol ', '')}</span>
+                    </div>
+                    {m.counter !== undefined && m.counter > 0 && (
+                      <span className={`ml-1 px-1.5 py-0.2 text-[9px] font-bold rounded-full shrink-0 ${
+                        isCurrent ? 'bg-white text-gray-900' : 'bg-rose-500 text-white animate-pulse'
+                      }`}>
+                        {m.counter}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
             </div>
           )}
         </div>
@@ -285,7 +326,17 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   </div>
                 </div>
               </div>
-              <ChevronRight className="h-4 w-4 text-white shrink-0" />
+              <div className="flex items-center space-x-2 shrink-0 ml-2">
+                {holdSalesCount > 0 && (
+                  <span
+                    className="px-2 py-0.5 text-xs font-bold rounded-full bg-white text-purple-700 animate-pulse shadow-sm"
+                    title={`${holdSalesCount} data status hold`}
+                  >
+                    {holdSalesCount}
+                  </span>
+                )}
+                <ChevronRight className="h-4 w-4 text-white shrink-0" />
+              </div>
             </button>
 
             {/* In-module feature hints */}
@@ -417,54 +468,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </div>
         )}
       </div>
-
-      {/* FOOTER: QUICK MODULE SWITCHER (If user has more than 1 module) */}
-      {otherModules.length > 0 && (
-        <div className="mt-6 pt-4 border-t border-[#232734]">
-          <div className="flex items-center justify-between text-[11px] text-[#768095] mb-2 px-1">
-            <span className="font-bold flex items-center space-x-1.5">
-              <ArrowLeftRight className="h-3.5 w-3.5 text-[#8e96a8]" />
-              <span>Pindah Modul:</span>
-            </span>
-          </div>
-
-          <div className="space-y-1.5">
-            {otherModules.map((m) => {
-              const Icon = m.icon;
-              return (
-                <button
-                  key={m.id}
-                  id={`sidebar-switch-to-${m.id}`}
-                  onClick={() => {
-                    setActiveModule(m.id);
-                    setActiveTab(m.targetTab);
-                  }}
-                  className="w-full flex items-center justify-between px-3 py-2 rounded-lg text-left text-xs bg-[#171a23] hover:bg-[#1e2330] border border-[#272d3e] hover:border-[#3d455d] text-[#a6adbb] hover:text-[#f1f3f7] transition-all cursor-pointer"
-                >
-                  <div className="flex items-center space-x-2.5 truncate">
-                    <Icon className={`h-4 w-4 shrink-0 ${m.color}`} />
-                    <span className="font-semibold truncate">{m.label}</span>
-                  </div>
-
-                  <div className="flex items-center space-x-1 shrink-0">
-                    {m.counter !== undefined && (
-                      <span className="px-1.5 py-0.2 text-[10px] font-bold rounded-full bg-rose-500 text-white">
-                        {m.counter}
-                      </span>
-                    )}
-                    {m.badge && (
-                      <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-[#252b3c] text-[#939cae]">
-                        {m.badge}
-                      </span>
-                    )}
-                    <ChevronRight className="h-3.5 w-3.5 text-[#5e6679]" />
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      )}
     </aside>
   );
 };

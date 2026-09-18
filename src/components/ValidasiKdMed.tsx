@@ -44,6 +44,7 @@ export const ValidasiKdMed: React.FC<ValidasiKdMedProps> = ({
 
   const isNational = currentUser?.role === 'SUPER_ADMIN' || currentUser?.role === 'RM';
   const isSuperAdmin = currentUser?.role === 'SUPER_ADMIN';
+  const isKaops = currentUser?.role === 'KAOPS';
   const isKapos = currentUser?.role === 'KAPOS';
   const isAdm = currentUser?.role === 'ADM';
   const userCabang = currentUser?.kd_cabang;
@@ -238,7 +239,7 @@ export const ValidasiKdMed: React.FC<ValidasiKdMedProps> = ({
     const result = await DatabaseService.validateAndActivateKdMed({
       targetTempOrCode: selectedForActivation.kd_med || selectedForActivation.temp_id || '',
       new_kd_med: manualKdMed.trim(),
-      validated_by: currentUser?.nama || 'KAPOS / SUPER_ADMIN'
+      validated_by: currentUser?.nama || 'KAOPS / SUPER_ADMIN'
     });
 
     setIsSubmitting(false);
@@ -374,7 +375,7 @@ export const ValidasiKdMed: React.FC<ValidasiKdMedProps> = ({
                   id={`btn-review-${med.kd_med}`}
                   onClick={() => handleOpenReviewModal(med)}
                   className="px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-md shadow-blue-950/40 transition-colors flex items-center space-x-1 cursor-pointer"
-                  title="Setujui Berkas & Teruskan ke KAPOS (Status PENDING)"
+                  title="Setujui Berkas & Teruskan ke KAOPS (Status PENDING)"
                 >
                   <Check className="h-3.5 w-3.5" />
                   <span>Tinjau & Setujui</span>
@@ -399,7 +400,7 @@ export const ValidasiKdMed: React.FC<ValidasiKdMedProps> = ({
                 </button>
               ) : (
                 <span className="text-[11px] text-[#6b7280] italic px-2.5 py-1 bg-[#0d0e12] rounded-lg border border-[#232734]">
-                  Menunggu KAPOS / Super Admin
+                  Menunggu KAOPS / Super Admin
                 </span>
               )}
             </>
@@ -418,7 +419,7 @@ export const ValidasiKdMed: React.FC<ValidasiKdMedProps> = ({
           <span>Alur Peninjauan & Validasi KD MED</span>
         </h1>
         <p className="text-xs text-[#8e96a8] mt-0.5">
-          Proses verifikasi 2 tahap: Peninjauan berkas oleh <strong className="text-[#f1f3f7]">ADMIN</strong> &rarr; Penetapan KD MED resmi oleh <strong className="text-[#f1f3f7]">KAPOS / Super Admin</strong>.
+          Proses verifikasi 2 tahap: Peninjauan berkas oleh <strong className="text-[#f1f3f7]">ADMIN</strong> &rarr; Penetapan KD MED resmi oleh <strong className="text-[#f1f3f7]">KAOPS / Super Admin</strong>.
         </p>
       </div>
 
@@ -487,11 +488,11 @@ export const ValidasiKdMed: React.FC<ValidasiKdMedProps> = ({
             </span>
           </div>
           <p className="text-xs text-[#8e96a8] leading-relaxed">
-            Berkas lolos review. <strong className="text-amber-300">KAPOS & Super Admin</strong> menetapkan KD MED resmi untuk mengaktifkan mediator menjadi <strong className="text-emerald-400">AKTIF</strong>.
+            Berkas lolos review. <strong className="text-amber-300">KAOPS & Super Admin</strong> menetapkan KD MED resmi untuk mengaktifkan mediator menjadi <strong className="text-emerald-400">AKTIF</strong>.
           </p>
           {canInputKdMed && (
             <span className="inline-block mt-2 text-[10px] font-semibold text-emerald-400 bg-emerald-950/60 px-2 py-0.5 rounded border border-emerald-800/50">
-              Anda memiliki hak aktivasi KD MED (KAPOS / SUPER ADMIN)
+              Anda memiliki hak aktivasi KD MED (KAOPS / SUPER ADMIN)
             </span>
           )}
         </button>
@@ -589,7 +590,7 @@ export const ValidasiKdMed: React.FC<ValidasiKdMedProps> = ({
             <span className="font-bold text-[#f1f3f7] text-sm">
               {activeStage === 'review'
                 ? 'Daftar Pendaftaran Baru (BELUM AKTIF) - Menunggu Peninjauan Admin'
-                : 'Daftar Lolos Review (PENDING) - Menunggu Input KD MED oleh KAPOS / Super Admin'}
+                : 'Daftar Lolos Review (PENDING) - Menunggu Input KD MED oleh KAOPS / Super Admin'}
             </span>
           </div>
           <span className="text-xs text-[#8e96a8] font-mono">
@@ -604,7 +605,7 @@ export const ValidasiKdMed: React.FC<ValidasiKdMedProps> = ({
           keyExtractor={(med) => med.kd_med || med.temp_id}
           emptyTitle={activeStage === 'review' ? 'Tidak Ada Berkas BELUM AKTIF' : 'Tidak Ada Mediator PENDING'}
           emptyDescription={activeStage === 'review' ? 'Tidak ada berkas BELUM AKTIF yang menunggu review oleh Admin.' : 'Tidak ada mediator PENDING yang menunggu penetapan KD MED.'}
-          title={activeStage === 'review' ? 'Tahap 1: Verifikasi Berkas (Admin)' : 'Tahap 2: Input KD MED & Aktivasi (KAPOS)'}
+          title={activeStage === 'review' ? 'Tahap 1: Verifikasi Berkas (Admin)' : 'Tahap 2: Input KD MED & Aktivasi (KAOPS)'}
           subtitle={`Menampilkan ${currentList.length} mediator menunggu tindakan`}
           initialPageSize={10}
         />
@@ -688,7 +689,7 @@ export const ValidasiKdMed: React.FC<ValidasiKdMedProps> = ({
                   className="w-full p-2.5 text-xs bg-[#0d0e12] border border-[#272d3e] rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/50 text-[#e0e4eb] resize-none"
                 />
                 <p className="text-[11px] text-[#8e96a8] mt-1.5 leading-relaxed">
-                  Setelah disetujui, status akan berubah dari <strong className="text-blue-300">BELUM AKTIF</strong> menjadi <strong className="text-amber-400">PENDING</strong> dan diteruskan ke KAPOS / Super Admin untuk penetapan KD MED.
+                  Setelah disetujui, status akan berubah dari <strong className="text-blue-300">BELUM AKTIF</strong> menjadi <strong className="text-amber-400">PENDING</strong> dan diteruskan ke KAOPS / Super Admin untuk penetapan KD MED.
                 </p>
               </div>
 
@@ -797,7 +798,7 @@ export const ValidasiKdMed: React.FC<ValidasiKdMedProps> = ({
                   <h3 className="text-base font-bold text-[#f1f3f7]">
                     Input KD MED & Aktivasi Mediator
                   </h3>
-                  <p className="text-xs text-[#8e96a8]">Wewenang Khusus: KAPOS & SUPER ADMIN</p>
+                  <p className="text-xs text-[#8e96a8]">Wewenang Khusus: KAOPS & SUPER ADMIN</p>
                 </div>
               </div>
               <button

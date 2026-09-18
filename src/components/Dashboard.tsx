@@ -328,10 +328,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ mediators, fuLogs, onNavig
               </button>
             )}
 
-            {/* Tahap 2: Input KD MED (KAPOS & Super Admin) */}
+            {/* Tahap 2: Input KD MED (KAOPS & Super Admin) */}
             {canInputKdMed && pending > 0 && (
               <button
-                id="dash-btn-validasi-kapos"
+                id="dash-btn-validasi-kaops"
                 onClick={() => onNavigate('validasi')}
                 className="px-3.5 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold rounded-xl shadow-md transition-all flex items-center space-x-1.5 cursor-pointer animate-pulse"
               >
@@ -528,7 +528,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ mediators, fuLogs, onNavig
             </div>
           </div>
 
-          {/* 3. Status PENDING (Tahap 2: Input KD MED KAPOS/Super Admin) */}
+          {/* 3. Status PENDING (Tahap 2: Input KD MED KAOPS/Super Admin) */}
           <div 
             onClick={() => canInputKdMed && onNavigate('validasi')}
             className={`p-4 rounded-2xl border shadow-md transition-all ${
@@ -546,7 +546,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ mediators, fuLogs, onNavig
             <div className="mt-2.5">
               <div className="text-2xl font-extrabold text-amber-400">{pending}</div>
               <p className="text-[11px] text-amber-300/80 mt-0.5 flex items-center">
-                <span>Input KD MED (KAPOS)</span>
+                <span>Input KD MED (KAOPS)</span>
                 {canInputKdMed && pending > 0 && <ArrowUpRight className="h-3 w-3 ml-1" />}
               </p>
             </div>

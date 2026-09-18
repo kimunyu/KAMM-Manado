@@ -71,7 +71,7 @@ export const MediatorEditModal: React.FC<MediatorEditModalProps> = ({ mediator, 
 
     const result = await DatabaseService.updateMediator({
       kd_med: mediator.kd_med,
-      nama_mediator: namaMediator.trim(),
+      nama_mediator: namaMediator.trim().toUpperCase(),
       no_tlpn: noTlpn.trim(),
       kd_ao: kdAo.trim(),
       kd_cabang: kdCabang,
@@ -177,8 +177,8 @@ export const MediatorEditModal: React.FC<MediatorEditModalProps> = ({ mediator, 
               disabled={!isEditable}
               maxLength={100}
               value={namaMediator}
-              onChange={(e) => setNamaMediator(e.target.value)}
-              className="w-full p-2.5 bg-[#0d0e12] border border-[#272d3e] text-[#e0e4eb] placeholder-[#6b7280] rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500/50 focus:border-amber-500 disabled:opacity-60"
+              onChange={(e) => setNamaMediator(e.target.value.toUpperCase())}
+              className="w-full p-2.5 bg-[#0d0e12] border border-[#272d3e] text-[#e0e4eb] placeholder-[#6b7280] rounded-xl uppercase focus:outline-none focus:ring-2 focus:ring-amber-500/50 focus:border-amber-500 disabled:opacity-60"
             />
           </div>
 

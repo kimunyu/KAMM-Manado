@@ -312,7 +312,9 @@ service cloud.firestore {
         (isAdm() && (
           getUserCabang() == '' ||
           resource.data.get('cabang_id', '') == getUserCabang() ||
-          resource.data.get('kd_cabang', '') == getUserCabang()
+          resource.data.get('kd_cabang', '') == getUserCabang() ||
+          resource.data.get('posko_id', '') == getUserPosko() ||
+          resource.data.get('kd_posko', '') == getUserPosko()
         ))
       );
 
@@ -324,7 +326,9 @@ service cloud.firestore {
           (
             getUserCabang() == '' ||
             request.resource.data.get('cabang_id', '') == getUserCabang() ||
-            request.resource.data.get('kd_cabang', '') == getUserCabang()
+            request.resource.data.get('kd_cabang', '') == getUserCabang() ||
+            request.resource.data.get('posko_id', '') == getUserPosko() ||
+            request.resource.data.get('kd_posko', '') == getUserPosko()
           )
         )
       ) && (
@@ -340,7 +344,9 @@ service cloud.firestore {
           (
             getUserCabang() == '' ||
             resource.data.get('cabang_id', '') == getUserCabang() ||
-            resource.data.get('kd_cabang', '') == getUserCabang()
+            resource.data.get('kd_cabang', '') == getUserCabang() ||
+            resource.data.get('posko_id', '') == getUserPosko() ||
+            resource.data.get('kd_posko', '') == getUserPosko()
           )
         )
       ) && (

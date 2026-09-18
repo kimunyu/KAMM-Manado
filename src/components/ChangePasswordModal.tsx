@@ -43,7 +43,7 @@ export const ChangePasswordModal: React.FC<ChangePasswordModalProps> = ({
     const hasUpper = /[A-Z]/.test(newPassword);
     const hasLower = /[a-z]/.test(newPassword);
     const hasNumberOrSymbol = /[0-9!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?]/.test(newPassword);
-    const notDefault = newPassword !== '1234' && newPassword !== currentUser?.username;
+    const notDefault = newPassword !== '1234' && newPassword !== 'test1234' && newPassword.toLowerCase() !== 'password' && newPassword !== currentUser?.username;
     const matches = newPassword.length > 0 && newPassword === confirmPassword;
 
     let score = 0;
@@ -77,12 +77,13 @@ export const ChangePasswordModal: React.FC<ChangePasswordModalProps> = ({
       return;
     }
 
-    if (newPassword === '1234') {
-      setErrorMessage('Password baru tidak boleh menggunakan password default "1234"!');
+    const trimmed = newPassword.trim();
+    if (trimmed === '1234' || trimmed === 'test1234' || trimmed.toLowerCase() === 'password') {
+      setErrorMessage('Password baru tidak boleh menggunakan password default ("1234", "test1234", atau "password")!');
       return;
     }
 
-    if (newPassword === currentUser?.username) {
+    if (trimmed.toLowerCase() === currentUser?.username.toLowerCase()) {
       setErrorMessage('Password baru tidak boleh sama dengan username Anda!');
       return;
     }
@@ -93,7 +94,7 @@ export const ChangePasswordModal: React.FC<ChangePasswordModalProps> = ({
     }
 
     setIsSubmitting(true);
-    const res = await changePassword(newPassword);
+    const res = await changePassword(trimmed);
     setIsSubmitting(false);
 
     if (res.success) {
@@ -131,7 +132,7 @@ export const ChangePasswordModal: React.FC<ChangePasswordModalProps> = ({
               </h3>
               <p className="text-xs text-[#8e96a8] mt-0.5">
                 {isForced 
-                  ? 'Akun Anda baru diterbitkan dengan password default 1234. Demi keamanan, Anda wajib membuat password baru.'
+                  ? 'Akun Anda terdeteksi masih menggunakan password default/bawaan. Demi keamanan data, Anda wajib membuat password baru pribadi Anda.'
                   : `Pengguna: ${currentUser?.nama} (@${currentUser?.username})`}
               </p>
             </div>
@@ -185,7 +186,7 @@ export const ChangePasswordModal: React.FC<ChangePasswordModalProps> = ({
 
             <div className={`flex items-center space-x-1.5 ${criteria.notDefault ? 'text-emerald-400 font-medium' : 'text-[#8e96a8]'}`}>
               {criteria.notDefault ? <CheckCircle2 className="h-3.5 w-3.5 shrink-0" /> : <div className="h-3.5 w-3.5 rounded-full border border-[#3b4255] shrink-0" />}
-              <span>Unik & bukan &quot;1234&quot;</span>
+              <span>Unik & bukan sandi default</span>
             </div>
           </div>
         </div>

@@ -12,8 +12,9 @@ import {
 } from 'lucide-react';
 import { User, Cabang, Posko } from '../../../types';
 import { SalesService } from '../services/salesService';
-import { getWitaToday, formatToDDMMYYYY } from '../utils/slaUtils';
+import { getWitaToday, formatToDDMMYYYY, extractDayDD, isUbahJt } from '../utils/slaUtils';
 import { SingleDatePicker } from './SingleDatePicker';
+import { Calendar } from 'lucide-react';
 
 interface FormInputPencairanProps {
   currentUser: User;
@@ -38,9 +39,20 @@ export const FormInputPencairan: React.FC<FormInputPencairanProps> = ({
 
   // Form Fields (Poin 2: Date Picker, Poin 4: Keterangan dihapus)
   const [tglCair, setTglCair] = useState<string>(defaultTglCair);
+  // TGL JT hanya berformat DD (hari 01 s/d 31)
+  const [tglJt, setTglJt] = useState<string>(extractDayDD(defaultTglCair));
   const [noPsb, setNoPsb] = useState<string>('');
   const [namaKonsumen, setNamaKonsumen] = useState<string>('');
   const [noWa, setNoWa] = useState<string>('');
+
+  const handleTglCairChange = (newCair: string) => {
+    const oldDay = extractDayDD(tglCair);
+    setTglCair(newCair);
+    // Sinkronkan tglJt otomatis jika belum pernah diubah secara manual
+    if (!tglJt || tglJt === oldDay) {
+      setTglJt(extractDayDD(newCair));
+    }
+  };
 
   // Cabang & Posko selection
   const [selectedCabang, setSelectedCabang] = useState<string>(
@@ -60,6 +72,7 @@ export const FormInputPencairan: React.FC<FormInputPencairanProps> = ({
   // Reset form
   const handleReset = () => {
     setTglCair(defaultTglCair);
+    setTglJt(extractDayDD(defaultTglCair));
     setNoPsb('');
     setNamaKonsumen('');
     setNoWa('');
@@ -83,7 +96,7 @@ export const FormInputPencairan: React.FC<FormInputPencairanProps> = ({
       return;
     }
 
-    const cleanNama = namaKonsumen.trim();
+    const cleanNama = namaKonsumen.trim().toUpperCase();
     if (!cleanNama) {
       setErrorMsg('Nama konsumen wajib diisi.');
       return;
@@ -100,6 +113,12 @@ export const FormInputPencairan: React.FC<FormInputPencairanProps> = ({
       return;
     }
 
+    const finalJt = extractDayDD(tglJt || tglCair);
+    if (!finalJt) {
+      setErrorMsg('Tanggal JT (Hari DD) wajib diisi (01 s/d 31).');
+      return;
+    }
+
     setIsLoading(true);
     try {
       // Poin 4: Keterangan tidak disertakan di form awal, otomatis diisi string kosong "" oleh SalesService
@@ -109,7 +128,7 @@ export const FormInputPencairan: React.FC<FormInputPencairanProps> = ({
           no_psb: cleanPsb,
           nama_konsumen: cleanNama,
           no_wa: cleanWa,
-          tgl_jt: tglCair.trim(),
+          tgl_jt: finalJt,
           cabang_id: selectedCabang,
           posko_id: selectedPosko,
         },
@@ -240,10 +259,40 @@ export const FormInputPencairan: React.FC<FormInputPencairanProps> = ({
                 id="input-tgl-cair"
                 label="TGL CAIR (Kalender)"
                 value={tglCair}
-                onChange={setTglCair}
+                onChange={handleTglCairChange}
                 required
                 helperText="Pilih dari kalender interaktif (format otomatis: DD/MM/YYYY)."
               />
+            </div>
+
+            {/* TGL JT (Format DD Saja) */}
+            <div>
+              <label className="block text-xs font-semibold text-[#8e96a8] mb-1.5">
+                TGL JT (Hari / Tanggal DD Saja) <span className="text-red-400">*</span>
+              </label>
+              <div className="relative">
+                <select
+                  value={tglJt}
+                  onChange={(e) => setTglJt(e.target.value)}
+                  className="w-full bg-[#181a24] border border-[#272d3e] rounded-xl px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-blue-500 font-mono"
+                >
+                  {Array.from({ length: 31 }, (_, i) => String(i + 1).padStart(2, '0')).map((dd) => (
+                    <option key={dd} value={dd}>
+                      Tanggal {dd} {dd === extractDayDD(tglCair) ? '(Sama dengan Hari Cair)' : ''}
+                    </option>
+                  ))}
+                </select>
+                <Calendar className="absolute right-3 top-3 h-4 w-4 text-[#8e96a8] pointer-events-none" />
+              </div>
+              <p className="text-[11px] text-[#8e96a8] mt-1">
+                Format baru: Hanya hari saja (DD: 01 - 31). Default menyamai hari cair ({extractDayDD(tglCair)}).
+              </p>
+              {isUbahJt(tglCair, tglJt) && (
+                <div className="mt-2 p-2 bg-amber-950/60 border border-amber-700/80 rounded-lg text-amber-300 text-xs flex items-start space-x-2">
+                  <span className="px-1.5 py-0.5 bg-amber-800 text-amber-200 text-[10px] font-black rounded uppercase shrink-0 mt-0.5">UBAH JT</span>
+                  <span>Hari JT ({tglJt}) berbeda dengan Hari Cair ({extractDayDD(tglCair)}). Data akan otomatis masuk ke kategori <strong>Data Ubah JT</strong>.</span>
+                </div>
+              )}
             </div>
 
             {/* NO PSB */}
@@ -277,16 +326,16 @@ export const FormInputPencairan: React.FC<FormInputPencairanProps> = ({
                 <input
                   type="text"
                   value={namaKonsumen}
-                  onChange={(e) => setNamaKonsumen(e.target.value)}
+                  onChange={(e) => setNamaKonsumen(e.target.value.toUpperCase())}
                   placeholder="Nama lengkap konsumen"
-                  maxLength={50}
+                  maxLength={100}
                   required
-                  className="w-full bg-[#181a24] border border-[#272d3e] rounded-xl px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-blue-500"
+                  className="w-full bg-[#181a24] border border-[#272d3e] rounded-xl px-3.5 py-2.5 text-sm text-white uppercase focus:outline-none focus:border-blue-500"
                 />
                 <UserIcon className="absolute right-3 top-3 h-4 w-4 text-[#8e96a8]" />
               </div>
               <p className="text-[11px] text-[#8e96a8] mt-1">
-                Maksimal 50 karakter ({namaKonsumen.length}/50).
+                Otomatis kapital. Maksimal 100 karakter ({namaKonsumen.length}/100).
               </p>
             </div>
 

@@ -1,16 +1,19 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   LayoutDashboard, 
   Users, 
   PlusCircle, 
   ShieldCheck, 
-  Building2
+  Building2,
+  CalendarClock
 } from 'lucide-react';
 import { User, Cabang, Posko } from '../../../types';
 import { SalesControlRecord } from '../types';
 import { SalesService } from '../services/salesService';
+import { isUbahJt } from '../utils/slaUtils';
 import { DashboardRekapitulasi } from './DashboardRekapitulasi';
 import { TableDataKonsumen } from './TableDataKonsumen';
+import { TableDataUbahJt } from './TableDataUbahJt';
 import { FormInputPencairan } from './FormInputPencairan';
 import { ModalValidasiAdmDe } from './ModalValidasiAdmDe';
 import { ModalCopyWaCabang } from './ModalCopyWaCabang';
@@ -21,7 +24,7 @@ interface KontrolSalesModuleProps {
   allPosko: Posko[];
 }
 
-type SubTab = 'dashboard' | 'table' | 'input';
+type SubTab = 'dashboard' | 'table' | 'ubah_jt' | 'input';
 
 export const KontrolSalesModule: React.FC<KontrolSalesModuleProps> = ({
   currentUser,
@@ -30,6 +33,7 @@ export const KontrolSalesModule: React.FC<KontrolSalesModuleProps> = ({
 }) => {
   const isAdmDe = currentUser.role === 'ADM_DE';
   const isSuperAdmin = currentUser.role === 'SUPER_ADMIN';
+  const canAccessUbahJt = isSuperAdmin || isAdmDe;
   // Poin 3: ADM_DE juga diizinkan mengakses dan menginput pencairan
   const canInput = currentUser.role === 'ADM' || currentUser.role === 'KAOPS' || isAdmDe || isSuperAdmin;
 
@@ -38,9 +42,16 @@ export const KontrolSalesModule: React.FC<KontrolSalesModuleProps> = ({
     isAdmDe ? 'table' : 'dashboard'
   );
 
+  useEffect(() => {
+    if (activeSubTab === 'ubah_jt' && !canAccessUbahJt) {
+      setActiveSubTab('table');
+    }
+  }, [activeSubTab, canAccessUbahJt]);
+
   // Real-time Records State
   const [records, setRecords] = useState<SalesControlRecord[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [filterOnlyHoldDana, setFilterOnlyHoldDana] = useState<boolean>(false);
 
   // Modals state
   const [validasiRecord, setValidasiRecord] = useState<SalesControlRecord | null>(null);
@@ -53,6 +64,11 @@ export const KontrolSalesModule: React.FC<KontrolSalesModuleProps> = ({
     kdCabang: '',
     namaCabang: '',
   });
+
+  const handleNavigateToHoldDana = () => {
+    setFilterOnlyHoldDana(true);
+    setActiveSubTab('table');
+  };
 
   // Subscribe to real-time sales control records with role filter
   useEffect(() => {
@@ -73,6 +89,14 @@ export const KontrolSalesModule: React.FC<KontrolSalesModuleProps> = ({
       unsubscribe();
     };
   }, [currentUser]);
+
+  // Hitung jumlah data Ubah JT (ACCEPT + beda hari)
+  const ubahJtCount = useMemo(() => {
+    return records.filter(r => {
+      if (r.status !== 'ACCEPT') return false;
+      return r.is_ubah_jt !== undefined ? r.is_ubah_jt : isUbahJt(r.tgl_cair, r.tgl_jt);
+    }).length;
+  }, [records]);
 
   const handleOpenValidasi = (rec: SalesControlRecord) => {
     setValidasiRecord(rec);
@@ -140,7 +164,10 @@ export const KontrolSalesModule: React.FC<KontrolSalesModuleProps> = ({
 
             <button
               type="button"
-              onClick={() => setActiveSubTab('table')}
+              onClick={() => {
+                setActiveSubTab('table');
+                setFilterOnlyHoldDana(false);
+              }}
               className={`px-3.5 py-2 rounded-lg text-xs font-bold transition-all flex items-center space-x-2 cursor-pointer ${
                 activeSubTab === 'table'
                   ? 'bg-[#1e2330] text-white shadow-sm border border-[#2e3547]'
@@ -154,10 +181,36 @@ export const KontrolSalesModule: React.FC<KontrolSalesModuleProps> = ({
               </span>
             </button>
 
+            {canAccessUbahJt && (
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveSubTab('ubah_jt');
+                  setFilterOnlyHoldDana(false);
+                }}
+                className={`px-3.5 py-2 rounded-lg text-xs font-bold transition-all flex items-center space-x-2 cursor-pointer ${
+                  activeSubTab === 'ubah_jt'
+                    ? 'bg-[#1e2330] text-amber-300 shadow-sm border border-amber-800/60'
+                    : 'text-[#8e96a8] hover:text-white hover:bg-[#181a24]'
+                }`}
+              >
+                <CalendarClock className="h-4 w-4 text-amber-400" />
+                <span>Data Ubah JT</span>
+                {ubahJtCount > 0 && (
+                  <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-amber-950 text-amber-300 font-mono border border-amber-800/60">
+                    {ubahJtCount}
+                  </span>
+                )}
+              </button>
+            )}
+
             {canInput && (
               <button
                 type="button"
-                onClick={() => setActiveSubTab('input')}
+                onClick={() => {
+                  setActiveSubTab('input');
+                  setFilterOnlyHoldDana(false);
+                }}
                 className={`px-3.5 py-2 rounded-lg text-xs font-bold transition-all flex items-center space-x-2 cursor-pointer ${
                   activeSubTab === 'input'
                     ? 'bg-blue-600 text-white shadow-sm'
@@ -181,6 +234,7 @@ export const KontrolSalesModule: React.FC<KontrolSalesModuleProps> = ({
             allPosko={allPosko}
             currentUser={currentUser}
             onOpenCopyWaModal={handleOpenCopyWa}
+            onNavigateToHoldDana={handleNavigateToHoldDana}
           />
         )}
 
@@ -190,8 +244,18 @@ export const KontrolSalesModule: React.FC<KontrolSalesModuleProps> = ({
             allCabang={allCabang}
             allPosko={allPosko}
             currentUser={currentUser}
+            initialOnlyHoldDana={filterOnlyHoldDana}
             onOpenValidasiModal={handleOpenValidasi}
             onOpenCopyWaModal={handleOpenCopyWa}
+          />
+        )}
+
+        {activeSubTab === 'ubah_jt' && canAccessUbahJt && (
+          <TableDataUbahJt
+            records={records}
+            allCabang={allCabang}
+            allPosko={allPosko}
+            currentUser={currentUser}
           />
         )}
 

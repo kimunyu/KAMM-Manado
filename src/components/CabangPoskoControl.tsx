@@ -81,7 +81,7 @@ export const CabangPoskoControl: React.FC<CabangPoskoControlProps> = ({ onRefres
     const res = await DatabaseService.saveCabang(
       {
         kd_cabang: kdCabang.trim().toUpperCase(),
-        nama_cabang: namaCabang.trim(),
+        nama_cabang: namaCabang.trim().toUpperCase(),
         wilayah: wilayah.trim() || 'Wilayah 1'
       },
       !!editingCabang,
@@ -137,7 +137,7 @@ export const CabangPoskoControl: React.FC<CabangPoskoControlProps> = ({ onRefres
     const res = await DatabaseService.savePosko(
       {
         kd_posko: kdPosko.trim().toUpperCase(),
-        nama_posko: namaPosko.trim(),
+        nama_posko: namaPosko.trim().toUpperCase(),
         kd_cabang: poskoCabang.trim().toUpperCase()
       },
       !!editingPosko,
@@ -198,7 +198,7 @@ export const CabangPoskoControl: React.FC<CabangPoskoControlProps> = ({ onRefres
       sortable: true,
       width: 'min-w-[200px]',
       render: (c) => (
-        <span className="font-bold text-[#f1f3f7]">
+        <span className="font-bold text-[#f1f3f7] uppercase">
           {c.nama_cabang}
         </span>
       )
@@ -279,7 +279,7 @@ export const CabangPoskoControl: React.FC<CabangPoskoControlProps> = ({ onRefres
       sortable: true,
       width: 'min-w-[200px]',
       render: (p) => (
-        <span className="font-bold text-[#f1f3f7]">
+        <span className="font-bold text-[#f1f3f7] uppercase">
           {p.nama_posko}
         </span>
       )
@@ -499,9 +499,9 @@ export const CabangPoskoControl: React.FC<CabangPoskoControlProps> = ({ onRefres
                   type="text"
                   required
                   value={namaCabang}
-                  onChange={(e) => setNamaCabang(e.target.value)}
+                  onChange={(e) => setNamaCabang(e.target.value.toUpperCase())}
                   placeholder="Contoh: Jakarta Pusat, Bandung, Surabaya"
-                  className="w-full p-2.5 bg-[#0d0e12] border border-[#272d3e] text-[#e0e4eb] placeholder-[#6b7280] rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/50 font-medium"
+                  className="w-full p-2.5 bg-[#0d0e12] border border-[#272d3e] text-[#e0e4eb] placeholder-[#6b7280] rounded-xl uppercase focus:outline-none focus:ring-2 focus:ring-blue-500/50 font-medium"
                 />
               </div>
 
@@ -611,9 +611,9 @@ export const CabangPoskoControl: React.FC<CabangPoskoControlProps> = ({ onRefres
                   type="text"
                   required
                   value={namaPosko}
-                  onChange={(e) => setNamaPosko(e.target.value)}
+                  onChange={(e) => setNamaPosko(e.target.value.toUpperCase())}
                   placeholder="Contoh: Posko Kemayoran, Posko Dago"
-                  className="w-full p-2.5 bg-[#0d0e12] border border-[#272d3e] text-[#e0e4eb] placeholder-[#6b7280] rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500/50 font-medium"
+                  className="w-full p-2.5 bg-[#0d0e12] border border-[#272d3e] text-[#e0e4eb] placeholder-[#6b7280] rounded-xl uppercase focus:outline-none focus:ring-2 focus:ring-emerald-500/50 font-medium"
                 />
               </div>
 

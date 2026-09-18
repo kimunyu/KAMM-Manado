@@ -3,6 +3,7 @@ import {
   createUserWithEmailAndPassword,
   signOut as firebaseSignOut, 
   onAuthStateChanged, 
+  updatePassword as firebaseUpdatePassword,
   User as FirebaseUser,
   AuthError
 } from 'firebase/auth';
@@ -215,4 +216,24 @@ export function subscribeToFirebaseAuth(
       callback(null, 'UNAUTHENTICATED');
     }
   );
+}
+
+/**
+ * Updates the current user's password directly in Firebase Authentication.
+ */
+export async function updateFirebaseAuthPassword(newPassword: string): Promise<{ success: boolean; message: string }> {
+  if (!auth || !auth.currentUser) {
+    return { success: false, message: 'Tidak ada sesi Firebase Auth aktif.' };
+  }
+
+  try {
+    await firebaseUpdatePassword(auth.currentUser, newPassword);
+    return { success: true, message: 'Password Firebase Auth berhasil diperbarui.' };
+  } catch (error: any) {
+    console.warn('Firebase Auth updatePassword error:', error);
+    return {
+      success: false,
+      message: mapFirebaseAuthError(error)
+    };
+  }
 }

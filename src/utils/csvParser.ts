@@ -99,7 +99,7 @@ export function parseCSVToMediators(csvText: string): {
     };
 
     let kd_med = getVal(idxKdMed, '');
-    const nama_mediator = getVal(idxNama, '');
+    const nama_mediator = getVal(idxNama, '').toUpperCase();
     const no_tlpn = getVal(idxTlpn, '');
     let kd_cabang = getVal(idxCabang, 'CAB-01').toUpperCase();
     let kd_posko = getVal(idxPosko, 'PSK-01').toUpperCase();
@@ -277,7 +277,7 @@ export function parseCSVToExCustomers(csvText: string): {
     let no_psb = getVal(idxNoPsb, '');
     let kd_cab = getVal(idxCab, 'C16').toUpperCase();
     let kd_pos = getVal(idxPos, 'QJ0').toUpperCase();
-    const nama_konsumen = getVal(idxNama, '');
+    const nama_konsumen = getVal(idxNama, '').toUpperCase();
     const no_telepon = getVal(idxTelp, '');
     let tgl_bpkb_sdk = getVal(idxTglBpkb, new Date().toISOString().split('T')[0]);
     let rawStatus = getVal(idxStatus, 'Tepat Waktu');

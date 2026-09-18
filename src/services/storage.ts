@@ -327,7 +327,7 @@ export const DatabaseService = {
   async saveCabang(cabang: Cabang, isEdit: boolean = false, oldKdCabang?: string): Promise<{ success: boolean; message: string }> {
     const list = this.getCabangList();
     const cleanKd = cabang.kd_cabang.trim().toUpperCase();
-    const cleanNama = cabang.nama_cabang.trim();
+    const cleanNama = cabang.nama_cabang.trim().toUpperCase();
     const cleanWilayah = cabang.wilayah ? cabang.wilayah.trim() : 'Wilayah 1';
 
     if (!cleanKd || !cleanNama) {
@@ -425,7 +425,7 @@ export const DatabaseService = {
   async savePosko(posko: Posko, isEdit: boolean = false, oldKdPosko?: string): Promise<{ success: boolean; message: string }> {
     const list = this.getPoskoList();
     const cleanKd = posko.kd_posko.trim().toUpperCase();
-    const cleanNama = posko.nama_posko.trim();
+    const cleanNama = posko.nama_posko.trim().toUpperCase();
     const cleanCabang = posko.kd_cabang.trim().toUpperCase();
 
     if (!cleanKd || !cleanNama || !cleanCabang) {
@@ -547,6 +547,7 @@ export const DatabaseService = {
     }
 
     const cleanUsername = user.username.trim().toLowerCase();
+    const cleanNama = user.nama.trim().toUpperCase();
     const cleanAo = (user.kd_ao || user.username).trim().toUpperCase();
 
     // Clear branch/posko for national roles
@@ -582,20 +583,22 @@ export const DatabaseService = {
           ...users[editIndex],
           ...user,
           username: cleanUsername,
+          nama: cleanNama,
           kd_ao: cleanAo,
           password: user.password || users[editIndex].password || '1234',
         };
       } else {
-        savedUser = { ...user, username: cleanUsername, kd_ao: cleanAo };
+        savedUser = { ...user, username: cleanUsername, nama: cleanNama, kd_ao: cleanAo };
       }
     } else {
       savedUser = {
         ...user,
         id: user.id || `USR-${Date.now().toString().slice(-6)}`,
         username: cleanUsername,
+        nama: cleanNama,
         kd_ao: cleanAo,
-        password: user.password || '1234',
-        must_change_password: false,
+        password: user.password || 'test1234',
+        must_change_password: true,
         status: user.status || 'AKTIF'
       };
     }
@@ -669,8 +672,8 @@ export const DatabaseService = {
 
     const updatedUser: User = {
       ...users[userIndex],
-      password: '1234',
-      must_change_password: false,
+      password: 'test1234',
+      must_change_password: true,
       last_password_change: new Date().toISOString()
     };
 
@@ -706,13 +709,13 @@ export const DatabaseService = {
       currentUser || { id: 'SYSTEM', nama: 'Super Admin', role: 'SUPER_ADMIN' },
       'USER_MANAGEMENT',
       'RESET_PASSWORD',
-      `Mereset password pengguna "${updatedUser.nama}" (@${updatedUser.username}) kembali ke default "1234"`,
+      `Mereset password pengguna "${updatedUser.nama}" (@${updatedUser.username}) kembali ke default "test1234" (Wajib ganti password)`,
       updatedUser.id
     );
 
     return { 
       success: true, 
-      message: `Password akun ${updatedUser.nama} berhasil direset ke "1234".` 
+      message: `Password akun ${updatedUser.nama} berhasil direset ke "test1234". Pengguna wajib mengganti password saat login berikutnya.` 
     };
   },
 
@@ -727,13 +730,14 @@ export const DatabaseService = {
       return { success: false, message: 'Password harus memiliki panjang minimal 6 karakter!' };
     }
 
-    if (newPassword === '1234') {
-      return { success: false, message: 'Password baru tidak boleh sama dengan password default (1234)!' };
+    const trimmedPassword = newPassword.trim();
+    if (trimmedPassword === '1234' || trimmedPassword === 'test1234' || trimmedPassword === 'password') {
+      return { success: false, message: 'Password baru tidak boleh menggunakan kata sandi bawaan/default sistem!' };
     }
 
     const updatedUser: User = {
       ...users[userIndex],
-      password: newPassword,
+      password: trimmedPassword,
       must_change_password: false,
       last_password_change: new Date().toISOString()
     };
@@ -929,7 +933,7 @@ export const DatabaseService = {
     const newMediator: MediatorKontrak = {
       kd_med: tempCode,
       temp_id: tempId,
-      nama_mediator: params.nama_mediator.trim(),
+      nama_mediator: params.nama_mediator.trim().toUpperCase(),
       no_tlpn: params.no_tlpn.trim(),
       status: 'BELUM_AKTIF',
       kd_ao: cleanAo,
@@ -1132,7 +1136,7 @@ export const DatabaseService = {
 
     return {
       success: true,
-      message: `Mediator "${updatedMed.nama_mediator}" disetujui (Status: PENDING - ${pendingCode}). Siap untuk penetapan KD MED oleh KAPOS / Super Admin.`
+      message: `Mediator "${updatedMed.nama_mediator}" disetujui (Status: PENDING - ${pendingCode}). Siap untuk penetapan KD MED oleh KAOPS / Super Admin.`
     };
   },
 
@@ -1328,7 +1332,7 @@ export const DatabaseService = {
 
     const updatedMed: MediatorKontrak = {
       ...currentMed,
-      nama_mediator: params.nama_mediator ? params.nama_mediator.trim() : currentMed.nama_mediator,
+      nama_mediator: params.nama_mediator ? params.nama_mediator.trim().toUpperCase() : currentMed.nama_mediator.toUpperCase(),
       no_tlpn: params.no_tlpn ? params.no_tlpn.trim() : currentMed.no_tlpn,
       kd_ao: params.kd_ao || currentMed.kd_ao,
       kd_posko: params.kd_posko !== undefined ? params.kd_posko : currentMed.kd_posko,
@@ -1461,7 +1465,7 @@ export const DatabaseService = {
       const record: MediatorKontrak = {
         kd_med: cleanKdMed,
         temp_id: `TMP-${Date.now().toString().slice(-4)}-${Math.floor(Math.random() * 1000)}`,
-        nama_mediator: item.nama_mediator.trim(),
+        nama_mediator: item.nama_mediator.trim().toUpperCase(),
         no_tlpn: item.no_tlpn.trim(),
         kd_cabang: cleanCabang,
         kd_posko: cleanPosko,
@@ -1649,7 +1653,7 @@ export const DatabaseService = {
   getFullSystemBackup(exportedBy: string = 'SUPER_ADMIN'): SystemFullBackup {
     return {
       meta: {
-        appName: 'MED CONTROL BAF - MEDIATOR MANAGEMENT SYSTEM',
+        appName: 'MED CONTROL KAMM - MEDIATOR MANAGEMENT SYSTEM',
         version: '2.0.0',
         timestamp: new Date().toISOString(),
         exportedBy,
@@ -1805,7 +1809,7 @@ export const DatabaseService = {
         no_psb: cleanNoPsb,
         kd_cab: cleanCabang,
         kd_pos: cleanPosko,
-        nama_konsumen: item.nama_konsumen.trim(),
+        nama_konsumen: item.nama_konsumen.trim().toUpperCase(),
         no_telepon: item.no_telepon.trim(),
         tgl_bpkb_sdk: item.tgl_bpkb_sdk || new Date().toISOString().split('T')[0],
         status_kredit_lunas: item.status_kredit_lunas || 'Tepat Waktu',
@@ -1906,7 +1910,7 @@ export const DatabaseService = {
     const cleanNoPsb = exCustomer.no_psb.trim().toUpperCase();
     const cleanCab = exCustomer.kd_cab.trim().toUpperCase();
     const cleanPos = exCustomer.kd_pos.trim().toUpperCase();
-    const cleanNama = exCustomer.nama_konsumen.trim();
+    const cleanNama = exCustomer.nama_konsumen.trim().toUpperCase();
     const cleanTelp = exCustomer.no_telepon.trim();
     const cleanTgl = exCustomer.tgl_bpkb_sdk.trim();
     const cleanStatus = exCustomer.status_kredit_lunas;

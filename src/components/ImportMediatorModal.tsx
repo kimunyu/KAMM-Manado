@@ -131,7 +131,7 @@ export const ImportMediatorModal: React.FC<ImportMediatorModalProps> = ({
     const res = DatabaseService.importMediators(
       validRows.map(r => ({
         kd_med: r.kd_med,
-        nama_mediator: r.nama_mediator,
+        nama_mediator: r.nama_mediator.trim().toUpperCase(),
         no_tlpn: r.no_tlpn,
         kd_cabang: r.kd_cabang,
         kd_posko: r.kd_posko,

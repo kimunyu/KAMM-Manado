@@ -7,20 +7,93 @@ import {
   MapPin, 
   KeyRound,
   Download,
-  Upload
+  Upload,
+  TrendingUp,
+  Users,
+  Flame,
+  UserCog
 } from 'lucide-react';
 import { DatabaseService, SystemFullBackup } from '../services/storage';
 import { KammLogo } from './KammLogo';
+import { ModuleId } from './Sidebar';
 
 interface HeaderProps {
   onRefresh: () => void;
   onOpenChangePassword?: () => void;
   onOpenProfile?: () => void;
+  activeModule?: ModuleId;
+  onSelectModule?: (mod: ModuleId) => void;
+  pendingCount?: number;
+  holdSalesCount?: number;
 }
 
-export const Header: React.FC<HeaderProps> = ({ onRefresh, onOpenChangePassword, onOpenProfile }) => {
-  const { currentUser, logout, refreshData, isSuperAdminSession } = useAuth();
+export const Header: React.FC<HeaderProps> = ({ 
+  onRefresh, 
+  onOpenChangePassword, 
+  onOpenProfile,
+  activeModule,
+  onSelectModule,
+  pendingCount = 0,
+  holdSalesCount = 0
+}) => {
+  const { currentUser, logout, refreshData, isSuperAdminSession, canManageUsers } = useAuth();
   const [snapshotMsg, setSnapshotMsg] = useState<string | null>(null);
+
+  const role = currentUser?.role;
+  const isBpkbAdmin = role === 'ADM_BPKB' || role === 'ADMIN_BPKB';
+  const isAdmDe = role === 'ADM_DE';
+
+  const canAccessSales = 
+    role === 'ADM_DE' || 
+    role === 'ADM' || 
+    role === 'KAOPS' || 
+    role === 'KACAB' || 
+    role === 'RM' || 
+    role === 'KAPOS' || 
+    role === 'SUPER_ADMIN';
+
+  const canAccessMediator = !isBpkbAdmin && !isAdmDe;
+  const canAccessExCustomer = !isAdmDe;
+  const canAccessMasterData = role === 'SUPER_ADMIN' || canManageUsers;
+
+  const headerModules = [
+    {
+      id: 'sales' as ModuleId,
+      label: 'Kontrol Sales',
+      icon: TrendingUp,
+      counter: holdSalesCount > 0 ? holdSalesCount : undefined,
+      counterActiveStyle: 'bg-white text-purple-700',
+      visible: canAccessSales,
+      activeStyle: 'bg-purple-600 text-white border-purple-500 shadow-md shadow-purple-950/50',
+      hoverStyle: 'text-[#9ea6b8] hover:text-purple-300 hover:bg-[#1c202d] border-transparent',
+    },
+    {
+      id: 'mediator' as ModuleId,
+      label: 'Kontrol Mediator',
+      icon: Users,
+      counter: pendingCount > 0 ? pendingCount : undefined,
+      counterActiveStyle: 'bg-white text-blue-700',
+      visible: canAccessMediator,
+      activeStyle: 'bg-blue-600 text-white border-blue-500 shadow-md shadow-blue-950/50',
+      hoverStyle: 'text-[#9ea6b8] hover:text-blue-300 hover:bg-[#1c202d] border-transparent',
+    },
+    {
+      id: 'ex-customer' as ModuleId,
+      label: 'Ex-Customer',
+      icon: Flame,
+      visible: canAccessExCustomer,
+      activeStyle: 'bg-amber-600 text-white border-amber-500 shadow-md shadow-amber-950/50',
+      hoverStyle: 'text-[#9ea6b8] hover:text-amber-300 hover:bg-[#1c202d] border-transparent',
+    },
+    {
+      id: 'master-data' as ModuleId,
+      label: 'Master Data',
+      icon: UserCog,
+      visible: canAccessMasterData,
+      activeStyle: 'bg-emerald-600 text-white border-emerald-500 shadow-md shadow-emerald-950/50',
+      hoverStyle: 'text-[#9ea6b8] hover:text-emerald-300 hover:bg-[#1c202d] border-transparent',
+    },
+  ].filter(m => m.visible);
 
   // Download Full System JSON Backup
   const handleDownloadBackup = () => {
@@ -191,44 +264,80 @@ export const Header: React.FC<HeaderProps> = ({ onRefresh, onOpenChangePassword,
           </div>
         </div>
 
-        {/* Action Bar (Backup + Restore + Reset Data) - ONLY for Super Admin */}
-        {isSuperAdminSession && (
-          <div className="py-2 border-t border-[#1f2330] flex flex-wrap items-center justify-end gap-2 text-xs">
-            {/* Anti-Reset Backup / Restore buttons right next to Reset Data */}
-            <div className="flex items-center space-x-2 min-w-max ml-auto">
-              {snapshotMsg && (
-                <span className="text-[11px] font-semibold text-emerald-400 bg-emerald-950/60 px-2.5 py-1 rounded-md border border-emerald-800/60 animate-fade-in">
-                  {snapshotMsg}
-                </span>
-              )}
-
-              {/* 1. Download Backup JSON */}
-              <button
-                id="btn-download-json-backup-header"
-                onClick={handleDownloadBackup}
-                className="flex items-center space-x-1 px-3 py-1 rounded-md bg-indigo-900/60 hover:bg-indigo-800/80 text-indigo-200 hover:text-white border border-indigo-700/60 transition-colors cursor-pointer text-[11px] font-bold shadow-xs"
-                title="Download seluruh database ke file .JSON (Anti-Reset)"
+        {/* Sub Bar: Module Navigation (Left) & Backup/Restore Actions (Right) sebaris */}
+        {(headerModules.length > 1 || isSuperAdminSession) && (
+          <div className="py-2 border-t border-[#1f2330] flex flex-wrap items-center justify-between gap-3 text-xs">
+            {/* Kiri: Menu Modul Ruang Kerja (Kontrol Sales, Kontrol Mediator, dll.) */}
+            {headerModules.length > 1 && onSelectModule ? (
+              <nav 
+                id="header-module-nav" 
+                aria-label="Pilih Modul Ruang Kerja"
+                className="flex items-center space-x-1.5 bg-[#0e1017] p-1 rounded-xl border border-[#232738] shadow-inner overflow-x-auto max-w-full"
               >
-                <Download className="h-3.5 w-3.5 text-indigo-300" />
-                <span>Backup JSON (Anti-Reset)</span>
-              </button>
+                {headerModules.map((m) => {
+                  const Icon = m.icon;
+                  const isActive = activeModule === m.id;
+                  return (
+                    <button
+                      key={m.id}
+                      id={`header-switch-${m.id}`}
+                      onClick={() => onSelectModule(m.id)}
+                      className={`flex items-center space-x-2 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all cursor-pointer whitespace-nowrap ${
+                        isActive ? m.activeStyle : m.hoverStyle
+                      }`}
+                    >
+                      <Icon className="h-3.5 w-3.5 shrink-0" />
+                      <span>{m.label}</span>
+                      {m.counter !== undefined && m.counter > 0 && (
+                        <span className={`px-1.5 py-0.2 text-[10px] font-bold rounded-full ${
+                          isActive ? (m.counterActiveStyle || 'bg-white text-blue-700') : 'bg-rose-500 text-white animate-pulse'
+                        }`}>
+                          {m.counter}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </nav>
+            ) : <div />}
 
-              {/* 2. Restore Backup JSON */}
-              <label
-                id="label-restore-json-backup-header"
-                className="flex items-center space-x-1 px-3 py-1 rounded-md bg-emerald-950/60 hover:bg-emerald-900/80 text-emerald-200 hover:text-white border border-emerald-800/60 transition-colors cursor-pointer text-[11px] font-bold shadow-xs"
-                title="Pulihkan database dari file .JSON yang pernah di-download"
-              >
-                <Upload className="h-3.5 w-3.5 text-emerald-300" />
-                <span>Restore JSON</span>
-                <input
-                  type="file"
-                  accept=".json"
-                  onChange={handleRestoreBackup}
-                  className="hidden"
-                />
-              </label>
-            </div>
+            {/* Kanan: Anti-Reset Backup / Restore JSON buttons - sebaris di sebelah kanan */}
+            {isSuperAdminSession && (
+              <div className="flex items-center space-x-2 min-w-max ml-auto">
+                {snapshotMsg && (
+                  <span className="text-[11px] font-semibold text-emerald-400 bg-emerald-950/60 px-2.5 py-1 rounded-md border border-emerald-800/60 animate-fade-in">
+                    {snapshotMsg}
+                  </span>
+                )}
+
+                {/* 1. Download Backup JSON */}
+                <button
+                  id="btn-download-json-backup-header"
+                  onClick={handleDownloadBackup}
+                  className="flex items-center space-x-1 px-3 py-1.5 rounded-lg bg-indigo-900/60 hover:bg-indigo-800/80 text-indigo-200 hover:text-white border border-indigo-700/60 transition-colors cursor-pointer text-[11px] font-bold shadow-xs"
+                  title="Download seluruh database ke file .JSON (Anti-Reset)"
+                >
+                  <Download className="h-3.5 w-3.5 text-indigo-300" />
+                  <span>Backup JSON (Anti-Reset)</span>
+                </button>
+
+                {/* 2. Restore Backup JSON */}
+                <label
+                  id="label-restore-json-backup-header"
+                  className="flex items-center space-x-1 px-3 py-1.5 rounded-lg bg-emerald-950/60 hover:bg-emerald-900/80 text-emerald-200 hover:text-white border border-emerald-800/60 transition-colors cursor-pointer text-[11px] font-bold shadow-xs"
+                  title="Pulihkan database dari file .JSON yang pernah di-download"
+                >
+                  <Upload className="h-3.5 w-3.5 text-emerald-300" />
+                  <span>Restore JSON</span>
+                  <input
+                    type="file"
+                    accept=".json"
+                    onChange={handleRestoreBackup}
+                    className="hidden"
+                  />
+                </label>
+              </div>
+            )}
           </div>
         )}
       </div>

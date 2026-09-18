@@ -40,7 +40,6 @@ export const RegistrasiMediator: React.FC<RegistrasiMediatorProps> = ({ onSucces
   const [kdCabang, setKdCabang] = useState(defaultCabang);
   const [kdPosko, setKdPosko] = useState(defaultPosko);
   const [kdAo, setKdAo] = useState(currentUser?.kd_ao || '');
-  const [catatan, setCatatan] = useState('');
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string; tempCode?: string } | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -193,14 +192,13 @@ export const RegistrasiMediator: React.FC<RegistrasiMediatorProps> = ({ onSucces
     setFeedback(null);
 
     const result = await DatabaseService.registerMediator({
-      nama_mediator: namaMediator.trim(),
+      nama_mediator: namaMediator.trim().toUpperCase(),
       no_tlpn: noTlpn.trim(),
       kd_ao: effectiveKdAo,
       kd_posko: effectiveKdPosko,
       kd_cabang: effectiveKdCabang,
       created_by_user: currentUser?.nama || currentUser?.username || 'Petugas Registrasi',
       created_by_role: currentUser?.role || 'CMO',
-      catatan_admin: catatan.trim(),
     });
 
     setIsSubmitting(false);
@@ -213,7 +211,6 @@ export const RegistrasiMediator: React.FC<RegistrasiMediatorProps> = ({ onSucces
       });
       setNamaMediator('');
       setNoTlpn('');
-      setCatatan('');
       onSuccess();
     } else {
       setFeedback({ type: 'error', message: result.message });
@@ -313,11 +310,11 @@ export const RegistrasiMediator: React.FC<RegistrasiMediatorProps> = ({ onSucces
                   maxLength={100}
                   placeholder="Masukkan nama lengkap mediator (maksimal 100 karakter)"
                   value={namaMediator}
-                  onChange={(e) => setNamaMediator(e.target.value)}
-                  className="w-full p-2.5 bg-[#0d0e12] border border-[#272d3e] text-[#e0e4eb] placeholder-[#6b7280] rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/50"
+                  onChange={(e) => setNamaMediator(e.target.value.toUpperCase())}
+                  className="w-full p-2.5 bg-[#0d0e12] border border-[#272d3e] text-[#e0e4eb] placeholder-[#6b7280] rounded-xl text-xs uppercase focus:outline-none focus:ring-2 focus:ring-blue-500/50"
                 />
                 <span className="text-[11px] text-[#6b7280] mt-1 block">
-                  {namaMediator.length}/100 karakter
+                  Otomatis kapital. {namaMediator.length}/100 karakter
                 </span>
               </div>
 
@@ -429,21 +426,6 @@ export const RegistrasiMediator: React.FC<RegistrasiMediatorProps> = ({ onSucces
                 )}
               </div>
             </div>
-          </div>
-
-          {/* Section 3: Catatan Pengajuan */}
-          <div className="pt-4 border-t border-[#232734]">
-            <label className="block text-xs font-bold text-[#c2c7d0] mb-1">
-              Catatan Pendaftaran / Keterangan Berkas (Opsional)
-            </label>
-            <textarea
-              id="input-catatan-reg"
-              rows={2}
-              value={catatan}
-              onChange={(e) => setCatatan(e.target.value)}
-              placeholder="Catatan tambahan untuk tim Admin peninjau berkas..."
-              className="w-full p-2.5 bg-[#0d0e12] border border-[#272d3e] text-[#e0e4eb] placeholder-[#6b7280] rounded-xl text-xs resize-none focus:outline-none focus:ring-2 focus:ring-blue-500/50"
-            />
           </div>
 
           {/* Submit Button */}

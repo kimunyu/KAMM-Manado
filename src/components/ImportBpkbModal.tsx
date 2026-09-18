@@ -131,7 +131,7 @@ export const ImportBpkbModal: React.FC<ImportBpkbModalProps> = ({
         no_psb: r.no_psb,
         kd_cab: r.kd_cab,
         kd_pos: r.kd_pos,
-        nama_konsumen: r.nama_konsumen,
+        nama_konsumen: r.nama_konsumen.trim().toUpperCase(),
         no_telepon: r.no_telepon,
         tgl_bpkb_sdk: r.tgl_bpkb_sdk,
         status_kredit_lunas: r.status_kredit_lunas

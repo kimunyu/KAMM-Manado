@@ -2,12 +2,28 @@ import { StatusSalesRecord } from '../types';
 import { UserRole } from '../../../types';
 
 /**
- * Returns current Date in WITA timezone (UTC+8)
+ * Returns current Date in WITA timezone (UTC+8) normalized to midnight (00:00:00)
  */
 export function getWitaToday(): Date {
+  try {
+    const formatter = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Makassar',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    });
+    const parts = formatter.format(new Date()).split('-');
+    if (parts.length === 3) {
+      const year = parseInt(parts[0], 10);
+      const month = parseInt(parts[1], 10) - 1;
+      const day = parseInt(parts[2], 10);
+      return new Date(year, month, day, 0, 0, 0, 0);
+    }
+  } catch {
+    // Fallback if Intl fails
+  }
   const now = new Date();
-  const utcTime = now.getTime() + (now.getTimezoneOffset() * 60000);
-  return new Date(utcTime + (3600000 * 8));
+  return new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
 }
 
 /**
@@ -21,7 +37,7 @@ export function formatToDDMMYYYY(date: Date): string {
 }
 
 /**
- * Parses DD/MM/YYYY string into a Date object normalized to midnight (00:00:00)
+ * Parses DD/MM/YYYY or YYYY-MM-DD string into a Date object normalized to midnight (00:00:00)
  */
 export function parseDDMMYYYY(str: string): Date | null {
   if (!str) return null;
@@ -41,18 +57,35 @@ export function parseDDMMYYYY(str: string): Date | null {
     }
   }
 
-  // Fallback ISO YYYY-MM-DD
+  // Format with dash: DD-MM-YYYY or YYYY-MM-DD
   if (trimmed.includes('-')) {
     const parts = trimmed.split('-');
     if (parts.length === 3) {
-      const y = parseInt(parts[0], 10);
-      const m = parseInt(parts[1], 10) - 1;
-      const d = parseInt(parts[2], 10);
+      let y: number;
+      let m: number;
+      let d: number;
+      if (parts[0].length === 4) {
+        // YYYY-MM-DD
+        y = parseInt(parts[0], 10);
+        m = parseInt(parts[1], 10) - 1;
+        d = parseInt(parts[2], 10);
+      } else {
+        // DD-MM-YYYY
+        d = parseInt(parts[0], 10);
+        m = parseInt(parts[1], 10) - 1;
+        y = parseInt(parts[2], 10);
+      }
       if (!isNaN(d) && !isNaN(m) && !isNaN(y)) {
         const parsed = new Date(y, m, d, 0, 0, 0, 0);
         if (!isNaN(parsed.getTime())) return parsed;
       }
     }
+  }
+
+  // Fallback to native parsing
+  const fallback = new Date(trimmed);
+  if (!isNaN(fallback.getTime())) {
+    return new Date(fallback.getFullYear(), fallback.getMonth(), fallback.getDate(), 0, 0, 0, 0);
   }
 
   return null;
@@ -63,8 +96,8 @@ export function parseDDMMYYYY(str: string): Date | null {
  * Hari Sabtu (6) dan Minggu (0) TIDAK dihitung.
  */
 export function getWorkingDaysDifference(startDate: Date, endDate: Date): number {
-  const start = new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate());
-  const end = new Date(endDate.getFullYear(), endDate.getMonth(), endDate.getDate());
+  const start = new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate(), 0, 0, 0, 0);
+  const end = new Date(endDate.getFullYear(), endDate.getMonth(), endDate.getDate(), 0, 0, 0, 0);
 
   if (end <= start) {
     return 0;
@@ -87,15 +120,16 @@ export function getWorkingDaysDifference(startDate: Date, endDate: Date): number
 
 /**
  * Logika SLA & Status Tambahan HOLD DANA (Dynamic Calculation)
- * Jika status masih SUBMISS DAN selisih hari kerja sudah > 2 hari kerja,
+ * Jika status masih pending (SUBMISS atau BELUM SELESAI) DAN selisih hari kerja sudah > 2 hari kerja,
  * tampilkan Badge Tambahan: HOLD DANA.
  */
 export function checkHoldDanaSla(
   tglCairStr: string,
-  status: StatusSalesRecord,
+  status: StatusSalesRecord | string | undefined | null,
   refDate: Date = getWitaToday()
 ): { isHoldDana: boolean; workingDays: number } {
-  if (status !== 'SUBMISS') {
+  const normalizedStatus = (status || '').trim().toUpperCase();
+  if (normalizedStatus !== 'SUBMISS' && normalizedStatus !== 'BELUM SELESAI') {
     return { isHoldDana: false, workingDays: 0 };
   }
 
@@ -264,3 +298,58 @@ export function checkAcceptLockStatus(record: {
     formattedValidationDate,
   };
 }
+
+/**
+ * Mengekstrak hanya hari/tanggal (format 2 digit "DD", 01 s/d 31)
+ * Mampu membaca format baru "DD" maupun format warisan "DD/MM/YYYY" atau "YYYY-MM-DD"
+ */
+export function extractDayDD(val: string | number | undefined | null): string {
+  if (!val && val !== 0) return '';
+  const str = String(val).trim();
+  if (!str) return '';
+
+  // Format DD/MM/YYYY
+  if (str.includes('/')) {
+    const parts = str.split('/');
+    const d = parseInt(parts[0], 10);
+    if (!isNaN(d) && d >= 1 && d <= 31) {
+      return String(d).padStart(2, '0');
+    }
+  }
+
+  // Format ISO YYYY-MM-DD
+  if (str.includes('-')) {
+    const parts = str.split('-');
+    if (parts[0].length === 4) {
+      // YYYY-MM-DD
+      const d = parseInt(parts[2], 10);
+      if (!isNaN(d) && d >= 1 && d <= 31) return String(d).padStart(2, '0');
+    } else {
+      // DD-MM-YYYY
+      const d = parseInt(parts[0], 10);
+      if (!isNaN(d) && d >= 1 && d <= 31) return String(d).padStart(2, '0');
+    }
+  }
+
+  // Format angka murni atau string 2-digit DD
+  const num = parseInt(str, 10);
+  if (!isNaN(num) && num >= 1 && num <= 31) {
+    return String(num).padStart(2, '0');
+  }
+
+  return str.padStart(2, '0');
+}
+
+/**
+ * Menentukan apakah konsumen memiliki status/atribut "UBAH JT":
+ * Membandingkan hari pada TGL CAIR dengan TGL JT.
+ * Jika hari berbeda, maka konsumen berstatus UBAH JT.
+ */
+export function isUbahJt(tglCairStr: string | undefined | null, tglJtStr: string | undefined | null): boolean {
+  if (!tglCairStr || !tglJtStr) return false;
+  const cairDay = extractDayDD(tglCairStr);
+  const jtDay = extractDayDD(tglJtStr);
+  if (!cairDay || !jtDay) return false;
+  return cairDay !== jtDay;
+}
+

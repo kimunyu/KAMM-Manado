@@ -11,7 +11,8 @@ import {
   getCurrentFirebaseUser,
   getFirebaseUID,
   getFirebaseCompatibleEmail,
-  getFirebaseAuthIdentifierFromUsername
+  getFirebaseAuthIdentifierFromUsername,
+  updateFirebaseAuthPassword
 } from '../services/firebaseAuth';
 import { UserAuthMappingService } from '../services/userAuthMapping';
 
@@ -417,8 +418,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return { success: false, message: 'Tidak ada sesi pengguna aktif.' };
     }
 
-    const res = await DatabaseService.changeUserPassword(currentUser.id, newPassword);
+    const trimmedPassword = newPassword.trim();
+    // 1. Update Firestore users collection & local storage
+    const res = await DatabaseService.changeUserPassword(currentUser.id, trimmedPassword);
     if (res.success) {
+      // 2. Also synchronize password update directly to active Firebase Auth account if logged in
+      try {
+        await updateFirebaseAuthPassword(trimmedPassword);
+      } catch (fbAuthErr) {
+        console.warn('Firebase Auth password sync warning:', fbAuthErr);
+      }
+
       loadData();
       const updatedUsers = DatabaseService.getUsers();
       const updatedCurrent = updatedUsers.find(u => u.id === currentUser.id);
@@ -450,8 +460,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // Stage 1: ADM, KAPOS & SUPER_ADMIN can review/verify documents and approve to PENDING
   const canReviewMediator = role === 'ADM' || role === 'KAPOS' || role === 'SUPER_ADMIN';
 
-  // Stage 2: KAPOS & SUPER_ADMIN (and KAOPS) can input official KD MED and activate (status AKTIF)
-  const canInputKdMed = role === 'KAPOS' || role === 'SUPER_ADMIN' || role === 'KAOPS';
+  // Stage 2: KAOPS & SUPER_ADMIN can input official KD MED and activate (status AKTIF) - NOT KAPOS
+  const canInputKdMed = role === 'KAOPS' || role === 'SUPER_ADMIN';
 
   // Combined Validation Menu Access: Accessible if user can review or input KD MED
   const canValidateKdMed = canReviewMediator || canInputKdMed;

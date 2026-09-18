@@ -14,7 +14,7 @@ import { db } from '../../../services/firebase';
 import { SalesControlRecord } from '../types';
 import { User } from '../../../types';
 import { AuditService } from '../../../services/auditService';
-import { checkAcceptLockStatus } from '../utils/slaUtils';
+import { checkAcceptLockStatus, extractDayDD, isUbahJt } from '../utils/slaUtils';
 
 const COLLECTION_NAME = 'sales_control_records';
 const LOCAL_STORAGE_KEY = 'kamm_sales_control_records_v1';
@@ -121,8 +121,12 @@ class SalesServiceManager {
 
         // Pasang klausa WHERE yang selaras dengan firestore.rules agar query diizinkan
         if (user) {
-          if (user.role === 'ADM' && user.kd_posko) {
-            q = query(colRef, where('posko_id', '==', user.kd_posko));
+          if (user.role === 'ADM') {
+            if (user.kd_posko) {
+              q = query(colRef, where('posko_id', '==', user.kd_posko));
+            } else if (user.kd_cabang) {
+              q = query(colRef, where('cabang_id', '==', user.kd_cabang));
+            }
           } else if (user.role === 'KAPOS' && user.kd_posko) {
             q = query(colRef, where('posko_id', '==', user.kd_posko));
           } else if ((user.role === 'KAOPS' || user.role === 'KACAB') && user.kd_cabang) {
@@ -241,10 +245,10 @@ class SalesServiceManager {
       return { success: false, message: 'NO PSB harus terdiri dari tepat 8 digit angka numerik.' };
     }
 
-    // Validasi Nama Konsumen
-    const namaKonsumen = input.nama_konsumen.trim();
-    if (!namaKonsumen || namaKonsumen.length > 50) {
-      return { success: false, message: 'Nama konsumen wajib diisi dan maksimal 50 karakter.' };
+    // Validasi Nama Konsumen (Otomatis Uppercase)
+    const namaKonsumen = input.nama_konsumen.trim().toUpperCase();
+    if (!namaKonsumen || namaKonsumen.length > 100) {
+      return { success: false, message: 'Nama konsumen wajib diisi dan maksimal 100 karakter.' };
     }
 
     // Validasi No WA (Format 08...)
@@ -260,7 +264,9 @@ class SalesServiceManager {
     }
 
     const tglCair = input.tgl_cair.trim();
-    const tglJt = (input.tgl_jt && input.tgl_jt.trim()) ? input.tgl_jt.trim() : tglCair;
+    // TGL JT hanya berformat DD (default menyamai hari tgl_cair jika tidak diisi)
+    const tglJt = extractDayDD((input.tgl_jt && input.tgl_jt.trim()) ? input.tgl_jt.trim() : tglCair);
+    const hasUbahJt = isUbahJt(tglCair, tglJt);
 
     // Sesuai Poin 4: Keterangan awal selalu string kosong ""
     const newRecord: SalesControlRecord = {
@@ -280,6 +286,8 @@ class SalesServiceManager {
       created_by_uid: user.id,
       created_by_name: user.nama,
       created_at: new Date().toISOString(),
+      is_ubah_jt: hasUbahJt,
+      validasi_ubah_jt_status: null,
     };
 
     // 1. Simpan ke Firestore
@@ -389,11 +397,16 @@ class SalesServiceManager {
     }
 
     if (params.tgl_jt && params.tgl_jt.trim()) {
-      updates.tgl_jt = params.tgl_jt.trim();
+      updates.tgl_jt = extractDayDD(params.tgl_jt.trim());
     }
 
+    // Hitung ulang status/atribut Ubah JT
+    const finalTglCair = updates.tgl_cair || existing.tgl_cair;
+    const finalTglJt = updates.tgl_jt || existing.tgl_jt;
+    updates.is_ubah_jt = isUbahJt(finalTglCair, finalTglJt);
+
     if (params.nama_konsumen && params.nama_konsumen.trim()) {
-      updates.nama_konsumen = params.nama_konsumen.trim().slice(0, 50);
+      updates.nama_konsumen = params.nama_konsumen.trim().toUpperCase().slice(0, 100);
     }
     if (params.no_wa && params.no_wa.trim()) {
       const clean = params.no_wa.trim();
@@ -470,7 +483,7 @@ class SalesServiceManager {
       updated_by_uid: user.id,
     };
 
-    if (params.nama_konsumen) updates.nama_konsumen = params.nama_konsumen.trim().slice(0, 50);
+    if (params.nama_konsumen) updates.nama_konsumen = params.nama_konsumen.trim().toUpperCase().slice(0, 100);
     if (params.no_wa) updates.no_wa = params.no_wa.trim();
 
     // Poin 1: Hak akses ubah tgl_cair khusus ADM_DE dan SUPER_ADMIN
@@ -484,6 +497,15 @@ class SalesServiceManager {
         };
       }
     }
+
+    if ((params as any).tgl_jt && String((params as any).tgl_jt).trim()) {
+      updates.tgl_jt = extractDayDD(String((params as any).tgl_jt).trim());
+    }
+
+    // Perbarui status Ubah JT
+    const finalTglCair = updates.tgl_cair || existing.tgl_cair;
+    const finalTglJt = updates.tgl_jt || existing.tgl_jt;
+    updates.is_ubah_jt = isUbahJt(finalTglCair, finalTglJt);
 
     // Role ADM tidak boleh mengedit keterangan secara sembarangan
     if (params.keterangan !== undefined && user.role !== 'ADM') {
@@ -555,6 +577,80 @@ class SalesServiceManager {
     );
 
     return { success: true, message: 'Data berhasil dihapus.' };
+  }
+
+  /**
+   * Aksi Validasi Khusus Tanggal JT (SESUAI / BELUM SESUAI)
+   * Hanya untuk konsumen kategori ACCEPT dan UBAH JT.
+   * Hak Akses: ADM_DE, SUPER_ADMIN
+   */
+  public async validateUbahJtStatus(
+    noPsb: string,
+    status: 'SESUAI' | 'BELUM_SESUAI',
+    user: User,
+    catatan?: string
+  ): Promise<{ success: boolean; message: string }> {
+    const allowedRoles = ['ADM_DE', 'SUPER_ADMIN'];
+    if (!allowedRoles.includes(user.role)) {
+      return { 
+        success: false, 
+        message: `Role ${user.role} tidak memiliki hak akses untuk memvalidasi tanggal JT.` 
+      };
+    }
+
+    const cleanPsb = noPsb.trim();
+    const existing = this.recordsCache.find(r => r.no_psb === cleanPsb || r.id === cleanPsb);
+    if (!existing) {
+      return { success: false, message: 'Data konsumen tidak ditemukan.' };
+    }
+
+    const updates: Partial<SalesControlRecord> = {
+      validasi_ubah_jt_status: status,
+      validasi_ubah_jt_at: new Date().toISOString(),
+      validasi_ubah_jt_by: `${user.id} - ${user.nama} (${user.role})`,
+      validasi_ubah_jt_catatan: (catatan || '').trim(),
+      updated_at: new Date().toISOString(),
+      updated_by: `${user.id} - ${user.nama} (${user.role})`,
+      updated_by_uid: user.id,
+    };
+
+    // 1. Simpan ke Firestore
+    if (db) {
+      try {
+        const docRef = doc(db, COLLECTION_NAME, existing.no_psb);
+        await updateDoc(docRef, {
+          ...updates,
+          updated_at_timestamp: serverTimestamp(),
+        });
+      } catch (err: any) {
+        console.error('Gagal update validasi Ubah JT ke Firestore:', err);
+        return { success: false, message: `Gagal menyimpan ke server: ${err.message || String(err)}` };
+      }
+    }
+
+    // 2. Update Cache lokal
+    const updatedRecord: SalesControlRecord = {
+      ...existing,
+      ...updates,
+    };
+    const updatedList = this.recordsCache.map(r => r.no_psb === existing.no_psb ? updatedRecord : r);
+    this.saveToLocalStorage(updatedList);
+    this.notify();
+
+    // 3. Catat Audit Log
+    AuditService.record(
+      { id: user.id, nama: user.nama, role: user.role, kd_ao: user.kd_ao },
+      'KONTROL_SALES',
+      status === 'SESUAI' ? 'VALIDASI_UBAH_JT_SESUAI' : 'VALIDASI_UBAH_JT_BELUM_SESUAI',
+      `Validasi tanggal JT konsumen "${existing.nama_konsumen}" (NO PSB: ${existing.no_psb}) ditetapkan [${status}]. Tgl Cair: ${existing.tgl_cair}, Tgl JT: ${extractDayDD(existing.tgl_jt)}${catatan ? ` | Catatan: ${catatan}` : ''}`,
+      existing.no_psb,
+      { no_psb: existing.no_psb, validasi_ubah_jt_status: status, tgl_cair: existing.tgl_cair, tgl_jt: existing.tgl_jt, catatan }
+    );
+
+    return { 
+      success: true, 
+      message: `Konfirmasi tanggal JT untuk ${existing.nama_konsumen} berhasil dicatat sebagai [${status}]!` 
+    };
   }
 }
 

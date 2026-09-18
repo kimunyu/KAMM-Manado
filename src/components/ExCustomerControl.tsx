@@ -184,7 +184,7 @@ export const ExCustomerControl: React.FC<ExCustomerControlProps> = ({
       no_psb: inputNoPsb,
       kd_cab: inputKdCab,
       kd_pos: inputKdPos,
-      nama_konsumen: inputNama,
+      nama_konsumen: inputNama.trim().toUpperCase(),
       no_telepon: inputTelp,
       tgl_bpkb_sdk: inputTglBpkb,
       status_kredit_lunas: inputStatusLunas
@@ -212,7 +212,7 @@ export const ExCustomerControl: React.FC<ExCustomerControlProps> = ({
       no_psb: editingCustomer.no_psb,
       kd_cab: editingCustomer.kd_cab,
       kd_pos: editingCustomer.kd_pos,
-      nama_konsumen: editingCustomer.nama_konsumen,
+      nama_konsumen: editingCustomer.nama_konsumen.trim().toUpperCase(),
       no_telepon: editingCustomer.no_telepon,
       tgl_bpkb_sdk: editingCustomer.tgl_bpkb_sdk,
       status_kredit_lunas: editingCustomer.status_kredit_lunas
@@ -352,7 +352,7 @@ export const ExCustomerControl: React.FC<ExCustomerControlProps> = ({
   const getCleanWhatsappLink = (phone: string, nama: string) => {
     let clean = phone.replace(/\D/g, '');
     if (clean.startsWith('0')) clean = '62' + clean.slice(1);
-    const greeting = encodeURIComponent(`Halo Bpk/Ibu ${nama}, kami dari BAF ingin menginformasikan promo khusus pembiayaan kembali untuk nasabah setia kami.`);
+    const greeting = encodeURIComponent(`Halo Bpk/Ibu ${nama}, kami dari KAMM, jika Bpk/Ibu butuh dana cepat kami siap proses hari ini.`);
     return `https://wa.me/${clean}?text=${greeting}`;
   };
 
@@ -376,7 +376,7 @@ export const ExCustomerControl: React.FC<ExCustomerControlProps> = ({
       width: 'min-w-[200px]',
       render: (item) => (
         <div>
-          <span className="font-semibold text-[#f1f3f7] block">{item.nama_konsumen}</span>
+          <span className="font-semibold text-[#f1f3f7] block uppercase">{item.nama_konsumen}</span>
           <span className="block text-[10px] text-[#6b7280]">
             {item.kd_cab} • {item.kd_pos}
           </span>
@@ -482,7 +482,7 @@ export const ExCustomerControl: React.FC<ExCustomerControlProps> = ({
       width: 'min-w-[220px]',
       render: (item) => (
         <div>
-          <div className="font-bold text-[#f1f3f7]">{item.nama_konsumen}</div>
+          <div className="font-bold text-[#f1f3f7] uppercase">{item.nama_konsumen}</div>
           <div className="font-mono text-[11px] text-amber-400/90">{item.no_psb}</div>
           <div className="text-[10px] text-[#6b7280]">
             Tgl BPKB: {item.tgl_bpkb_sdk} • Posko: {item.kd_pos}
@@ -665,7 +665,7 @@ export const ExCustomerControl: React.FC<ExCustomerControlProps> = ({
       width: 'min-w-[200px]',
       render: (log) => (
         <div>
-          <span className="font-bold text-[#f1f3f7] block">{log.nama_konsumen}</span>
+          <span className="font-bold text-[#f1f3f7] block uppercase">{log.nama_konsumen}</span>
           <span className="font-mono text-[10px] text-amber-400">{log.no_psb}</span>
         </div>
       )
@@ -1044,9 +1044,9 @@ export const ExCustomerControl: React.FC<ExCustomerControlProps> = ({
                   id="input-ex-namakonsumen"
                   type="text"
                   value={inputNama}
-                  onChange={(e) => setInputNama(e.target.value)}
+                  onChange={(e) => setInputNama(e.target.value.toUpperCase())}
                   placeholder="Nama Lengkap Konsumen"
-                  className="w-full px-3.5 py-2.5 bg-[#0d0e12] border border-[#272d3e] rounded-xl text-xs text-[#f1f3f7] focus:outline-none focus:border-amber-500 placeholder-[#6b7280]"
+                  className="w-full px-3.5 py-2.5 bg-[#0d0e12] border border-[#272d3e] rounded-xl text-xs text-[#f1f3f7] uppercase focus:outline-none focus:border-amber-500 placeholder-[#6b7280]"
                   required
                 />
               </div>
@@ -1548,8 +1548,8 @@ export const ExCustomerControl: React.FC<ExCustomerControlProps> = ({
                   <input
                     type="text"
                     value={editingCustomer.nama_konsumen}
-                    onChange={(e) => setEditingCustomer({ ...editingCustomer, nama_konsumen: e.target.value })}
-                    className="w-full px-3 py-2 bg-[#0d0e12] border border-[#272d3e] rounded-xl text-[#f1f3f7]"
+                    onChange={(e) => setEditingCustomer({ ...editingCustomer, nama_konsumen: e.target.value.toUpperCase() })}
+                    className="w-full px-3 py-2 bg-[#0d0e12] border border-[#272d3e] rounded-xl text-[#f1f3f7] uppercase"
                     required
                   />
                 </div>

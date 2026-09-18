@@ -512,7 +512,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
                     {criteria.length ? '✓' : '•'} Minimal 6 karakter
                   </span>
                   <span className={criteria.notDefault ? 'text-emerald-400 flex items-center gap-1' : 'flex items-center gap-1'}>
-                    {criteria.notDefault ? '✓' : '•'} Bukan password default (1234)
+                    {criteria.notDefault ? '✓' : '•'} Bukan password default (test1234)
                   </span>
                   <span className={criteria.hasUpperLower ? 'text-emerald-400 flex items-center gap-1' : 'flex items-center gap-1'}>
                     {criteria.hasUpperLower ? '✓' : '•'} Huruf besar & kecil

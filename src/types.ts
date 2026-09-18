@@ -176,7 +176,7 @@ export interface SystemHealthStatus {
 
 export type MediatorStatus = 
   | 'BELUM_AKTIF' // Baru didaftarkan (Menunggu Peninjauan Admin)
-  | 'PENDING'     // Telah ditinjau Admin (Menunggu Input KD MED oleh KAPOS / Super Admin)
+  | 'PENDING'     // Telah ditinjau Admin (Menunggu Input KD MED oleh KAOPS / Super Admin)
   | 'AKTIF'       // Telah diinput KD MED resmi (Aktif Beroperasi)
   | 'INAKTIF'     // Nonaktif / Vakum
   | 'DITOLAK';    // Ditolak saat peninjauan/validasi

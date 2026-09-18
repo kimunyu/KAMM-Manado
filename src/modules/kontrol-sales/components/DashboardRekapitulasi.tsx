@@ -22,6 +22,7 @@ interface DashboardRekapitulasiProps {
   allPosko: Posko[];
   currentUser: User;
   onOpenCopyWaModal: (cabangId: string, namaCabang: string) => void;
+  onNavigateToHoldDana?: () => void;
 }
 
 interface PoskoStat {
@@ -52,6 +53,7 @@ export const DashboardRekapitulasi: React.FC<DashboardRekapitulasiProps> = ({
   allPosko,
   currentUser,
   onOpenCopyWaModal,
+  onNavigateToHoldDana,
 }) => {
   // Hanya SUPER_ADMIN, ADM_DE, dan RM yang memiliki akses nasional dan hak Lapor WA Cabang
   const isNationalAccess = currentUser.role === 'SUPER_ADMIN' || currentUser.role === 'ADM_DE' || currentUser.role === 'RM';
@@ -103,10 +105,11 @@ export const DashboardRekapitulasi: React.FC<DashboardRekapitulasiProps> = ({
         totalBelumSelesai++;
       } else if (r.status === 'SUBMISS') {
         totalSubmiss++;
-        const sla = checkHoldDanaSla(r.tgl_cair, r.status);
-        if (sla.isHoldDana) {
-          totalHoldDana++;
-        }
+      }
+
+      const sla = checkHoldDanaSla(r.tgl_cair, r.status);
+      if (sla.isHoldDana) {
+        totalHoldDana++;
       }
     });
 
@@ -138,11 +141,10 @@ export const DashboardRekapitulasi: React.FC<DashboardRekapitulasiProps> = ({
         cabangRecords.forEach((r) => {
           if (r.status === 'ACCEPT') accept++;
           else if (r.status === 'BELUM SELESAI') belumSelesai++;
-          else if (r.status === 'SUBMISS') {
-            submiss++;
-            const sla = checkHoldDanaSla(r.tgl_cair, r.status);
-            if (sla.isHoldDana) holdDana++;
-          }
+          else if (r.status === 'SUBMISS') submiss++;
+
+          const sla = checkHoldDanaSla(r.tgl_cair, r.status);
+          if (sla.isHoldDana) holdDana++;
         });
 
         // Sub-stat posko
@@ -157,11 +159,10 @@ export const DashboardRekapitulasi: React.FC<DashboardRekapitulasiProps> = ({
           pRecs.forEach((r) => {
             if (r.status === 'ACCEPT') pAccept++;
             else if (r.status === 'BELUM SELESAI') pBelum++;
-            else if (r.status === 'SUBMISS') {
-              pSubmiss++;
-              const sla = checkHoldDanaSla(r.tgl_cair, r.status);
-              if (sla.isHoldDana) pHold++;
-            }
+            else if (r.status === 'SUBMISS') pSubmiss++;
+
+            const sla = checkHoldDanaSla(r.tgl_cair, r.status);
+            if (sla.isHoldDana) pHold++;
           });
           return {
             posko_id: p.kd_posko,
@@ -220,11 +221,10 @@ export const DashboardRekapitulasi: React.FC<DashboardRekapitulasiProps> = ({
         }
         if (r.status === 'ACCEPT') accept++;
         else if (r.status === 'BELUM SELESAI') belumSelesai++;
-        else if (r.status === 'SUBMISS') {
-          submiss++;
-          const sla = checkHoldDanaSla(r.tgl_cair, r.status);
-          if (sla.isHoldDana) holdDana++;
-        }
+        else if (r.status === 'SUBMISS') submiss++;
+
+        const sla = checkHoldDanaSla(r.tgl_cair, r.status);
+        if (sla.isHoldDana) holdDana++;
       });
 
       const poskos: PoskoStat[] = poskosInCabang.map((p) => {
@@ -238,11 +238,10 @@ export const DashboardRekapitulasi: React.FC<DashboardRekapitulasiProps> = ({
         pRecs.forEach((r) => {
           if (r.status === 'ACCEPT') pAccept++;
           else if (r.status === 'BELUM SELESAI') pBelum++;
-          else if (r.status === 'SUBMISS') {
-            pSubmiss++;
-            const sla = checkHoldDanaSla(r.tgl_cair, r.status);
-            if (sla.isHoldDana) pHold++;
-          }
+          else if (r.status === 'SUBMISS') pSubmiss++;
+
+          const sla = checkHoldDanaSla(r.tgl_cair, r.status);
+          if (sla.isHoldDana) pHold++;
         });
         return {
           posko_id: p.kd_posko,
@@ -344,24 +343,31 @@ export const DashboardRekapitulasi: React.FC<DashboardRekapitulasiProps> = ({
         </div>
 
         {/* Hold Dana (> 2 Hari Kerja) */}
-        <div className="bg-[#141721] border border-rose-900/50 rounded-2xl p-5 shadow-sm relative overflow-hidden">
+        <div 
+          onClick={onNavigateToHoldDana}
+          className={`bg-[#141721] border border-rose-900/50 rounded-2xl p-5 shadow-sm relative overflow-hidden transition-all ${
+            onNavigateToHoldDana ? 'cursor-pointer hover:border-rose-500/80 hover:bg-[#181a28] group' : ''
+          }`}
+        >
           {kpiSummary.totalHoldDana > 0 && (
             <div className="absolute top-0 right-0 w-2 h-full bg-rose-500 animate-pulse" />
           )}
           <div className="flex items-center justify-between">
             <span className="text-xs font-semibold text-rose-300">HOLD DANA (&gt;2 HK)</span>
-            <div className="h-9 w-9 rounded-xl bg-rose-950/80 border border-rose-800/60 flex items-center justify-center text-rose-400">
+            <div className="h-9 w-9 rounded-xl bg-rose-950/80 border border-rose-800/60 flex items-center justify-center text-rose-400 group-hover:bg-rose-900/80 transition-colors">
               <AlertTriangle className="h-5 w-5" />
             </div>
           </div>
           <div className="mt-3 flex items-baseline justify-between">
             <div className="text-2xl font-black text-rose-400">{kpiSummary.totalHoldDana}</div>
-            <span className="text-[11px] font-bold text-rose-300 bg-rose-950/80 px-2 py-0.5 rounded border border-rose-800/60">
-              Critical Alert
+            <span className={`text-[11px] font-bold text-rose-300 bg-rose-950/80 px-2 py-0.5 rounded border border-rose-800/60 ${
+              onNavigateToHoldDana ? 'group-hover:bg-rose-900 group-hover:text-white transition-colors' : ''
+            }`}>
+              {onNavigateToHoldDana ? 'Lihat Detail →' : 'Critical Alert'}
             </span>
           </div>
           <div className="mt-2 text-[11px] text-rose-300/80">
-            Pencairan pending melebihi SLA 2 hari kerja
+            Pencairan pending melebihi SLA 2 hari kerja {onNavigateToHoldDana && '(Klik untuk filter)'}
           </div>
         </div>
       </div>

@@ -12,9 +12,10 @@ import {
 } from 'lucide-react';
 import { SalesControlRecord } from '../types';
 import { SalesService } from '../services/salesService';
-import { checkHoldDanaSla, getWhatsAppUrl, checkAcceptLockStatus } from '../utils/slaUtils';
+import { checkHoldDanaSla, getWhatsAppUrl, checkAcceptLockStatus, extractDayDD, isUbahJt } from '../utils/slaUtils';
 import { User } from '../../../types';
 import { SingleDatePicker } from './SingleDatePicker';
+import { Calendar } from 'lucide-react';
 
 interface ModalValidasiAdmDeProps {
   isOpen: boolean;
@@ -45,7 +46,7 @@ export const ModalValidasiAdmDe: React.FC<ModalValidasiAdmDeProps> = ({
     if (record) {
       setTargetStatus(record.status === 'BELUM SELESAI' ? 'BELUM SELESAI' : 'ACCEPT');
       setTglCair(record.tgl_cair || '');
-      setTglJt(record.tgl_jt || record.tgl_cair || '');
+      setTglJt(extractDayDD(record.tgl_jt || record.tgl_cair));
       setKeterangan(
         record.status === 'ACCEPT' 
           ? (record.keterangan || 'SESUAI') 
@@ -114,7 +115,7 @@ export const ModalValidasiAdmDe: React.FC<ModalValidasiAdmDeProps> = ({
           keterangan: keterangan.trim(),
           tgl_cair: canEditTglCair ? tglCair.trim() : undefined,
           tgl_jt: tglJt.trim(),
-          nama_konsumen: namaKonsumen.trim(),
+          nama_konsumen: namaKonsumen.trim().toUpperCase(),
           no_wa: noWa.trim(),
         },
         currentUser
@@ -243,13 +244,32 @@ export const ModalValidasiAdmDe: React.FC<ModalValidasiAdmDeProps> = ({
             </div>
 
             <div>
-              <SingleDatePicker
-                id="modal-tgl-jt"
-                label="TGL JT (Jatuh Tempo)"
-                value={tglJt}
-                onChange={setTglJt}
-                helperText="Pilih dari kalender (otomatis terformat DD/MM/YYYY)."
-              />
+              <label className="block text-xs font-semibold text-[#8e96a8] mb-1.5">
+                TGL JT (Hari / Tanggal DD Saja) <span className="text-red-400">*</span>
+              </label>
+              <div className="relative">
+                <select
+                  value={tglJt}
+                  onChange={(e) => setTglJt(e.target.value)}
+                  disabled={isLocked}
+                  className="w-full bg-[#181a24] border border-[#272d3e] rounded-xl px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-purple-500 font-mono disabled:opacity-60"
+                >
+                  {Array.from({ length: 31 }, (_, i) => String(i + 1).padStart(2, '0')).map((dd) => (
+                    <option key={dd} value={dd}>
+                      Tanggal {dd} {dd === extractDayDD(tglCair) ? '(Sama dengan Hari Cair)' : ''}
+                    </option>
+                  ))}
+                </select>
+                <Calendar className="absolute right-3 top-3 h-4 w-4 text-[#8e96a8] pointer-events-none" />
+              </div>
+              <p className="text-[11px] text-[#8e96a8] mt-1">
+                Format baru: Hanya hari saja (DD: 01 - 31).{' '}
+                {isUbahJt(tglCair, tglJt) ? (
+                  <span className="text-amber-400 font-bold">⚡ Terdeteksi UBAH JT (Hari Cair: {extractDayDD(tglCair)} ≠ Hari JT: {tglJt})</span>
+                ) : (
+                  <span className="text-emerald-400 font-medium">Sesuai hari pencairan (Tanggal {extractDayDD(tglCair)})</span>
+                )}
+              </p>
             </div>
           </div>
 
@@ -263,10 +283,10 @@ export const ModalValidasiAdmDe: React.FC<ModalValidasiAdmDeProps> = ({
                 <input
                   type="text"
                   value={namaKonsumen}
-                  onChange={(e) => setNamaKonsumen(e.target.value)}
+                  onChange={(e) => setNamaKonsumen(e.target.value.toUpperCase())}
                   disabled={isAlreadyAccept}
-                  maxLength={50}
-                  className="w-full bg-[#181a24] border border-[#272d3e] rounded-xl px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-purple-500 disabled:opacity-60"
+                  maxLength={100}
+                  className="w-full bg-[#181a24] border border-[#272d3e] rounded-xl px-3.5 py-2.5 text-sm text-white uppercase focus:outline-none focus:border-purple-500 disabled:opacity-60"
                 />
                 <UserIcon className="absolute right-3 top-3 h-4 w-4 text-[#8e96a8]" />
               </div>

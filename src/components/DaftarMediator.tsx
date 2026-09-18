@@ -261,7 +261,7 @@ export const DaftarMediator: React.FC<DaftarMediatorProps> = ({
       width: 'min-w-[200px]',
       render: (med) => (
         <div>
-          <div className="font-semibold text-[#f1f3f7] text-sm max-w-xs truncate" title={med.nama_mediator}>
+          <div className="font-semibold text-[#f1f3f7] text-sm max-w-xs truncate uppercase" title={med.nama_mediator}>
             {med.nama_mediator}
           </div>
           <div className="text-[11px] text-[#8e96a8] flex items-center space-x-1 mt-0.5">

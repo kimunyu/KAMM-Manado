@@ -82,7 +82,11 @@ Terima kasih.`;
           statusStr = `SUBMISS`;
         }
       } else if (item.status === 'BELUM SELESAI') {
-        statusStr = `BELUM SELESAI`;
+        if (sla.isHoldDana) {
+          statusStr = `BELUM SELESAI (⚠️ HOLD DANA)`;
+        } else {
+          statusStr = `BELUM SELESAI`;
+        }
       }
 
       // Format baris utama: 1. *[DD/MM/YYYY] [NO_PSB] NAMA KONSUMEN*

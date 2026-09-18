@@ -64,6 +64,7 @@ export const UserControl: React.FC<UserControlProps> = ({ onRefresh }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [roleFilter, setRoleFilter] = useState<string>('ALL');
   const [statusFilter, setStatusFilter] = useState<string>('ALL');
+  const [passwordStatusFilter, setPasswordStatusFilter] = useState<'ALL' | 'DEFAULT' | 'CUSTOM'>('ALL');
 
   // Form states
   const [username, setUsername] = useState('');
@@ -98,16 +99,25 @@ export const UserControl: React.FC<UserControlProps> = ({ onRefresh }) => {
       (roleFilter === 'ADM_BPKB' ? (u.role === 'ADM_BPKB' || u.role === 'ADMIN_BPKB') : u.role === roleFilter);
     const matchStatus = statusFilter === 'ALL' || u.status === statusFilter;
 
-    return matchQuery && matchRole && matchStatus;
+    const isDefaultPass = Boolean(
+      u.must_change_password || 
+      u.password === '1234' || 
+      u.password === 'test1234'
+    );
+    const matchPassword = passwordStatusFilter === 'ALL' || 
+      (passwordStatusFilter === 'DEFAULT' ? isDefaultPass : !isDefaultPass);
+
+    return matchQuery && matchRole && matchStatus && matchPassword;
   });
 
-  const isFiltered = searchQuery.trim() !== '' || roleFilter !== 'ALL' || statusFilter !== 'ALL';
+  const isFiltered = searchQuery.trim() !== '' || roleFilter !== 'ALL' || statusFilter !== 'ALL' || passwordStatusFilter !== 'ALL';
   const unlinkedUsers = allUsers.filter(u => !u.firebase_uid || u.firebase_uid.trim().length === 0);
 
   const handleResetFilters = () => {
     setSearchQuery('');
     setRoleFilter('ALL');
     setStatusFilter('ALL');
+    setPasswordStatusFilter('ALL');
   };
 
   const togglePasswordVisibility = (userId: string) => {
@@ -177,7 +187,7 @@ export const UserControl: React.FC<UserControlProps> = ({ onRefresh }) => {
     let userData: User = {
       id: editingUser ? editingUser.id : `USR-${Date.now().toString().slice(-4)}`,
       username: cleanUser,
-      nama: nama.trim(),
+      nama: nama.trim().toUpperCase(),
       role,
       kd_ao: cleanAo,
       kd_cabang: isNationalRole ? undefined : kdCabang,
@@ -366,25 +376,45 @@ export const UserControl: React.FC<UserControlProps> = ({ onRefresh }) => {
     {
       key: 'password',
       header: 'Password Saat Ini',
-      width: 'min-w-[170px]',
+      width: 'min-w-[190px]',
       render: (u) => {
         const isPasswordVisible = !visiblePasswords[u.id];
+        const isDefault = Boolean(
+          u.must_change_password || 
+          u.password === '1234' || 
+          u.password === 'test1234'
+        );
         return (
-          <div className="flex items-center space-x-2">
-            <div className="bg-[#0d0e12] px-2.5 py-1 rounded-lg border border-[#272d3e] font-mono text-xs text-[#f1f3f7] flex items-center space-x-1.5">
-              <Key className="h-3.5 w-3.5 text-amber-400 shrink-0" />
-              <span>
-                {isPasswordVisible ? (u.password || 'test1234') : '••••••••'}
-              </span>
+          <div className="space-y-1">
+            <div className="flex items-center space-x-2">
+              <div className="bg-[#0d0e12] px-2.5 py-1 rounded-lg border border-[#272d3e] font-mono text-xs text-[#f1f3f7] flex items-center space-x-1.5">
+                <Key className="h-3.5 w-3.5 text-amber-400 shrink-0" />
+                <span>
+                  {isPasswordVisible ? (u.password || 'test1234') : '••••••••'}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => togglePasswordVisibility(u.id)}
+                className="p-1 rounded-lg text-[#8e96a8] hover:text-[#f1f3f7] hover:bg-[#202534] transition-colors cursor-pointer"
+                title={isPasswordVisible ? 'Sembunyikan Password' : 'Lihat Password'}
+              >
+                {isPasswordVisible ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+              </button>
             </div>
-            <button
-              type="button"
-              onClick={() => togglePasswordVisibility(u.id)}
-              className="p-1 rounded-lg text-[#8e96a8] hover:text-[#f1f3f7] hover:bg-[#202534] transition-colors cursor-pointer"
-              title={isPasswordVisible ? 'Sembunyikan Password' : 'Lihat Password'}
-            >
-              {isPasswordVisible ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
-            </button>
+            <div>
+              {isDefault ? (
+                <span className="inline-flex items-center space-x-1 text-[10px] font-semibold text-amber-300 bg-amber-950/80 px-2 py-0.5 rounded border border-amber-800/60">
+                  <AlertCircle className="h-2.5 w-2.5 text-amber-400" />
+                  <span>Sandi Bawaan (Wajib Ganti)</span>
+                </span>
+              ) : (
+                <span className="inline-flex items-center space-x-1 text-[10px] font-semibold text-emerald-300 bg-emerald-950/80 px-2 py-0.5 rounded border border-emerald-800/60">
+                  <CheckCircle2 className="h-2.5 w-2.5 text-emerald-400" />
+                  <span>Sandi Mandiri (Aman)</span>
+                </span>
+              )}
+            </div>
           </div>
         );
       }
@@ -799,6 +829,21 @@ export const UserControl: React.FC<UserControlProps> = ({ onRefresh }) => {
                 <SlidersHorizontal className="absolute right-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[#8e96a8] pointer-events-none" />
               </div>
 
+              {/* Password Security Filter */}
+              <div className="relative min-w-[140px] flex-1 sm:flex-none">
+                <select
+                  id="filter-password-status"
+                  value={passwordStatusFilter}
+                  onChange={(e) => setPasswordStatusFilter(e.target.value as any)}
+                  className="w-full px-3 py-2.5 bg-[#0d0e12] border border-[#272d3e] rounded-xl text-xs text-[#f1f3f7] focus:outline-none focus:border-purple-500 cursor-pointer appearance-none pr-8 font-medium"
+                >
+                  <option value="ALL">Semua Password</option>
+                  <option value="DEFAULT">⚠️ Perlu Ganti Sandi</option>
+                  <option value="CUSTOM">✅ Sandi Mandiri (Aman)</option>
+                </select>
+                <Key className="absolute right-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[#8e96a8] pointer-events-none" />
+              </div>
+
               {/* Reset Filter Button */}
               {isFiltered && (
                 <button
@@ -828,17 +873,30 @@ export const UserControl: React.FC<UserControlProps> = ({ onRefresh }) => {
               )}
             </div>
 
-            {/* Firebase Migration Readiness Indicator */}
+            {/* Firebase Migration & Password Security Indicators */}
             {(() => {
               const summary = UserProvisioningService.getMigrationSummary(allUsers);
+              const defaultPasswordCount = allUsers.filter(u => 
+                u.must_change_password || 
+                u.password === '1234' || 
+                u.password === 'test1234'
+              ).length;
+              const safePasswordCount = allUsers.length - defaultPasswordCount;
+
               return (
-                <div className="flex items-center space-x-2 text-[11px]">
-                  <span className="text-[#8e96a8]">Status Firebase Auth:</span>
-                  <span className="px-2 py-0.5 rounded-md bg-emerald-950/60 text-emerald-300 border border-emerald-800/50 font-semibold">
-                    {summary.migratedCount} Terhubung
+                <div className="flex flex-wrap items-center gap-2 text-[11px]">
+                  <span className="text-[#8e96a8]">Keamanan Akun:</span>
+                  <span className="px-2 py-0.5 rounded-md bg-emerald-950/60 text-emerald-300 border border-emerald-800/50 font-semibold" title="Pengguna yang sudah membuat password mandiri">
+                    {safePasswordCount} Password Aman
                   </span>
-                  <span className="px-2 py-0.5 rounded-md bg-blue-950/60 text-blue-300 border border-blue-800/50 font-semibold">
-                    {summary.readyCount} Siap Dibuatkan
+                  {defaultPasswordCount > 0 && (
+                    <span className="px-2 py-0.5 rounded-md bg-amber-950/60 text-amber-300 border border-amber-800/50 font-semibold" title="Pengguna yang masih menggunakan password default/bawaan">
+                      {defaultPasswordCount} Perlu Ganti Sandi
+                    </span>
+                  )}
+                  <span className="text-[#6b7280]">|</span>
+                  <span className="px-2 py-0.5 rounded-md bg-purple-950/60 text-purple-300 border border-purple-800/50 font-semibold">
+                    {summary.migratedCount} Firebase Auth
                   </span>
                 </div>
               );
@@ -921,9 +979,9 @@ export const UserControl: React.FC<UserControlProps> = ({ onRefresh }) => {
                   type="text"
                   required
                   value={nama}
-                  onChange={(e) => setNama(e.target.value)}
+                  onChange={(e) => setNama(e.target.value.toUpperCase())}
                   placeholder="Contoh: Rian Firmansyah"
-                  className="w-full p-2.5 bg-[#0d0e12] border border-[#272d3e] text-[#e0e4eb] placeholder-[#6b7280] rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500"
+                  className="w-full p-2.5 bg-[#0d0e12] border border-[#272d3e] text-[#e0e4eb] placeholder-[#6b7280] rounded-xl uppercase focus:outline-none focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500"
                 />
               </div>
 

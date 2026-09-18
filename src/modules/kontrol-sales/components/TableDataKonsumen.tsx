@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { 
   Search, 
   RotateCcw, 
@@ -19,7 +19,7 @@ import {
 } from 'lucide-react';
 import { SalesControlRecord } from '../types';
 import { User, Cabang, Posko } from '../../../types';
-import { checkHoldDanaSla, isDateInAllowedWindow, getAllowedWindowLabel, getWhatsAppUrl, checkAcceptLockStatus } from '../utils/slaUtils';
+import { checkHoldDanaSla, isDateInAllowedWindow, getAllowedWindowLabel, getWhatsAppUrl, checkAcceptLockStatus, extractDayDD, isUbahJt } from '../utils/slaUtils';
 import { DataTable, ColumnDef } from '../../../components/DataTable';
 import { SalesService } from '../services/salesService';
 import { SingleDatePicker } from './SingleDatePicker';
@@ -29,6 +29,7 @@ interface TableDataKonsumenProps {
   allCabang: Cabang[];
   allPosko: Posko[];
   currentUser: User;
+  initialOnlyHoldDana?: boolean;
   onOpenValidasiModal: (record: SalesControlRecord) => void;
   onOpenCopyWaModal: (cabangId: string, namaCabang: string) => void;
 }
@@ -38,6 +39,7 @@ export const TableDataKonsumen: React.FC<TableDataKonsumenProps> = ({
   allCabang,
   allPosko,
   currentUser,
+  initialOnlyHoldDana = false,
   onOpenValidasiModal,
   onOpenCopyWaModal,
 }) => {
@@ -61,7 +63,17 @@ export const TableDataKonsumen: React.FC<TableDataKonsumenProps> = ({
       : (currentUser.kd_posko || '')
   );
   const [selectedStatus, setSelectedStatus] = useState<string>('ALL');
-  const [onlyHoldDana, setOnlyHoldDana] = useState<boolean>(false);
+  const [onlyHoldDana, setOnlyHoldDana] = useState<boolean>(initialOnlyHoldDana);
+
+  // Sync when initialOnlyHoldDana prop changes (e.g. from Dashboard click)
+  useEffect(() => {
+    if (initialOnlyHoldDana) {
+      setOnlyHoldDana(true);
+      if (selectedStatus === 'ACCEPT') {
+        setSelectedStatus('ALL');
+      }
+    }
+  }, [initialOnlyHoldDana]);
 
   // Edit Modal State (Poin 1: tgl_cair dapat diedit khusus ADM_DE & SUPER_ADMIN)
   const canEditTglCair = isAdmDe || isSuperAdmin;
@@ -69,6 +81,7 @@ export const TableDataKonsumen: React.FC<TableDataKonsumenProps> = ({
   const [editNama, setEditNama] = useState<string>('');
   const [editWa, setEditWa] = useState<string>('');
   const [editTglCair, setEditTglCair] = useState<string>('');
+  const [editTglJt, setEditTglJt] = useState<string>('');
   const [editKet, setEditKet] = useState<string>('');
   const [isSavingEdit, setIsSavingEdit] = useState<boolean>(false);
   const [editError, setEditError] = useState<string | null>(null);
@@ -76,6 +89,35 @@ export const TableDataKonsumen: React.FC<TableDataKonsumenProps> = ({
   // Delete State
   const [recordToDelete, setRecordToDelete] = useState<SalesControlRecord | null>(null);
   const [isDeleting, setIsDeleting] = useState<boolean>(false);
+
+  // Count total HOLD DANA records available in current user's scope
+  const totalHoldDanaCount = useMemo(() => {
+    return records.filter(item => {
+      // Scope role wilayah
+      if (isNationalUser) {
+        // Akses penuh
+      } else if (currentUser.role === 'ADM') {
+        if (currentUser.kd_cabang && item.cabang_id !== currentUser.kd_cabang) return false;
+        if (currentUser.kd_posko && item.posko_id !== currentUser.kd_posko) return false;
+      } else if (currentUser.role === 'KAPOS') {
+        if (currentUser.kd_posko && item.posko_id !== currentUser.kd_posko) return false;
+      } else if (currentUser.role === 'KAOPS' || currentUser.role === 'KACAB') {
+        if (currentUser.kd_cabang && item.cabang_id !== currentUser.kd_cabang) return false;
+      }
+      return checkHoldDanaSla(item.tgl_cair, item.status).isHoldDana;
+    }).length;
+  }, [records, currentUser, isNationalUser]);
+
+  // Toggle HOLD DANA
+  const handleToggleHoldDana = () => {
+    const next = !onlyHoldDana;
+    setOnlyHoldDana(next);
+    if (next) {
+      if (selectedStatus === 'ACCEPT') {
+        setSelectedStatus('ALL');
+      }
+    }
+  };
 
   // Reset Filters
   const handleResetFilters = () => {
@@ -99,9 +141,12 @@ export const TableDataKonsumen: React.FC<TableDataKonsumenProps> = ({
   // Apply Window Restriction and search/filters
   const filteredData = useMemo(() => {
     return records.filter(item => {
+      const sla = checkHoldDanaSla(item.tgl_cair, item.status);
+
       // 1. Tanggal Window Restriction (role nasional tidak dibatasi window)
+      // Jika mode onlyHoldDana aktif atau item berstatus HOLD DANA, jangan disaring agar nasabah bermasalah selalu terlihat
       const inWindow = isDateInAllowedWindow(item.tgl_cair, currentUser.role);
-      if (!inWindow) return false;
+      if (!inWindow && !(onlyHoldDana && sla.isHoldDana)) return false;
 
       // 2. Role Cabang / Posko Scope (Role Nasional ADM_DE, SUPER_ADMIN, RM bebas seluruh wilayah)
       if (isNationalUser) {
@@ -118,11 +163,15 @@ export const TableDataKonsumen: React.FC<TableDataKonsumenProps> = ({
       // 3. User Select Filters
       if (selectedCabang && item.cabang_id !== selectedCabang) return false;
       if (selectedPosko && item.posko_id !== selectedPosko) return false;
-      if (selectedStatus !== 'ALL' && item.status !== selectedStatus) return false;
 
-      // 4. HOLD DANA Filter
-      const sla = checkHoldDanaSla(item.tgl_cair, item.status);
-      if (onlyHoldDana && !sla.isHoldDana) return false;
+      // 4. HOLD DANA & Status Filter
+      if (onlyHoldDana) {
+        // Mode "Hanya HOLD DANA": khusus tampilkan record SUBMISS atau BELUM SELESAI dengan selisih > 2 hari kerja
+        if (!sla.isHoldDana) return false;
+        if (selectedStatus !== 'ALL' && item.status !== selectedStatus) return false;
+      } else {
+        if (selectedStatus !== 'ALL' && item.status !== selectedStatus) return false;
+      }
 
       // 5. Search Term (NO PSB, Nama, No WA, Keterangan)
       if (searchTerm.trim()) {
@@ -142,10 +191,17 @@ export const TableDataKonsumen: React.FC<TableDataKonsumenProps> = ({
       if (slaA.isHoldDana && !slaB.isHoldDana) return -1;
       if (!slaA.isHoldDana && slaB.isHoldDana) return 1;
 
+      // Jika keduanya HOLD DANA, prioritaskan yang paling lama tertahan (workingDays terbanyak)
+      if (slaA.isHoldDana && slaB.isHoldDana) {
+        if (slaB.workingDays !== slaA.workingDays) {
+          return slaB.workingDays - slaA.workingDays;
+        }
+      }
+
       // Then by date created / cair desc
       return String(b.created_at || b.tgl_cair).localeCompare(String(a.created_at || a.tgl_cair));
     });
-  }, [records, currentUser, selectedCabang, selectedPosko, selectedStatus, onlyHoldDana, searchTerm]);
+  }, [records, currentUser, isNationalUser, selectedCabang, selectedPosko, selectedStatus, onlyHoldDana, searchTerm]);
 
   // Open Edit Modal for ADM/KAOPS / ADM_DE
   const handleOpenEditModal = (rec: SalesControlRecord) => {
@@ -153,6 +209,7 @@ export const TableDataKonsumen: React.FC<TableDataKonsumenProps> = ({
     setEditNama(rec.nama_konsumen);
     setEditWa(rec.no_wa);
     setEditTglCair(rec.tgl_cair);
+    setEditTglJt(extractDayDD(rec.tgl_jt || rec.tgl_cair));
     setEditKet(rec.keterangan || '');
     setEditError(null);
   };
@@ -162,7 +219,7 @@ export const TableDataKonsumen: React.FC<TableDataKonsumenProps> = ({
     if (!editingRecord) return;
     setEditError(null);
 
-    const cleanNama = editNama.trim();
+    const cleanNama = editNama.trim().toUpperCase();
     if (!cleanNama) {
       setEditError('Nama konsumen wajib diisi.');
       return;
@@ -182,8 +239,9 @@ export const TableDataKonsumen: React.FC<TableDataKonsumenProps> = ({
           nama_konsumen: cleanNama,
           no_wa: cleanWa,
           tgl_cair: canEditTglCair ? editTglCair.trim() : undefined,
+          tgl_jt: extractDayDD(editTglJt),
           keterangan: currentUser.role === 'ADM' ? undefined : editKet.trim(),
-        },
+        } as any,
         currentUser
       );
 
@@ -239,12 +297,23 @@ export const TableDataKonsumen: React.FC<TableDataKonsumenProps> = ({
     {
       key: 'tgl_jt',
       header: 'Tgl JT',
-      width: 'w-24',
-      render: (row) => (
-        <span className="text-xs text-[#c2c7d0] font-medium whitespace-nowrap">
-          {row.tgl_jt || row.tgl_cair}
-        </span>
-      ),
+      width: 'w-28',
+      render: (row) => {
+        const jtDay = extractDayDD(row.tgl_jt || row.tgl_cair);
+        const hasUbahJt = isUbahJt(row.tgl_cair, row.tgl_jt);
+        return (
+          <div className="space-y-1">
+            <span className="text-xs text-white font-mono font-bold bg-[#181a24] px-2 py-0.5 rounded border border-[#272d3e]">
+              Tgl {jtDay}
+            </span>
+            {hasUbahJt && (
+              <span className="inline-flex items-center px-1.5 py-0.2 rounded text-[9px] font-black uppercase bg-amber-950/80 text-amber-300 border border-amber-800/60 block w-fit">
+                UBAH JT
+              </span>
+            )}
+          </div>
+        );
+      },
     },
     {
       key: 'nama_konsumen',
@@ -252,7 +321,7 @@ export const TableDataKonsumen: React.FC<TableDataKonsumenProps> = ({
       width: 'min-w-[160px]',
       render: (row) => (
         <div>
-          <span className="text-xs font-bold text-white block">
+          <span className="text-xs font-bold text-white block uppercase">
             {row.nama_konsumen}
           </span>
           <span className="text-[10px] text-[#8e96a8] block mt-0.5">
@@ -334,10 +403,18 @@ export const TableDataKonsumen: React.FC<TableDataKonsumenProps> = ({
 
         if (row.status === 'BELUM SELESAI') {
           return (
-            <span className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-lg text-xs font-bold bg-amber-950/80 text-amber-300 border border-amber-800/60 shadow-sm">
-              <AlertCircle className="h-3.5 w-3.5 text-amber-400" />
-              <span>BELUM SELESAI</span>
-            </span>
+            <div className="space-y-1">
+              <span className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-lg text-xs font-bold bg-amber-950/80 text-amber-300 border border-amber-800/60 shadow-sm">
+                <AlertCircle className="h-3.5 w-3.5 text-amber-400" />
+                <span>BELUM SELESAI</span>
+              </span>
+              {sla.isHoldDana && (
+                <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-full text-[10px] font-black bg-rose-600 text-white shadow-sm animate-pulse block w-fit">
+                  <AlertTriangle className="h-3 w-3" />
+                  <span>HOLD DANA ({sla.workingDays} HK)</span>
+                </span>
+              )}
+            </div>
           );
         }
 
@@ -535,7 +612,13 @@ export const TableDataKonsumen: React.FC<TableDataKonsumenProps> = ({
           <div>
             <select
               value={selectedStatus}
-              onChange={(e) => setSelectedStatus(e.target.value)}
+              onChange={(e) => {
+                const val = e.target.value;
+                setSelectedStatus(val);
+                if (val === 'ACCEPT') {
+                  setOnlyHoldDana(false);
+                }
+              }}
               className="w-full bg-[#181a24] border border-[#272d3e] rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-blue-500"
             >
               <option value="ALL">Semua Status</option>
@@ -552,15 +635,25 @@ export const TableDataKonsumen: React.FC<TableDataKonsumenProps> = ({
             {/* HOLD DANA Toggle */}
             <button
               type="button"
-              onClick={() => setOnlyHoldDana(!onlyHoldDana)}
+              id="btn-filter-only-hold-dana"
+              onClick={handleToggleHoldDana}
               className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center space-x-1.5 cursor-pointer ${
                 onlyHoldDana
                   ? 'bg-rose-600 text-white shadow-md shadow-rose-950/40 ring-2 ring-rose-400'
                   : 'bg-[#181a24] border border-rose-900/40 text-rose-400 hover:bg-rose-950/30'
               }`}
             >
-              <AlertTriangle className="h-3.5 w-3.5" />
+              <AlertTriangle className={`h-3.5 w-3.5 ${totalHoldDanaCount > 0 ? 'animate-pulse' : ''}`} />
               <span>Hanya HOLD DANA (&gt;2 Hari Kerja)</span>
+              {totalHoldDanaCount > 0 && (
+                <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono font-bold ${
+                  onlyHoldDana
+                    ? 'bg-white text-rose-700'
+                    : 'bg-rose-950 text-rose-300 border border-rose-800/60'
+                }`}>
+                  {totalHoldDanaCount}
+                </span>
+              )}
             </button>
 
             {/* Reset Button */}
@@ -600,6 +693,39 @@ export const TableDataKonsumen: React.FC<TableDataKonsumenProps> = ({
         </div>
       </div>
 
+      {/* Active HOLD DANA Filter Banner */}
+      {onlyHoldDana && (
+        <div className="bg-rose-950/30 border border-rose-800/60 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-lg">
+          <div className="flex items-center space-x-3">
+            <div className="h-9 w-9 rounded-xl bg-rose-900/70 border border-rose-700/60 flex items-center justify-center shrink-0">
+              <AlertTriangle className="h-5 w-5 text-rose-300 animate-pulse" />
+            </div>
+            <div>
+              <div className="flex items-center space-x-2">
+                <span className="text-xs font-bold text-rose-200 uppercase tracking-wide">Filter Aktif</span>
+                <span className="text-[11px] px-2 py-0.5 rounded-md bg-rose-900/80 text-white font-mono font-bold">
+                  SLA HOLD DANA &gt;2 Hari Kerja
+                </span>
+              </div>
+              <p className="text-xs text-rose-300/80 mt-0.5">
+                Menampilkan <strong>{filteredData.length} konsumen</strong> berstatus <strong>SUBMISS</strong> atau <strong>BELUM SELESAI</strong> yang telah melebihi batas waktu 2 hari kerja (Senin–Jumat di luar akhir pekan).
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              setOnlyHoldDana(false);
+              setSelectedStatus('ALL');
+            }}
+            className="px-3 py-1.5 bg-rose-900/80 hover:bg-rose-800 text-white rounded-xl text-xs font-bold transition-all border border-rose-700/60 shrink-0 cursor-pointer self-start sm:self-center flex items-center space-x-1.5"
+          >
+            <RotateCcw className="h-3 w-3" />
+            <span>Tampilkan Semua Data</span>
+          </button>
+        </div>
+      )}
+
       {/* Main Universal DataTable */}
       <DataTable
         tableKey="sales-control-table-v1"
@@ -610,8 +736,14 @@ export const TableDataKonsumen: React.FC<TableDataKonsumenProps> = ({
         initialPageSize={15}
         title={
           <div className="flex items-center space-x-2">
-            <span className="text-sm font-bold text-white">Daftar Konsumen Pencairan</span>
-            <span className="text-xs px-2 py-0.5 rounded-full bg-[#181a24] text-blue-400 font-bold border border-[#272d3e]">
+            <span className="text-sm font-bold text-white">
+              {onlyHoldDana ? 'Daftar Konsumen HOLD DANA (>2 HK)' : 'Daftar Konsumen Pencairan'}
+            </span>
+            <span className={`text-xs px-2 py-0.5 rounded-full font-bold font-mono border ${
+              onlyHoldDana
+                ? 'bg-rose-950/80 text-rose-300 border-rose-800/60'
+                : 'bg-[#181a24] text-blue-400 border-[#272d3e]'
+            }`}>
               {filteredData.length} data
             </span>
           </div>
@@ -662,15 +794,37 @@ export const TableDataKonsumen: React.FC<TableDataKonsumenProps> = ({
 
               <div>
                 <label className="block text-xs font-semibold text-[#8e96a8] mb-1">
+                  TGL JT (Hari: DD Saja)
+                </label>
+                <select
+                  value={editTglJt}
+                  onChange={(e) => setEditTglJt(e.target.value)}
+                  className="w-full bg-[#181a24] border border-[#272d3e] rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-blue-500 font-mono"
+                >
+                  {Array.from({ length: 31 }, (_, i) => String(i + 1).padStart(2, '0')).map((dd) => (
+                    <option key={dd} value={dd}>
+                      Tanggal {dd} {dd === extractDayDD(editTglCair) ? '(Sama dengan Hari Cair)' : ''}
+                    </option>
+                  ))}
+                </select>
+                {isUbahJt(editTglCair, editTglJt) && (
+                  <p className="text-[10px] text-amber-400 mt-1 font-semibold">
+                    ⚡ Status UBAH JT: Hari JT ({editTglJt}) ≠ Hari Cair ({extractDayDD(editTglCair)}).
+                  </p>
+                )}
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-[#8e96a8] mb-1">
                   Nama Konsumen
                 </label>
                 <input
                   type="text"
                   value={editNama}
-                  onChange={(e) => setEditNama(e.target.value)}
-                  maxLength={50}
+                  onChange={(e) => setEditNama(e.target.value.toUpperCase())}
+                  maxLength={100}
                   required
-                  className="w-full bg-[#181a24] border border-[#272d3e] rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-blue-500"
+                  className="w-full bg-[#181a24] border border-[#272d3e] rounded-xl px-3 py-2 text-xs text-white uppercase focus:outline-none focus:border-blue-500"
                 />
               </div>
 
