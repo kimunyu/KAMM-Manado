@@ -175,6 +175,53 @@
         "updated_by_uid": { "type": "string" }
       },
       "required": ["id", "no_psb", "tgl_cair", "nama_konsumen", "no_wa", "status", "cabang_id", "posko_id", "created_by", "created_at"]
+    },
+    "wilayah_provinsi": {
+      "title": "WilayahProvinsi",
+      "description": "Master Wilayah: Provinsi level",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "nama": { "type": "string" }
+      },
+      "required": ["id", "nama"]
+    },
+    "wilayah_kabupaten": {
+      "title": "WilayahKabupaten",
+      "description": "Master Wilayah: Kabupaten/Kota level",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "provinsi_id": { "type": "string" },
+        "nama": { "type": "string" },
+        "tipe": { "type": "string", "enum": ["KOTA", "KABUPATEN"] }
+      },
+      "required": ["id", "provinsi_id", "nama", "tipe"]
+    },
+    "wilayah_kecamatan": {
+      "title": "WilayahKecamatan",
+      "description": "Master Wilayah: Kecamatan level",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "kabupaten_id": { "type": "string" },
+        "provinsi_id": { "type": "string" },
+        "nama": { "type": "string" }
+      },
+      "required": ["id", "kabupaten_id", "provinsi_id", "nama"]
+    },
+    "wilayah_desa": {
+      "title": "WilayahDesa",
+      "description": "Master Wilayah: Desa/Kelurahan level",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "kecamatan_id": { "type": "string" },
+        "kabupaten_id": { "type": "string" },
+        "provinsi_id": { "type": "string" },
+        "nama": { "type": "string" }
+      },
+      "required": ["id", "kecamatan_id", "kabupaten_id", "provinsi_id", "nama"]
     }
   },
   "firestore": {
@@ -217,6 +264,22 @@
     "sales_control_records": {
       "entity": "sales_control_records",
       "description": "Sales control customer disbursement collection"
+    },
+    "wilayah_provinsi": {
+      "entity": "wilayah_provinsi",
+      "description": "Master Wilayah Provinsi"
+    },
+    "wilayah_kabupaten": {
+      "entity": "wilayah_kabupaten",
+      "description": "Master Wilayah Kabupaten / Kota"
+    },
+    "wilayah_kecamatan": {
+      "entity": "wilayah_kecamatan",
+      "description": "Master Wilayah Kecamatan"
+    },
+    "wilayah_desa": {
+      "entity": "wilayah_desa",
+      "description": "Master Wilayah Desa / Kelurahan"
     }
   }
 }

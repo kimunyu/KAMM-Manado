@@ -9,6 +9,7 @@ import { CabangPoskoControl } from './CabangPoskoControl';
 import { ConfirmDeleteModal } from './ConfirmDeleteModal';
 import { AuditTrailPanel } from './AuditTrailPanel';
 import { SystemHealthPanel } from './SystemHealthPanel';
+import { MasterWilayahViewer } from './MasterWilayahViewer';
 import { 
   UserCog, 
   UserPlus, 
@@ -36,7 +37,8 @@ import {
   Zap, 
   RefreshCw,
   Activity,
-  Server
+  Server,
+  Globe
 } from 'lucide-react';
 
 interface UserControlProps {
@@ -46,7 +48,7 @@ interface UserControlProps {
 export const UserControl: React.FC<UserControlProps> = ({ onRefresh }) => {
   const { allUsers, allCabang, allPosko, refreshData, currentUser, resetUserPassword } = useAuth();
 
-  const [activeSection, setActiveSection] = useState<'users' | 'master_cabang_posko' | 'audit_trail' | 'system_health'>('users');
+  const [activeSection, setActiveSection] = useState<'users' | 'master_cabang_posko' | 'master_wilayah' | 'audit_trail' | 'system_health'>('users');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [userToDelete, setUserToDelete] = useState<User | null>(null);
@@ -625,6 +627,20 @@ export const UserControl: React.FC<UserControlProps> = ({ onRefresh }) => {
             </button>
 
             <button
+              id="tab-btn-user-control-wilayah"
+              type="button"
+              onClick={() => setActiveSection('master_wilayah')}
+              className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer flex items-center space-x-1.5 ${
+                activeSection === 'master_wilayah'
+                  ? 'bg-cyan-600 text-white shadow-md'
+                  : 'text-[#8e96a8] hover:text-[#f1f3f7]'
+              }`}
+            >
+              <Globe className="h-3.5 w-3.5" />
+              <span>Master Wilayah</span>
+            </button>
+
+            <button
               id="tab-btn-user-control-audit"
               type="button"
               onClick={() => setActiveSection('audit_trail')}
@@ -751,6 +767,11 @@ export const UserControl: React.FC<UserControlProps> = ({ onRefresh }) => {
       {/* MASTER DATA CABANG & POSKO SECTION */}
       {activeSection === 'master_cabang_posko' && (
         <CabangPoskoControl onRefresh={onRefresh} />
+      )}
+
+      {/* MASTER WILAYAH INDONESIA SECTION (PHASE 1D) */}
+      {activeSection === 'master_wilayah' && (
+        <MasterWilayahViewer />
       )}
 
       {/* AUDIT TRAIL & ACTIVITY LOG SECTION */}

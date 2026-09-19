@@ -8,7 +8,9 @@
     "build": "vite build",
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "wilayah:validate": "tsx scripts/wilayah/index.ts --dry-run --mode=pilot --province=71",
+    "wilayah:test": "tsx scripts/wilayah/test-suite.ts"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",

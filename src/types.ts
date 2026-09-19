@@ -233,3 +233,46 @@ export interface DashboardMetrics {
     sudahFu: number;
   };
 }
+
+// =========================================================================
+// MASTER WILAYAH INDONESIA (Administrative Territory Types)
+// =========================================================================
+
+export interface WilayahProvinsi {
+  id: string; // Kode provinsi canonical (misal "71" untuk Sulut)
+  nama: string; // Nama provinsi canonical
+}
+
+export interface WilayahKabupaten {
+  id: string; // Kode kabupaten canonical (misal "7171" untuk Kota Manado)
+  provinsi_id: string; // Kode provinsi referensi
+  nama: string; // Nama kabupaten / kota
+  tipe: 'KOTA' | 'KABUPATEN'; // Klasifikasi tipe wilayah
+}
+
+export interface WilayahKecamatan {
+  id: string; // Kode kecamatan canonical (misal "7171010")
+  kabupaten_id: string; // Kode kabupaten/kota referensi
+  provinsi_id: string; // Kode provinsi referensi
+  nama: string; // Nama kecamatan
+}
+
+export interface WilayahDesa {
+  id: string; // Kode desa/kelurahan canonical (misal "7171010001")
+  kecamatan_id: string; // Kode kecamatan referensi
+  kabupaten_id: string; // Kode kabupaten referensi
+  provinsi_id: string; // Kode provinsi referensi
+  nama: string; // Nama desa / kelurahan
+}
+
+export interface SelectedWilayahState {
+  provinsiId: string;
+  kabupatenId: string;
+  kecamatanId: string;
+  desaId: string;
+  provinsiNama?: string;
+  kabupatenNama?: string;
+  kecamatanNama?: string;
+  desaNama?: string;
+}
+

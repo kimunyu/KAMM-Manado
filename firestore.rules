@@ -371,7 +371,90 @@ service cloud.firestore {
     }
 
     // =========================================================================
-    // 7. GLOBAL DEFAULT DENY CATCH-ALL
+    // 7. MASTER WILAYAH INDONESIA (Reference Data - Read: All Active, Write: SUPER_ADMIN)
+    // =========================================================================
+
+    function isValidProvinceDoc(data, docId) {
+      return data.keys().hasAll(['id', 'nama']) &&
+        data.id is string &&
+        data.nama is string &&
+        data.nama.size() > 0 &&
+        data.id == docId;
+    }
+
+    function isValidRegencyDoc(data, docId) {
+      return data.keys().hasAll(['id', 'provinsi_id', 'nama', 'tipe']) &&
+        data.id is string &&
+        data.provinsi_id is string &&
+        data.nama is string &&
+        data.nama.size() > 0 &&
+        data.tipe in ['KOTA', 'KABUPATEN'] &&
+        data.id == docId;
+    }
+
+    function isValidDistrictDoc(data, docId) {
+      return data.keys().hasAll(['id', 'kabupaten_id', 'provinsi_id', 'nama']) &&
+        data.id is string &&
+        data.kabupaten_id is string &&
+        data.provinsi_id is string &&
+        data.nama is string &&
+        data.nama.size() > 0 &&
+        data.id == docId;
+    }
+
+    function isValidVillageDoc(data, docId) {
+      return data.keys().hasAll(['id', 'kecamatan_id', 'kabupaten_id', 'provinsi_id', 'nama']) &&
+        data.id is string &&
+        data.kecamatan_id is string &&
+        data.kabupaten_id is string &&
+        data.provinsi_id is string &&
+        data.nama is string &&
+        data.nama.size() > 0 &&
+        data.id == docId;
+    }
+
+    match /wilayah_provinsi/{id} {
+      allow get: if isRegisteredAndActive();
+      allow list: if isRegisteredAndActive();
+      allow create: if isSuperAdmin() && isValidProvinceDoc(request.resource.data, id);
+      allow update: if isSuperAdmin() && 
+                    request.resource.data.id == resource.data.id &&
+                    isValidProvinceDoc(request.resource.data, id);
+      allow delete: if isSuperAdmin();
+    }
+
+    match /wilayah_kabupaten/{id} {
+      allow get: if isRegisteredAndActive();
+      allow list: if isRegisteredAndActive();
+      allow create: if isSuperAdmin() && isValidRegencyDoc(request.resource.data, id);
+      allow update: if isSuperAdmin() && 
+                    request.resource.data.id == resource.data.id &&
+                    isValidRegencyDoc(request.resource.data, id);
+      allow delete: if isSuperAdmin();
+    }
+
+    match /wilayah_kecamatan/{id} {
+      allow get: if isRegisteredAndActive();
+      allow list: if isRegisteredAndActive();
+      allow create: if isSuperAdmin() && isValidDistrictDoc(request.resource.data, id);
+      allow update: if isSuperAdmin() && 
+                    request.resource.data.id == resource.data.id &&
+                    isValidDistrictDoc(request.resource.data, id);
+      allow delete: if isSuperAdmin();
+    }
+
+    match /wilayah_desa/{id} {
+      allow get: if isRegisteredAndActive();
+      allow list: if isRegisteredAndActive();
+      allow create: if isSuperAdmin() && isValidVillageDoc(request.resource.data, id);
+      allow update: if isSuperAdmin() && 
+                    request.resource.data.id == resource.data.id &&
+                    isValidVillageDoc(request.resource.data, id);
+      allow delete: if isSuperAdmin();
+    }
+
+    // =========================================================================
+    // 8. GLOBAL DEFAULT DENY CATCH-ALL
     // =========================================================================
 
     match /{document=**} {
