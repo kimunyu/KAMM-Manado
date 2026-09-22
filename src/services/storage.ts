@@ -257,10 +257,14 @@ export function startFirebaseSync(currentUser: User | null = null, authenticated
         saveToStorage(STORAGE_KEYS.MEDIATORS, cloudMediators);
         notifyAllListeners();
       }, (err) => {
-        console.error(
-          "[FIRESTORE-SNAPSHOT-ERROR]",
-          err
-        );
+        if (err?.code === 'unavailable') {
+          console.warn('[FIRESTORE-SNAPSHOT-OFFLINE] Firestore beroperasi dalam mode offline (backend unavailable).');
+        } else {
+          console.error(
+            "[FIRESTORE-SNAPSHOT-ERROR]",
+            err
+          );
+        }
       });
       activeSyncUnsubscribers.push(unsubMediators);
 

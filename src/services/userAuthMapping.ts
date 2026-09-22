@@ -214,6 +214,22 @@ export const UserAuthMappingService = {
       };
     } catch (err: any) {
       console.warn('[IDENTITY-VERIFY-ERROR]', err);
+      // Jika error karena backend unavailable / offline, fallback ke cache master user jika profile cocok
+      if (err?.code === 'unavailable') {
+        const allUsers = DatabaseService.getUsers();
+        const cachedUser = allUsers.find(u => u.firebase_uid === cleanUid);
+        if (cachedUser && cachedUser.status === 'AKTIF') {
+          return {
+            verified: true,
+            userAuthExists: true,
+            userDocExists: true,
+            mappingUserId: cachedUser.id,
+            mappingStatus: cachedUser.status,
+            profileStatus: cachedUser.status,
+            user: cachedUser
+          };
+        }
+      }
       return {
         verified: false,
         userAuthExists: false,
