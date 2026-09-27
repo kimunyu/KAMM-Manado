@@ -135,6 +135,7 @@ export type AuditActionCategory =
   | 'EX_CUSTOMER'          // Input BPKB, Penugasan CMO, FU Ex-Customer, Import/Export
   | 'MASTER_DATA'          // Cabang, Posko
   | 'KONTROL_SALES'        // Pencairan Konsumen, Validasi ADM_DE, Update Status
+  | 'SALES_ACQUISITION'    // Prospek Baru, Status Update, Reassignment, CAIR
   | 'SYSTEM';              // Backup, Restore, Health Check
 
 export interface AuditLog {
@@ -274,5 +275,79 @@ export interface SelectedWilayahState {
   kabupatenNama?: string;
   kecamatanNama?: string;
   desaNama?: string;
+}
+
+// =========================================================================
+// SALES ACQUISITION SYSTEM (LOCKED CONTRACT V14.2.3 / V13 SSOT)
+// =========================================================================
+
+export type SalesAcquisitionSourceLead = 
+  | 'CANVASSING'
+  | 'SOSMED'
+  | 'MEDIATOR'
+  | 'EX_CUSTOMER'
+  | 'WALK_IN';
+
+export type SalesAcquisitionStatus = 
+  | 'PROSPEK_BARU'
+  | 'PROSES_SURVEI'
+  | 'PENGAJUAN_BERKAS'
+  | 'DISETUJUI'
+  | 'CAIR'
+  | 'DITOLAK'
+  | 'BATAL';
+
+export interface SalesAcquisition {
+  // 1-5 System / Audit
+  id: string;                         // 1. Unique Doc ID
+  created_at: any;                    // 2. Server Timestamp
+  created_by_user_id: string;         // 3. User ID Creator
+  updated_at: any;                    // 4. Server Timestamp
+  updated_by_user_id: string;         // 5. User ID Updater
+
+  // 6-9 Assignment / Organization
+  assigned_user_id: string;           // 6. User ID of assigned CMO / AO
+  kd_ao: string;                      // 7. Kode AO of assigned CMO
+  kd_cabang: string;                  // 8. Kode Cabang
+  kd_posko: string;                   // 9. Kode Posko
+
+  // 10-12 Customer Identity
+  nama_calon_konsumen: string;        // 10. Nama Konsumen (Min 3, Max 100)
+  no_telepon: string;                 // 11. Raw Phone Input
+  no_telepon_clean: string;           // 12. Sanitized Numeric Phone
+
+  // 13-17 Lead & State
+  sumber_lead: SalesAcquisitionSourceLead; // 13. Canonical 5 Enum Values
+  status: SalesAcquisitionStatus;     // 14. 7 Status Pipeline
+  status_updated_at: any;             // 15. Server Timestamp
+  status_updated_by_user_id: string;  // 16. User ID who changed status
+  alasan_tolak_batal: string;         // 17. Reason if DITOLAK or BATAL (else '')
+
+  // 18-19 References
+  kd_med: string;                     // 18. Kode Mediator if MEDIATOR (else '')
+  ref_no_psb_lama: string;            // 19. No PSB Lama if EX_CUSTOMER (else '')
+
+  // 20-24 Master Wilayah & Address
+  wilayah_provinsi_id: string;        // 20. ID Provinsi
+  wilayah_kabupaten_id: string;       // 21. ID Kabupaten/Kota
+  wilayah_kecamatan_id: string;       // 22. ID Kecamatan
+  wilayah_desa_id: string;            // 23. ID Desa/Kelurahan
+  alamat_detail: string;              // 24. Alamat Domisili Detail (Max 255)
+
+  // 25-27 Conversion / CAIR
+  no_psb: string;                     // 25. No PSB KAMM baru saat CAIR (else '')
+  tgl_cair: any;                      // 26. Firestore Timestamp saat CAIR (null before)
+  sales_control_id: string;           // 27. SC_{id} saat CAIR (else '')
+}
+
+export interface DuplicateCheckResult {
+  hasDuplicate: boolean;
+  duplicateInfo?: {
+    nama_calon_konsumen: string;
+    kd_ao: string;
+    kd_cabang: string;
+    kd_posko: string;
+    status: SalesAcquisitionStatus;
+  } | null;
 }
 

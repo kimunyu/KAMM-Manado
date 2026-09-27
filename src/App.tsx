@@ -12,6 +12,7 @@ import { FollowUpModule } from './components/FollowUpModule';
 import { UserControl } from './components/UserControl';
 import { ExCustomerControl } from './components/ExCustomerControl';
 import { KontrolSalesModule } from './modules/kontrol-sales';
+import { SalesAcquisitionModule } from './modules/sales-acquisition';
 import { SalesService } from './modules/kontrol-sales/services/salesService';
 import { SalesControlRecord } from './modules/kontrol-sales/types';
 import { checkHoldDanaSla } from './modules/kontrol-sales/utils/slaUtils';
@@ -23,6 +24,7 @@ import { UserProfileModal } from './components/UserProfileModal';
 import { IdleTimeoutManager } from './components/IdleTimeoutManager';
 
 const TAB_TO_MODULE_MAP: Record<ActiveTab, ModuleId> = {
+  'sales-acquisition': 'sales-acquisition',
   'kontrol-sales': 'sales',
   'dashboard': 'mediator',
   'daftar-mediator': 'mediator',
@@ -34,6 +36,7 @@ const TAB_TO_MODULE_MAP: Record<ActiveTab, ModuleId> = {
 };
 
 const MODULE_DEFAULT_TAB: Record<ModuleId, ActiveTab> = {
+  'sales-acquisition': 'sales-acquisition',
   'sales': 'kontrol-sales',
   'mediator': 'dashboard',
   'ex-customer': 'ex-customer',
@@ -44,15 +47,17 @@ function MainApp() {
   const { currentUser, canValidateKdMed, canRegisterMediator, canInputFU, canManageUsers } = useAuth();
 
   const [activeTab, setActiveTab] = useState<ActiveTab>(() => {
+    if (currentUser?.role === 'CMO') return 'sales-acquisition';
     if (currentUser?.role === 'ADM_DE') return 'kontrol-sales';
     if (currentUser?.role === 'ADM_BPKB' || currentUser?.role === 'ADMIN_BPKB') return 'ex-customer';
-    return 'dashboard';
+    return 'sales-acquisition';
   });
 
   const [activeModule, setActiveModule] = useState<ModuleId>(() => {
+    if (currentUser?.role === 'CMO') return 'sales-acquisition';
     if (currentUser?.role === 'ADM_DE') return 'sales';
     if (currentUser?.role === 'ADM_BPKB' || currentUser?.role === 'ADMIN_BPKB') return 'ex-customer';
-    return 'mediator';
+    return 'sales-acquisition';
   });
 
   // Keep activeModule synchronized with activeTab
@@ -130,6 +135,12 @@ function MainApp() {
 
   // Safeguard tab switching when role changes and user loses access to current tab
   useEffect(() => {
+    if (currentUser?.role === 'CMO') {
+      if (activeTab !== 'sales-acquisition' && activeTab !== 'daftar-mediator' && activeTab !== 'registrasi' && activeTab !== 'follow-up') {
+        setActiveTab('sales-acquisition');
+      }
+      return;
+    }
     if (currentUser?.role === 'ADM_DE') {
       setActiveTab('kontrol-sales');
       return;
@@ -243,6 +254,17 @@ function MainApp() {
 
         {/* Content Area */}
         <main className="flex-1 p-4 sm:p-6 lg:p-8 bg-[#0c0e12] min-w-0">
+          {activeTab === 'sales-acquisition' && (
+            <SalesAcquisitionModule
+              currentUser={currentUser}
+              allCabang={allCabang}
+              allPosko={allPosko}
+              allUsers={allUsers}
+              allMediators={mediators}
+              allExCustomers={exCustomers}
+            />
+          )}
+
           {activeTab === 'dashboard' && (
             <Dashboard
               mediators={mediators}

@@ -11,7 +11,8 @@ import {
   TrendingUp,
   Users,
   Flame,
-  UserCog
+  UserCog,
+  UserPlus
 } from 'lucide-react';
 import { DatabaseService, SystemFullBackup } from '../services/storage';
 import { KammLogo } from './KammLogo';
@@ -43,6 +44,16 @@ export const Header: React.FC<HeaderProps> = ({
   const isBpkbAdmin = role === 'ADM_BPKB' || role === 'ADMIN_BPKB';
   const isAdmDe = role === 'ADM_DE';
 
+  const canAccessAcquisition = 
+    role === 'CMO' ||
+    role === 'KAPOS' ||
+    role === 'ADM' ||
+    role === 'KAOPS' ||
+    role === 'KACAB' ||
+    role === 'RM' ||
+    role === 'ADM_DE' ||
+    role === 'SUPER_ADMIN';
+
   const canAccessSales = 
     role === 'ADM_DE' || 
     role === 'ADM' || 
@@ -57,6 +68,14 @@ export const Header: React.FC<HeaderProps> = ({
   const canAccessMasterData = role === 'SUPER_ADMIN' || canManageUsers;
 
   const headerModules = [
+    {
+      id: 'sales-acquisition' as ModuleId,
+      label: 'Sales Acquisition',
+      icon: UserPlus,
+      visible: canAccessAcquisition,
+      activeStyle: 'bg-blue-600 text-white border-blue-500 shadow-md shadow-blue-950/50',
+      hoverStyle: 'text-[#9ea6b8] hover:text-blue-300 hover:bg-[#1c202d] border-transparent',
+    },
     {
       id: 'sales' as ModuleId,
       label: 'Kontrol Sales',

@@ -78,7 +78,7 @@ function notifyAllListeners() {
 }
 
 // Sanitize key for Firestore doc ID (replace / and other special characters)
-function sanitizeDocId(id: string): string {
+export function sanitizeDocId(id: string): string {
   return encodeURIComponent(id).replace(/\./g, '%2E');
 }
 

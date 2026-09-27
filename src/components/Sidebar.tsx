@@ -12,9 +12,10 @@ import {
   TrendingUp
 } from 'lucide-react';
 
-export type ModuleId = 'sales' | 'mediator' | 'ex-customer' | 'master-data';
+export type ModuleId = 'sales-acquisition' | 'sales' | 'mediator' | 'ex-customer' | 'master-data';
 
 export type ActiveTab = 
+  | 'sales-acquisition'
   | 'dashboard' 
   | 'daftar-mediator' 
   | 'registrasi' 
@@ -52,6 +53,16 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const role = currentUser?.role;
   const isBpkbAdmin = role === 'ADM_BPKB' || role === 'ADMIN_BPKB';
   const isAdmDe = role === 'ADM_DE';
+
+  const canAccessAcquisition = 
+    role === 'CMO' ||
+    role === 'KAPOS' ||
+    role === 'ADM' ||
+    role === 'KAOPS' ||
+    role === 'KACAB' ||
+    role === 'RM' ||
+    role === 'ADM_DE' ||
+    role === 'SUPER_ADMIN';
 
   const canAccessSales = 
     role === 'ADM_DE' || 
@@ -110,6 +121,19 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   // All accessible modules for the user
   const allModules = [
+    {
+      id: 'sales-acquisition' as ModuleId,
+      label: 'Sales Acquisition',
+      subtitle: 'Pipeline & Prospek KAMM',
+      icon: UserPlus,
+      badge: 'PIPELINE',
+      visible: canAccessAcquisition,
+      targetTab: 'sales-acquisition' as ActiveTab,
+      color: 'text-blue-400',
+      activeBorder: 'border-blue-500',
+      activeBg: 'bg-blue-950/80',
+      activeText: 'text-blue-300',
+    },
     {
       id: 'sales' as ModuleId,
       label: 'Kontrol Sales',
@@ -240,6 +264,35 @@ export const Sidebar: React.FC<SidebarProps> = ({
             </div>
           )}
         </div>
+
+        {/* WORKSPACE 0: SALES ACQUISITION MENU */}
+        {activeModule === 'sales-acquisition' && (
+          <div>
+            <div className="text-[11px] font-bold text-blue-400 uppercase tracking-wider px-3 mb-2 flex items-center justify-between">
+              <span>Pipeline Sales Acquisition</span>
+              <span className="text-[9px] px-1.5 py-0.2 rounded bg-blue-950 text-blue-300 border border-blue-800">
+                V14.2.3
+              </span>
+            </div>
+
+            <button
+              id="menu-item-sales-acquisition"
+              onClick={() => setActiveTab('sales-acquisition')}
+              className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-left transition-all cursor-pointer border bg-gradient-to-r from-blue-700 to-indigo-700 text-white font-medium border-blue-500 shadow-md shadow-blue-950/40"
+            >
+              <div className="flex items-center space-x-3 min-w-0">
+                <UserPlus className="h-5 w-5 shrink-0 text-white" />
+                <div className="truncate">
+                  <div className="text-sm font-bold leading-tight">Pipeline &amp; Prospek</div>
+                  <div className="text-[11px] text-blue-100 truncate mt-0.5">
+                    Kanban Funnel &amp; Tabel Data
+                  </div>
+                </div>
+              </div>
+              <ChevronRight className="h-4 w-4 text-white shrink-0 ml-2" />
+            </button>
+          </div>
+        )}
 
         {/* WORKSPACE 1: KONTROL MEDIATOR MENU */}
         {activeModule === 'mediator' && (
