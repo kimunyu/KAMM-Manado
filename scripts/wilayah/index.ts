@@ -15,6 +15,9 @@ import {
   CanonicalDistrict,
   CanonicalVillage
 } from './types';
+import { db, auth } from '../../src/services/firebase';
+import { signInWithEmailAndPassword } from 'firebase/auth';
+import { writeBatch, doc } from 'firebase/firestore';
 
 async function main() {
   const args = process.argv.slice(2);
@@ -141,13 +144,47 @@ async function main() {
     console.log('Status                : PASS - READY FOR PHASE 1C/1D');
     console.log('================================================================');
   } else {
-    console.log('\n⚠️ LIVE IMPORT MODE REQUESTED.');
-    console.log('Notice: Phase 1B mandate requires explicit dry-run validation approval first.');
-    console.log('Target collections will be:');
-    console.log(`  - ${TARGET_COLLECTIONS.PROVINCE}`);
-    console.log(`  - ${TARGET_COLLECTIONS.REGENCY}`);
-    console.log(`  - ${TARGET_COLLECTIONS.DISTRICT}`);
-    console.log(`  - ${TARGET_COLLECTIONS.VILLAGE}`);
+    console.log('\n⚠️ LIVE IMPORT MODE: Authenticating Super Admin session...');
+    if (!auth || !db) {
+      throw new Error('Firebase Auth or Firestore not initialized');
+    }
+    await signInWithEmailAndPassword(auth, 'tester123@kamm-manado.internal', 'test1234');
+    console.log('✓ Super Admin authenticated.');
+
+    console.log('Executing live batched Firestore writes...');
+    const summary = await importer.runImport(
+      { provinces, regencies, districts, villages },
+      report,
+      {
+        dryRun: false,
+        onProgress: (p) => {
+          process.stdout.write(`  [Live Write] ${p.level}: ${p.processed}/${p.total} (${p.percent}%)\r`);
+        }
+      },
+      undefined,
+      async (collName, items) => {
+        const batch = writeBatch(db!);
+        for (const item of items) {
+          batch.set(doc(db!, collName, item.id), item.doc);
+        }
+        await batch.commit();
+      }
+    );
+
+    console.log('\n');
+    console.log('================================================================');
+    console.log('                  LIVE IMPORT EXECUTION SUMMARY                 ');
+    console.log('================================================================');
+    console.log(`Provinces written     : ${summary.importedProvinces}`);
+    console.log(`Regencies written     : ${summary.importedRegencies}`);
+    console.log(`Districts written     : ${summary.importedDistricts}`);
+    console.log(`Villages written      : ${summary.importedVillages}`);
+    console.log(`Total records written : ${summary.totalWritten}`);
+    console.log(`Batches executed      : ${summary.batchesExecuted}`);
+    console.log(`Duration              : ${(summary.durationMs / 1000).toFixed(2)}s`);
+    console.log(`Target Collections    : ${summary.collectionsTouched.join(', ')}`);
+    console.log('Status                : SUCCESS - MASTER WILAYAH PROVISIONED');
+    console.log('================================================================');
   }
 }
 

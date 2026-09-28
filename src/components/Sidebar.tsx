@@ -123,8 +123,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const allModules = [
     {
       id: 'sales-acquisition' as ModuleId,
-      label: 'Sales Acquisition',
-      subtitle: 'Pipeline & Prospek KAMM',
+      label: 'Prospek Sales',
+      subtitle: 'Pipeline & Akuisisi KAMM',
       icon: UserPlus,
       badge: 'PIPELINE',
       visible: canAccessAcquisition,
@@ -269,7 +269,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         {activeModule === 'sales-acquisition' && (
           <div>
             <div className="text-[11px] font-bold text-blue-400 uppercase tracking-wider px-3 mb-2 flex items-center justify-between">
-              <span>Pipeline Sales Acquisition</span>
+              <span>Pipeline Prospek Sales</span>
               <span className="text-[9px] px-1.5 py-0.2 rounded bg-blue-950 text-blue-300 border border-blue-800">
                 V14.2.3
               </span>

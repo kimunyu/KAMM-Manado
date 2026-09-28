@@ -9,9 +9,12 @@ import {
   User as UserIcon, 
   ArrowRight,
   ExternalLink,
-  Share2
+  Share2,
+  Bike,
+  Car,
+  FileCheck2
 } from 'lucide-react';
-import { SalesAcquisition, SalesAcquisitionStatus } from '../types';
+import { SalesAcquisition, SalesAcquisitionStatus, JenisJaminan } from '../types';
 import { User } from '../../../types';
 
 interface PipelineBoardProps {
@@ -143,6 +146,26 @@ export const PipelineBoard: React.FC<PipelineBoardProps> = ({
                         <span className="text-[9px] uppercase px-1.5 py-0.5 rounded bg-[#202538] text-blue-300 border border-[#2c344d] shrink-0 font-medium">
                           {item.sumber_lead}
                         </span>
+                      </div>
+
+                      {/* Jaminan Badge */}
+                      <div className="flex items-center space-x-1.5">
+                        {item.jenis_jaminan === 'R4' ? (
+                          <span className="inline-flex items-center text-[10px] px-2 py-0.5 rounded font-semibold bg-purple-950/70 text-purple-300 border border-purple-800/60">
+                            <Car className="h-2.5 w-2.5 mr-1 text-purple-400" />
+                            <span>R4 (Mobil)</span>
+                          </span>
+                        ) : item.jenis_jaminan === 'SERTIFIKAT' ? (
+                          <span className="inline-flex items-center text-[10px] px-2 py-0.5 rounded font-semibold bg-emerald-950/70 text-emerald-300 border border-emerald-800/60">
+                            <FileCheck2 className="h-2.5 w-2.5 mr-1 text-emerald-400" />
+                            <span>Sertifikat</span>
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center text-[10px] px-2 py-0.5 rounded font-semibold bg-blue-950/70 text-blue-300 border border-blue-800/60">
+                            <Bike className="h-2.5 w-2.5 mr-1 text-blue-400" />
+                            <span>R2 (Motor)</span>
+                          </span>
+                        )}
                       </div>
 
                       {/* Phone & WA */}

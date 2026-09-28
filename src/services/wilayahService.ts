@@ -151,8 +151,7 @@ class WilayahService {
       const colRef = collection(db, 'wilayah_kabupaten');
       const q = query(
         colRef, 
-        where('provinsi_id', '==', cleanId), 
-        orderBy('nama', 'asc')
+        where('provinsi_id', '==', cleanId)
       );
       const snapshot = await getDocs(q);
 
@@ -169,6 +168,7 @@ class WilayahService {
         }
       });
 
+      list.sort((a, b) => a.nama.localeCompare(b.nama, 'id'));
       this.saveToCache(cacheKey, list);
       return list;
     } catch (err) {
@@ -198,8 +198,7 @@ class WilayahService {
       const colRef = collection(db, 'wilayah_kecamatan');
       const q = query(
         colRef, 
-        where('kabupaten_id', '==', cleanId), 
-        orderBy('nama', 'asc')
+        where('kabupaten_id', '==', cleanId)
       );
       const snapshot = await getDocs(q);
 
@@ -216,6 +215,7 @@ class WilayahService {
         }
       });
 
+      list.sort((a, b) => a.nama.localeCompare(b.nama, 'id'));
       this.saveToCache(cacheKey, list);
       return list;
     } catch (err) {
@@ -245,8 +245,7 @@ class WilayahService {
       const colRef = collection(db, 'wilayah_desa');
       const q = query(
         colRef, 
-        where('kecamatan_id', '==', cleanId), 
-        orderBy('nama', 'asc')
+        where('kecamatan_id', '==', cleanId)
       );
       const snapshot = await getDocs(q);
 
@@ -264,6 +263,7 @@ class WilayahService {
         }
       });
 
+      list.sort((a, b) => a.nama.localeCompare(b.nama, 'id'));
       this.saveToCache(cacheKey, list);
       return list;
     } catch (err) {

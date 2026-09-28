@@ -16,9 +16,13 @@ import {
   ArrowRightLeft, 
   XCircle,
   AlertTriangle,
-  ExternalLink
+  ExternalLink,
+  ShieldCheck,
+  Bike,
+  Car,
+  FileCheck2
 } from 'lucide-react';
-import { SalesAcquisition, SalesAcquisitionStatus, SalesAcquisitionSourceLead } from '../types';
+import { SalesAcquisition, SalesAcquisitionStatus, SalesAcquisitionSourceLead, JenisJaminan } from '../types';
 import { User, Cabang, Posko } from '../../../types';
 import { SalesAcquisitionService, cleanPhoneNumber } from '../services/salesAcquisitionService';
 import { WilayahCascadeSelector } from '../../../components/WilayahCascadeSelector';
@@ -72,6 +76,7 @@ export const ProspekDetailModal: React.FC<ProspekDetailModalProps> = ({
   const [namaKonsumen, setNamaKonsumen] = useState(record.nama_calon_konsumen);
   const [noTelepon, setNoTelepon] = useState(record.no_telepon);
   const [sumberLead, setSumberLead] = useState<SalesAcquisitionSourceLead>(record.sumber_lead);
+  const [jenisJaminan, setJenisJaminan] = useState<JenisJaminan>(record.jenis_jaminan || 'R2');
   const [kdMed, setKdMed] = useState(record.kd_med || '');
   const [refNoPsbLama, setRefNoPsbLama] = useState(record.ref_no_psb_lama || '');
   const [wilayahState, setWilayahState] = useState<SelectedWilayahState>({
@@ -102,6 +107,22 @@ export const ProspekDetailModal: React.FC<ProspekDetailModalProps> = ({
 
   const handleSaveEdit = async () => {
     setErrorMessage(null);
+
+    if (
+      !wilayahState.provinsiId ||
+      !wilayahState.kabupatenId ||
+      !wilayahState.kecamatanId ||
+      !wilayahState.desaId
+    ) {
+      setErrorMessage('Wilayah domisili wajib dipilih lengkap (Provinsi, Kabupaten, Kecamatan, Desa)!');
+      return;
+    }
+
+    if (!alamatDetail.trim() || alamatDetail.trim().length < 5) {
+      setErrorMessage('Alamat domisili detail wajib diisi minimal 5 karakter!');
+      return;
+    }
+
     setIsSaving(true);
 
     const res = await SalesAcquisitionService.updateLeadDetails(
@@ -110,6 +131,7 @@ export const ProspekDetailModal: React.FC<ProspekDetailModalProps> = ({
         nama_calon_konsumen: namaKonsumen,
         no_telepon: noTelepon,
         sumber_lead: sumberLead,
+        jenis_jaminan: jenisJaminan,
         kd_med: kdMed,
         ref_no_psb_lama: refNoPsbLama,
         wilayah_provinsi_id: wilayahState.provinsiId,
@@ -388,6 +410,46 @@ export const ProspekDetailModal: React.FC<ProspekDetailModalProps> = ({
                     <option value="WALK_IN">WALK_IN</option>
                   </select>
                 </div>
+
+                {/* Jenis Jaminan in Edit Mode */}
+                <div className="space-y-1 sm:col-span-2">
+                  <label className="text-xs font-semibold text-amber-300 flex items-center space-x-1">
+                    <ShieldCheck className="h-3.5 w-3.5 text-amber-400" />
+                    <span>Jenis Jaminan Pinjaman *</span>
+                  </label>
+                  <div className="grid grid-cols-3 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setJenisJaminan('R2')}
+                      className={`p-2 rounded-lg border text-xs font-bold flex items-center justify-center space-x-1.5 cursor-pointer ${
+                        jenisJaminan === 'R2' ? 'bg-blue-600/30 border-blue-500 text-white' : 'bg-[#181c28] border-[#2c3345] text-[#8e96a8]'
+                      }`}
+                    >
+                      <Bike className="h-3.5 w-3.5" />
+                      <span>R2 (Motor)</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setJenisJaminan('R4')}
+                      className={`p-2 rounded-lg border text-xs font-bold flex items-center justify-center space-x-1.5 cursor-pointer ${
+                        jenisJaminan === 'R4' ? 'bg-purple-600/30 border-purple-500 text-white' : 'bg-[#181c28] border-[#2c3345] text-[#8e96a8]'
+                      }`}
+                    >
+                      <Car className="h-3.5 w-3.5" />
+                      <span>R4 (Mobil)</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setJenisJaminan('SERTIFIKAT')}
+                      className={`p-2 rounded-lg border text-xs font-bold flex items-center justify-center space-x-1.5 cursor-pointer ${
+                        jenisJaminan === 'SERTIFIKAT' ? 'bg-emerald-600/30 border-emerald-500 text-white' : 'bg-[#181c28] border-[#2c3345] text-[#8e96a8]'
+                      }`}
+                    >
+                      <FileCheck2 className="h-3.5 w-3.5" />
+                      <span>Sertifikat</span>
+                    </button>
+                  </div>
+                </div>
                 {sumberLead === 'MEDIATOR' && (
                   <div className="space-y-1 sm:col-span-2">
                     <label className="text-xs font-semibold text-blue-300">Kode Mediator (KD MED)</label>
@@ -412,7 +474,7 @@ export const ProspekDetailModal: React.FC<ProspekDetailModalProps> = ({
                 )}
               </div>
             ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 bg-[#161a26] p-4 rounded-xl border border-[#272d3e] text-xs">
+              <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 bg-[#161a26] p-4 rounded-xl border border-[#272d3e] text-xs">
                 <div>
                   <span className="text-[#8e96a8] block">Nama Lengkap</span>
                   <strong className="text-white text-sm font-semibold">{record.nama_calon_konsumen}</strong>
@@ -430,6 +492,27 @@ export const ProspekDetailModal: React.FC<ProspekDetailModalProps> = ({
                       <span>WA</span>
                       <ExternalLink className="h-2.5 w-2.5" />
                     </a>
+                  </div>
+                </div>
+                <div>
+                  <span className="text-[#8e96a8] block">Jenis Jaminan</span>
+                  <div className="mt-1">
+                    {record.jenis_jaminan === 'R4' ? (
+                      <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold bg-purple-950/80 text-purple-300 border border-purple-800">
+                        <Car className="h-3 w-3 mr-1 text-purple-400" />
+                        <span>R4 (Mobil)</span>
+                      </span>
+                    ) : record.jenis_jaminan === 'SERTIFIKAT' ? (
+                      <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold bg-emerald-950/80 text-emerald-300 border border-emerald-800">
+                        <FileCheck2 className="h-3 w-3 mr-1 text-emerald-400" />
+                        <span>Sertifikat</span>
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold bg-blue-950/80 text-blue-300 border border-blue-800">
+                        <Bike className="h-3 w-3 mr-1 text-blue-400" />
+                        <span>R2 (Motor)</span>
+                      </span>
+                    )}
                   </div>
                 </div>
                 <div>

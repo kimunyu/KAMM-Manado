@@ -8,14 +8,16 @@ import {
   MapPin, 
   AlertTriangle, 
   CheckCircle2, 
-  ChevronDown, 
-  ChevronUp, 
   Building2, 
   FileText,
-  Search
+  Search,
+  ShieldCheck,
+  Bike,
+  Car,
+  FileCheck2
 } from 'lucide-react';
 import { User, Cabang, Posko, MediatorKontrak, ExCustomer } from '../../../types';
-import { SalesAcquisitionSourceLead } from '../types';
+import { SalesAcquisitionSourceLead, JenisJaminan } from '../types';
 import { SalesAcquisitionService, cleanPhoneNumber } from '../services/salesAcquisitionService';
 import { WilayahCascadeSelector } from '../../../components/WilayahCascadeSelector';
 import { SelectedWilayahState } from '../../../types';
@@ -46,6 +48,7 @@ export const QuickEntryModal: React.FC<QuickEntryModalProps> = ({
   const [namaKonsumen, setNamaKonsumen] = useState('');
   const [noTelepon, setNoTelepon] = useState('');
   const [sumberLead, setSumberLead] = useState<SalesAcquisitionSourceLead>('CANVASSING');
+  const [jenisJaminan, setJenisJaminan] = useState<JenisJaminan>('R2');
   
   // Conditional References
   const [kdMed, setKdMed] = useState('');
@@ -56,8 +59,7 @@ export const QuickEntryModal: React.FC<QuickEntryModalProps> = ({
   const [selectedKdCabang, setSelectedKdCabang] = useState(currentUser.kd_cabang || 'C16');
   const [selectedKdPosko, setSelectedKdPosko] = useState(currentUser.kd_posko || 'QJ0');
 
-  // Wilayah & Address (Enrichment)
-  const [showWilayah, setShowWilayah] = useState(false);
+  // Wilayah & Address (Mandatory)
   const [wilayahState, setWilayahState] = useState<SelectedWilayahState>({
     provinsiId: '',
     kabupatenId: '',
@@ -100,12 +102,12 @@ export const QuickEntryModal: React.FC<QuickEntryModalProps> = ({
       setNamaKonsumen('');
       setNoTelepon('');
       setSumberLead('CANVASSING');
+      setJenisJaminan('R2');
       setKdMed('');
       setRefNoPsbLama('');
       setAssignedUserId(currentUser.id);
       setSelectedKdCabang(currentUser.kd_cabang || 'C16');
       setSelectedKdPosko(currentUser.kd_posko || 'QJ0');
-      setShowWilayah(false);
       setWilayahState({
         provinsiId: '',
         kabupatenId: '',
@@ -128,6 +130,28 @@ export const QuickEntryModal: React.FC<QuickEntryModalProps> = ({
       return;
     }
 
+    if (!jenisJaminan) {
+      setErrorMessage('Pilih jenis jaminan pinjaman (R2 Motor, R4 Mobil, atau Sertifikat)!');
+      return;
+    }
+
+    // Mandatory Wilayah validation
+    if (
+      !wilayahState.provinsiId ||
+      !wilayahState.kabupatenId ||
+      !wilayahState.kecamatanId ||
+      !wilayahState.desaId
+    ) {
+      setErrorMessage('Wilayah domisili (Provinsi, Kabupaten/Kota, Kecamatan, dan Kelurahan/Desa) wajib dipilih lengkap!');
+      return;
+    }
+
+    // Mandatory Alamat validation
+    if (!alamatDetail.trim() || alamatDetail.trim().length < 5) {
+      setErrorMessage('Alamat domisili lengkap / patokan wajib diisi minimal 5 karakter!');
+      return;
+    }
+
     setIsSubmitting(true);
 
     const res = await SalesAcquisitionService.createQuickEntryLead(
@@ -135,6 +159,7 @@ export const QuickEntryModal: React.FC<QuickEntryModalProps> = ({
         nama_calon_konsumen: namaKonsumen,
         no_telepon: noTelepon,
         sumber_lead: sumberLead,
+        jenis_jaminan: jenisJaminan,
         kd_med: kdMed,
         ref_no_psb_lama: refNoPsbLama,
         assigned_user_id: targetAo ? targetAo.id : currentUser.id,
@@ -171,13 +196,13 @@ export const QuickEntryModal: React.FC<QuickEntryModalProps> = ({
             </div>
             <div>
               <h2 className="text-base font-bold text-white tracking-tight flex items-center space-x-2">
-                <span>Quick Entry Prospek Baru</span>
+                <span>Input Prospek Sales Baru</span>
                 <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-blue-950 text-blue-300 border border-blue-800">
-                  LOCKED V14.2.3
+                  PROSPEK SALES
                 </span>
               </h2>
               <p className="text-xs text-[#8e96a8]">
-                Input kilat data awal calon nasabah untuk segera ditindaklanjuti.
+                Input kilat data calon nasabah prospek sales untuk segera ditindaklanjuti.
               </p>
             </div>
           </div>
@@ -191,7 +216,7 @@ export const QuickEntryModal: React.FC<QuickEntryModalProps> = ({
         </div>
 
         {/* Form Body */}
-        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+        <form onSubmit={handleSubmit} className="p-6 space-y-4 max-h-[80vh] overflow-y-auto">
           {errorMessage && (
             <div className="p-3 bg-rose-950/70 border border-rose-800/80 rounded-xl text-xs text-rose-200 flex items-center space-x-2">
               <AlertTriangle className="h-4 w-4 text-rose-400 shrink-0" />
@@ -268,6 +293,76 @@ export const QuickEntryModal: React.FC<QuickEntryModalProps> = ({
             </div>
           </div>
 
+          {/* Jenis Jaminan Pinjaman (MANDATORY) */}
+          <div className="space-y-2 p-3.5 bg-[#151926] border border-[#262f45] rounded-2xl">
+            <label className="text-xs font-bold text-[#e0e4eb] flex items-center justify-between">
+              <span className="flex items-center space-x-1.5">
+                <ShieldCheck className="h-4 w-4 text-amber-400" />
+                <span>Jenis Jaminan Pinjaman <strong className="text-rose-400">*</strong></span>
+              </span>
+              <span className="text-[10px] text-amber-300 font-medium">Pilih salah satu (Wajib)</span>
+            </label>
+
+            <div className="grid grid-cols-3 gap-2.5">
+              {/* Option 1: R2 (Motor) */}
+              <button
+                type="button"
+                onClick={() => setJenisJaminan('R2')}
+                className={`p-3 rounded-xl border flex flex-col items-center justify-center text-center space-y-1.5 transition-all cursor-pointer ${
+                  jenisJaminan === 'R2'
+                    ? 'bg-blue-600/20 border-blue-500 text-white shadow-md shadow-blue-900/30'
+                    : 'bg-[#181c28] border-[#2c3345] text-[#8e96a8] hover:text-white hover:border-[#3d4760]'
+                }`}
+              >
+                <div className={`p-1.5 rounded-lg ${jenisJaminan === 'R2' ? 'bg-blue-600 text-white' : 'bg-[#202535] text-[#8e96a8]'}`}>
+                  <Bike className="h-4 w-4" />
+                </div>
+                <div>
+                  <div className="text-xs font-bold">1. R2 (Motor)</div>
+                  <div className="text-[10px] text-[#8e96a8]">BPKB Sepeda Motor</div>
+                </div>
+              </button>
+
+              {/* Option 2: R4 (Mobil) */}
+              <button
+                type="button"
+                onClick={() => setJenisJaminan('R4')}
+                className={`p-3 rounded-xl border flex flex-col items-center justify-center text-center space-y-1.5 transition-all cursor-pointer ${
+                  jenisJaminan === 'R4'
+                    ? 'bg-purple-600/20 border-purple-500 text-white shadow-md shadow-purple-900/30'
+                    : 'bg-[#181c28] border-[#2c3345] text-[#8e96a8] hover:text-white hover:border-[#3d4760]'
+                }`}
+              >
+                <div className={`p-1.5 rounded-lg ${jenisJaminan === 'R4' ? 'bg-purple-600 text-white' : 'bg-[#202535] text-[#8e96a8]'}`}>
+                  <Car className="h-4 w-4" />
+                </div>
+                <div>
+                  <div className="text-xs font-bold">2. R4 (Mobil)</div>
+                  <div className="text-[10px] text-[#8e96a8]">BPKB Mobil / Truk</div>
+                </div>
+              </button>
+
+              {/* Option 3: Sertifikat */}
+              <button
+                type="button"
+                onClick={() => setJenisJaminan('SERTIFIKAT')}
+                className={`p-3 rounded-xl border flex flex-col items-center justify-center text-center space-y-1.5 transition-all cursor-pointer ${
+                  jenisJaminan === 'SERTIFIKAT'
+                    ? 'bg-emerald-600/20 border-emerald-500 text-white shadow-md shadow-emerald-900/30'
+                    : 'bg-[#181c28] border-[#2c3345] text-[#8e96a8] hover:text-white hover:border-[#3d4760]'
+                }`}
+              >
+                <div className={`p-1.5 rounded-lg ${jenisJaminan === 'SERTIFIKAT' ? 'bg-emerald-600 text-white' : 'bg-[#202535] text-[#8e96a8]'}`}>
+                  <FileCheck2 className="h-4 w-4" />
+                </div>
+                <div>
+                  <div className="text-xs font-bold">3. Sertifikat</div>
+                  <div className="text-[10px] text-[#8e96a8]">SHM / SHGB Properti</div>
+                </div>
+              </button>
+            </div>
+          </div>
+
           {/* Conditional Input: MEDIATOR */}
           {sumberLead === 'MEDIATOR' && (
             <div className="p-3.5 bg-blue-950/40 border border-blue-800/60 rounded-xl space-y-2">
@@ -338,48 +433,44 @@ export const QuickEntryModal: React.FC<QuickEntryModalProps> = ({
             </div>
           )}
 
-          {/* Collapsible: Data Wilayah & Alamat Domisili */}
-          <div className="border border-[#232734] rounded-xl overflow-hidden bg-[#0e1017]">
-            <button
-              type="button"
-              onClick={() => setShowWilayah(!showWilayah)}
-              className="w-full px-4 py-3 bg-[#151823] flex items-center justify-between text-left text-xs font-bold text-[#c2c9d6] hover:text-white transition-colors"
-            >
+          {/* Alamat & Master Wilayah Domisili (MANDATORI) */}
+          <div className="border border-emerald-900/60 rounded-2xl overflow-hidden bg-[#0c0f16] p-4 space-y-3.5">
+            <div className="flex items-center justify-between pb-2 border-b border-[#232734]">
               <div className="flex items-center space-x-2">
                 <MapPin className="h-4 w-4 text-emerald-400" />
-                <span>Alamat &amp; Master Wilayah Domisili (Opsional)</span>
-                {wilayahState.provinsiId && (
-                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-950 text-emerald-300 border border-emerald-800">
-                    Terisi
-                  </span>
-                )}
+                <span className="text-xs font-bold text-white uppercase tracking-wider">
+                  Alamat &amp; Wilayah Domisili <strong className="text-rose-400">*</strong>
+                </span>
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-950 text-emerald-300 border border-emerald-800 font-bold">
+                  MANDATORI
+                </span>
               </div>
-              {showWilayah ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-            </button>
+              <span className="text-[11px] text-[#8e96a8]">Wajib 4 Tingkat Administratif</span>
+            </div>
 
-            {showWilayah && (
-              <div className="p-4 space-y-3.5 border-t border-[#232734]">
-                <WilayahCascadeSelector
-                  label="Pilih Wilayah Domisili Konsumen"
-                  initialValues={wilayahState}
-                  onChange={setWilayahState}
-                  showSummary={false}
-                />
-                <div className="space-y-1">
-                  <label className="text-[11px] font-semibold text-[#8e96a8]">
-                    Alamat Lengkap / Patokan (Maks 255 karakter)
-                  </label>
-                  <textarea
-                    rows={2}
-                    maxLength={255}
-                    value={alamatDetail}
-                    onChange={(e) => setAlamatDetail(e.target.value)}
-                    placeholder="Contoh: Jl. Sam Ratulangi No. 45, Lingkungan III, Depan Gereja Sentrum"
-                    className="w-full bg-[#181c28] border border-[#2c3345] rounded-xl p-2.5 text-xs text-white placeholder-[#5c6479] focus:outline-none focus:border-emerald-500 resize-none"
-                  />
-                </div>
-              </div>
-            )}
+            <WilayahCascadeSelector
+              label="Pilih Wilayah Domisili Konsumen"
+              initialValues={wilayahState}
+              onChange={setWilayahState}
+              required={true}
+              showSummary={true}
+            />
+
+            <div className="space-y-1 pt-1">
+              <label className="text-[11px] font-bold text-[#e0e4eb] flex items-center justify-between">
+                <span>Alamat Lengkap / Patokan Jalan <strong className="text-rose-400">*</strong></span>
+                <span className="text-[10px] text-[#8e96a8]">Maks 255 karakter (Min 5)</span>
+              </label>
+              <textarea
+                rows={2}
+                required
+                maxLength={255}
+                value={alamatDetail}
+                onChange={(e) => setAlamatDetail(e.target.value)}
+                placeholder="Contoh: Jl. Sam Ratulangi No. 45, Lingkungan III, Depan Gereja Sentrum (Wajib)"
+                className="w-full bg-[#181c28] border border-[#2c3345] rounded-xl p-2.5 text-xs text-white placeholder-[#5c6479] focus:outline-none focus:border-emerald-500 resize-none"
+              />
+            </div>
           </div>
 
           {/* Action Buttons */}
@@ -388,17 +479,17 @@ export const QuickEntryModal: React.FC<QuickEntryModalProps> = ({
               type="button"
               onClick={onClose}
               disabled={isSubmitting}
-              className="px-4 py-2.5 rounded-xl border border-[#2c3345] text-xs font-bold text-[#8e96a8] hover:text-white hover:bg-[#181c28] transition-colors"
+              className="px-4 py-2.5 rounded-xl border border-[#2c3345] text-xs font-bold text-[#8e96a8] hover:text-white hover:bg-[#181c28] transition-colors cursor-pointer"
             >
               Batal
             </button>
             <button
               type="submit"
               disabled={isSubmitting || duplicateResult.hasDuplicate}
-              className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-xs font-bold text-white shadow-lg shadow-blue-900/30 transition-all flex items-center space-x-2"
+              className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-xs font-bold text-white shadow-lg shadow-blue-900/30 transition-all flex items-center space-x-2 cursor-pointer"
             >
               <UserPlus className="h-4 w-4" />
-              <span>{isSubmitting ? 'Menyimpan...' : 'Simpan Prospek'}</span>
+              <span>{isSubmitting ? 'Menyimpan...' : 'Simpan Prospek Sales'}</span>
             </button>
           </div>
         </form>

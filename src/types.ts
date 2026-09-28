@@ -297,6 +297,8 @@ export type SalesAcquisitionStatus =
   | 'DITOLAK'
   | 'BATAL';
 
+export type JenisJaminan = 'R2' | 'R4' | 'SERTIFIKAT';
+
 export interface SalesAcquisition {
   // 1-5 System / Audit
   id: string;                         // 1. Unique Doc ID
@@ -338,6 +340,9 @@ export interface SalesAcquisition {
   no_psb: string;                     // 25. No PSB KAMM baru saat CAIR (else '')
   tgl_cair: any;                      // 26. Firestore Timestamp saat CAIR (null before)
   sales_control_id: string;           // 27. SC_{id} saat CAIR (else '')
+
+  // 28. Jenis Jaminan Pinjaman: R2 (Motor), R4 (Mobil), Sertifikat
+  jenis_jaminan?: JenisJaminan;
 }
 
 export interface DuplicateCheckResult {

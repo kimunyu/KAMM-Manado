@@ -390,6 +390,7 @@ service cloud.firestore {
       data.id == docId &&
       data.status == 'PROSPEK_BARU' &&
       data.sumber_lead in ['CANVASSING', 'SOSMED', 'MEDIATOR', 'EX_CUSTOMER', 'WALK_IN'] &&
+      (!('jenis_jaminan' in data) || data.jenis_jaminan in ['R2', 'R4', 'SERTIFIKAT']) &&
       data.nama_calon_konsumen is string && data.nama_calon_konsumen.size() >= 3 && data.nama_calon_konsumen.size() <= 100 &&
       data.no_telepon is string && data.no_telepon.size() >= 9 && data.no_telepon.size() <= 20 &&
       data.no_telepon_clean is string && data.no_telepon_clean.size() >= 9 && data.no_telepon_clean.size() <= 20;

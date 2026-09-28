@@ -269,6 +269,27 @@ class SalesAcquisitionServiceManager {
       return { success: false, message: 'Sumber lead wajib dipilih!' };
     }
 
+    // Jenis Jaminan Mandatory Validation: R2, R4, SERTIFIKAT
+    if (!input.jenis_jaminan || !['R2', 'R4', 'SERTIFIKAT'].includes(input.jenis_jaminan)) {
+      return { success: false, message: 'Jenis jaminan (R2 Motor, R4 Mobil, atau Sertifikat) wajib dipilih!' };
+    }
+
+    // Wilayah Domisili (4-Level) & Alamat Detail Mandatory Validation
+    if (
+      !input.wilayah_provinsi_id?.trim() ||
+      !input.wilayah_kabupaten_id?.trim() ||
+      !input.wilayah_kecamatan_id?.trim() ||
+      !input.wilayah_desa_id?.trim()
+    ) {
+      return { 
+        success: false, 
+        message: 'Wilayah domisili (Provinsi, Kabupaten/Kota, Kecamatan, dan Kelurahan/Desa) wajib dipilih lengkap!' 
+      };
+    }
+    if (!input.alamat_detail || input.alamat_detail.trim().length < 5) {
+      return { success: false, message: 'Alamat domisili detail / patokan wajib diisi minimal 5 karakter!' };
+    }
+
     const cleanPhone = cleanPhoneNumber(input.no_telepon);
     if (cleanPhone.length < 9 || cleanPhone.length > 20) {
       return { success: false, message: 'Format nomor telepon tidak valid (9-20 digit angka)!' };
@@ -302,7 +323,7 @@ class SalesAcquisitionServiceManager {
     const nowIso = new Date().toISOString();
     const docId = `ACQ_${Date.now()}_${Math.random().toString(36).substring(2, 7).toUpperCase()}`;
 
-    // Canonical 27 Fields Construction
+    // Canonical 28 Fields Construction (with jenis_jaminan)
     const newRecord: SalesAcquisition = {
       // 1-5 Audit
       id: docId,
@@ -333,17 +354,20 @@ class SalesAcquisitionServiceManager {
       kd_med: input.sumber_lead === 'MEDIATOR' ? (input.kd_med || '').trim() : '',
       ref_no_psb_lama: input.sumber_lead === 'EX_CUSTOMER' ? (input.ref_no_psb_lama || '').trim().toUpperCase() : '',
 
-      // 20-24 Master Wilayah
-      wilayah_provinsi_id: input.wilayah_provinsi_id || '',
-      wilayah_kabupaten_id: input.wilayah_kabupaten_id || '',
-      wilayah_kecamatan_id: input.wilayah_kecamatan_id || '',
-      wilayah_desa_id: input.wilayah_desa_id || '',
-      alamat_detail: (input.alamat_detail || '').trim(),
+      // 20-24 Master Wilayah & Address (Mandatory)
+      wilayah_provinsi_id: input.wilayah_provinsi_id.trim(),
+      wilayah_kabupaten_id: input.wilayah_kabupaten_id.trim(),
+      wilayah_kecamatan_id: input.wilayah_kecamatan_id.trim(),
+      wilayah_desa_id: input.wilayah_desa_id.trim(),
+      alamat_detail: input.alamat_detail.trim(),
 
       // 25-27 Conversion / CAIR
       no_psb: '',
       tgl_cair: null,
-      sales_control_id: ''
+      sales_control_id: '',
+
+      // 28. Jenis Jaminan
+      jenis_jaminan: input.jenis_jaminan
     };
 
     // Save to Firestore
@@ -447,11 +471,12 @@ class SalesAcquisitionServiceManager {
       sumber_lead: input.sumber_lead,
       kd_med: input.sumber_lead === 'MEDIATOR' ? (input.kd_med || '').trim() : '',
       ref_no_psb_lama: input.sumber_lead === 'EX_CUSTOMER' ? (input.ref_no_psb_lama || '').trim().toUpperCase() : '',
-      wilayah_provinsi_id: input.wilayah_provinsi_id || '',
-      wilayah_kabupaten_id: input.wilayah_kabupaten_id || '',
-      wilayah_kecamatan_id: input.wilayah_kecamatan_id || '',
-      wilayah_desa_id: input.wilayah_desa_id || '',
-      alamat_detail: (input.alamat_detail || '').trim(),
+      wilayah_provinsi_id: input.wilayah_provinsi_id || existing.wilayah_provinsi_id || '',
+      wilayah_kabupaten_id: input.wilayah_kabupaten_id || existing.wilayah_kabupaten_id || '',
+      wilayah_kecamatan_id: input.wilayah_kecamatan_id || existing.wilayah_kecamatan_id || '',
+      wilayah_desa_id: input.wilayah_desa_id || existing.wilayah_desa_id || '',
+      alamat_detail: (input.alamat_detail !== undefined ? input.alamat_detail : existing.alamat_detail || '').trim(),
+      jenis_jaminan: input.jenis_jaminan || existing.jenis_jaminan,
       updated_at: nowIso,
       updated_by_user_id: currentUser.id
     };
@@ -459,7 +484,7 @@ class SalesAcquisitionServiceManager {
     if (db) {
       try {
         const docRef = doc(db, COLLECTION_NAME, leadId);
-        await updateDoc(docRef, {
+        const updatePayload: Record<string, any> = {
           nama_calon_konsumen: updatedRecord.nama_calon_konsumen,
           no_telepon: updatedRecord.no_telepon,
           no_telepon_clean: updatedRecord.no_telepon_clean,
@@ -473,7 +498,11 @@ class SalesAcquisitionServiceManager {
           alamat_detail: updatedRecord.alamat_detail,
           updated_at: serverTimestamp(),
           updated_by_user_id: currentUser.id
-        });
+        };
+        if (updatedRecord.jenis_jaminan) {
+          updatePayload.jenis_jaminan = updatedRecord.jenis_jaminan;
+        }
+        await updateDoc(docRef, updatePayload);
       } catch (err: any) {
         return {
           success: false,

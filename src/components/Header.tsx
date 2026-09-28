@@ -70,7 +70,7 @@ export const Header: React.FC<HeaderProps> = ({
   const headerModules = [
     {
       id: 'sales-acquisition' as ModuleId,
-      label: 'Sales Acquisition',
+      label: 'Prospek Sales',
       icon: UserPlus,
       visible: canAccessAcquisition,
       activeStyle: 'bg-blue-600 text-white border-blue-500 shadow-md shadow-blue-950/50',

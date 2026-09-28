@@ -10,6 +10,7 @@
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
     "wilayah:validate": "tsx scripts/wilayah/index.ts --dry-run --mode=pilot --province=71",
+    "wilayah:import": "tsx scripts/wilayah/index.ts --import --mode=pilot --province=71",
     "wilayah:test": "tsx scripts/wilayah/test-suite.ts"
   },
   "dependencies": {

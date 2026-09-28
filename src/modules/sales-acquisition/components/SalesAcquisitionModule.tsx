@@ -134,7 +134,7 @@ export const SalesAcquisitionModule: React.FC<SalesAcquisitionModuleProps> = ({
             <div className="flex items-center space-x-2.5 mb-1.5">
               <span className="px-2.5 py-0.5 rounded-md text-[11px] font-extrabold uppercase tracking-wider bg-blue-950/80 text-blue-300 border border-blue-800/60 flex items-center space-x-1">
                 <ShieldCheck className="h-3 w-3" />
-                <span>SALES ACQUISITION V14.2.3</span>
+                <span>PROSPEK SALES</span>
               </span>
               <span className="text-xs text-[#8e96a8]">
                 Role: <strong className="text-white font-mono">{currentUser.role}</strong>
@@ -150,12 +150,12 @@ export const SalesAcquisitionModule: React.FC<SalesAcquisitionModuleProps> = ({
               </span>
             </div>
             <h1 className="text-2xl font-black text-white tracking-tight flex items-center space-x-2.5">
-              <span>PIPELINE AKUISISI PENJUALAN</span>
+              <span>PIPELINE PROSPEK SALES</span>
               <span className="text-[#8e96a8] font-normal text-lg">•</span>
               <span className="text-blue-400 font-bold text-lg">KAMM Manado</span>
             </h1>
             <p className="text-xs text-[#8e96a8] mt-1 max-w-2xl">
-              Pengelolaan siklus prospek baru calon nasabah dari Quick Entry, survei lapangan, pengajuan berkas, persetujuan hingga konversi pencairan pinjaman (CAIR).
+              Pengelolaan siklus prospek sales baru calon nasabah dari input data, survei lapangan, pengajuan berkas, persetujuan hingga konversi pencairan pinjaman (CAIR).
             </p>
           </div>
 

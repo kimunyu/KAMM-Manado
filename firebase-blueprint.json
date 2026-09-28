@@ -254,7 +254,8 @@
         "alamat_detail": { "type": "string", "maxLength": 255 },
         "no_psb": { "type": "string" },
         "tgl_cair": { "type": "string", "format": "date-time" },
-        "sales_control_id": { "type": "string" }
+        "sales_control_id": { "type": "string" },
+        "jenis_jaminan": { "type": "string", "enum": ["R2", "R4", "SERTIFIKAT"] }
       },
       "required": [
         "id", "created_at", "created_by_user_id", "updated_at", "updated_by_user_id",

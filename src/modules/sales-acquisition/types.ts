@@ -2,6 +2,7 @@ import {
   SalesAcquisition, 
   SalesAcquisitionSourceLead, 
   SalesAcquisitionStatus, 
+  JenisJaminan,
   DuplicateCheckResult, 
   User, 
   Cabang, 
@@ -16,6 +17,7 @@ export type {
   SalesAcquisition,
   SalesAcquisitionSourceLead,
   SalesAcquisitionStatus,
+  JenisJaminan,
   DuplicateCheckResult,
   WilayahProvinsi,
   WilayahKabupaten,
@@ -27,23 +29,25 @@ export interface QuickEntryInput {
   nama_calon_konsumen: string;
   no_telepon: string;
   sumber_lead: SalesAcquisitionSourceLead;
+  jenis_jaminan: JenisJaminan;
   kd_med?: string;
   ref_no_psb_lama?: string;
   assigned_user_id?: string;
   kd_ao?: string;
   kd_cabang?: string;
   kd_posko?: string;
-  wilayah_provinsi_id?: string;
-  wilayah_kabupaten_id?: string;
-  wilayah_kecamatan_id?: string;
-  wilayah_desa_id?: string;
-  alamat_detail?: string;
+  wilayah_provinsi_id: string;
+  wilayah_kabupaten_id: string;
+  wilayah_kecamatan_id: string;
+  wilayah_desa_id: string;
+  alamat_detail: string;
 }
 
 export interface NormalUpdateInput {
   nama_calon_konsumen: string;
   no_telepon: string;
   sumber_lead: SalesAcquisitionSourceLead;
+  jenis_jaminan?: JenisJaminan;
   kd_med?: string;
   ref_no_psb_lama?: string;
   wilayah_provinsi_id?: string;

@@ -115,7 +115,8 @@ export class FirestoreWilayahImporter {
     },
     validation: ValidationReport,
     options: ImportOptions,
-    firestoreWriter?: (collection: string, docId: string, data: any) => Promise<void>
+    firestoreWriter?: (collection: string, docId: string, data: any) => Promise<void>,
+    firestoreBatchWriter?: (collection: string, items: { id: string; doc: any }[]) => Promise<void>
   ): Promise<ImportSummary> {
     if (!validation.passed) {
       throw new Error(`Cannot proceed with import: Validation FAILED with ${validation.errors.length} error(s).`);
@@ -143,12 +144,16 @@ export class FirestoreWilayahImporter {
         batchesExecuted++;
 
         if (!options.dryRun) {
-          if (!firestoreWriter) {
+          if (firestoreBatchWriter) {
+            await firestoreBatchWriter(level.name, chunk);
+            totalWritten += chunk.length;
+          } else if (firestoreWriter) {
+            for (const item of chunk) {
+              await firestoreWriter(level.name, item.id, item.doc);
+              totalWritten++;
+            }
+          } else {
             throw new Error('Firestore writer callback is required when dryRun=false.');
-          }
-          for (const item of chunk) {
-            await firestoreWriter(level.name, item.id, item.doc);
-            totalWritten++;
           }
         } else {
           totalWritten += chunk.length;
