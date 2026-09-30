@@ -445,7 +445,7 @@ export const TableProspek: React.FC<TableProspekProps> = ({
                     className="flex items-center space-x-1.5 hover:text-white transition-colors cursor-pointer group"
                     title="Urutkan berdasarkan Petugas AO"
                   >
-                    <span>Petugas AO</span>
+                    <span>AO Ref</span>
                     {renderSortIndicator('kd_ao')}
                   </button>
                 </th>

@@ -8,17 +8,21 @@ import {
   MapPin, 
   AlertTriangle, 
   CheckCircle2, 
-  Building2, 
   FileText,
   Search,
   ShieldCheck,
   Bike,
   Car,
-  FileCheck2
+  FileCheck2,
+  Lock,
+  Check,
+  ChevronDown,
+  Sparkles,
+  Users
 } from 'lucide-react';
 import { User, Cabang, Posko, MediatorKontrak, ExCustomer } from '../../../types';
 import { SalesAcquisitionSourceLead, JenisJaminan } from '../types';
-import { SalesAcquisitionService, cleanPhoneNumber } from '../services/salesAcquisitionService';
+import { SalesAcquisitionService } from '../services/salesAcquisitionService';
 import { WilayahCascadeSelector } from '../../../components/WilayahCascadeSelector';
 import { SelectedWilayahState } from '../../../types';
 
@@ -50,47 +54,55 @@ export const QuickEntryModal: React.FC<QuickEntryModalProps> = ({
   const [sumberLead, setSumberLead] = useState<SalesAcquisitionSourceLead>('CANVASSING');
   const [jenisJaminan, setJenisJaminan] = useState<JenisJaminan>('R2');
   
-  // Conditional References
+  // Conditional References: MEDIATOR
   const [kdMed, setKdMed] = useState('');
-  const [refNoPsbLama, setRefNoPsbLama] = useState('');
-  
-  // Assignment
-  const [assignedUserId, setAssignedUserId] = useState(currentUser.id);
-  const [selectedKdCabang, setSelectedKdCabang] = useState(currentUser.kd_cabang || 'C16');
-  const [selectedKdPosko, setSelectedKdPosko] = useState(currentUser.kd_posko || 'QJ0');
+  const [mediatorSearch, setMediatorSearch] = useState('');
+  const [isMediatorPickerOpen, setIsMediatorPickerOpen] = useState(false);
+  const [isManualKdMed, setIsManualKdMed] = useState(false);
 
-  // Wilayah & Address (Mandatory)
+  // Conditional References: EX_CUSTOMER
+  const [refNoPsbLama, setRefNoPsbLama] = useState('');
+
+  // Wilayah Domisili (Mandatory)
   const [wilayahState, setWilayahState] = useState<SelectedWilayahState>({
     provinsiId: '',
     kabupatenId: '',
     kecamatanId: '',
     desaId: ''
   });
-  const [alamatDetail, setAlamatDetail] = useState('');
 
   // Status & Feedback
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  // Available AO users (filtered by posko/cabang if applicable)
-  const availableAOs = useMemo(() => {
-    return allUsers.filter(u => {
-      if (u.status !== 'AKTIF') return false;
-      if (u.role !== 'CMO' && u.role !== 'KAPOS') return false;
-      if (currentUser.role === 'KAPOS' && currentUser.kd_posko) {
-        return u.kd_posko === currentUser.kd_posko;
-      }
-      if (currentUser.role === 'KAOPS' || currentUser.role === 'ADM') {
-        return u.kd_cabang === currentUser.kd_cabang;
-      }
-      return true;
-    });
-  }, [allUsers, currentUser]);
+  // Matched Mediator from Kontrol Mediator
+  const selectedMediator = useMemo(() => {
+    if (!kdMed.trim()) return null;
+    return allMediators.find(
+      (m) => m.kd_med?.trim().toUpperCase() === kdMed.trim().toUpperCase()
+    ) || null;
+  }, [allMediators, kdMed]);
 
-  // Selected AO User
-  const targetAo = useMemo(() => {
-    return allUsers.find(u => u.id === assignedUserId);
-  }, [allUsers, assignedUserId]);
+  // Filtered Mediators from Kontrol Mediator for selector
+  const filteredMediators = useMemo(() => {
+    const term = mediatorSearch.trim().toLowerCase();
+    if (!term) {
+      // Prioritaskan mediator aktif
+      return [...allMediators].sort((a, b) => {
+        if (a.status === 'AKTIF' && b.status !== 'AKTIF') return -1;
+        if (a.status !== 'AKTIF' && b.status === 'AKTIF') return 1;
+        return (a.kd_med || '').localeCompare(b.kd_med || '');
+      }).slice(0, 40);
+    }
+    return allMediators.filter((m) => {
+      const matchKd = (m.kd_med || '').toLowerCase().includes(term);
+      const matchNama = (m.nama_mediator || '').toLowerCase().includes(term);
+      const matchTlpn = (m.no_tlpn || '').includes(term);
+      const matchPosko = (m.kd_posko || '').toLowerCase().includes(term);
+      const matchAo = (m.kd_ao || '').toLowerCase().includes(term);
+      return matchKd || matchNama || matchTlpn || matchPosko || matchAo;
+    }).slice(0, 40);
+  }, [allMediators, mediatorSearch]);
 
   // Duplicate Check on Phone
   const duplicateResult = useMemo(() => {
@@ -104,22 +116,28 @@ export const QuickEntryModal: React.FC<QuickEntryModalProps> = ({
       setSumberLead('CANVASSING');
       setJenisJaminan('R2');
       setKdMed('');
+      setMediatorSearch('');
+      setIsMediatorPickerOpen(false);
+      setIsManualKdMed(false);
       setRefNoPsbLama('');
-      setAssignedUserId(currentUser.id);
-      setSelectedKdCabang(currentUser.kd_cabang || 'C16');
-      setSelectedKdPosko(currentUser.kd_posko || 'QJ0');
       setWilayahState({
         provinsiId: '',
         kabupatenId: '',
         kecamatanId: '',
         desaId: ''
       });
-      setAlamatDetail('');
       setErrorMessage(null);
     }
   }, [isOpen, currentUser]);
 
   if (!isOpen) return null;
+
+  const handleSelectMediator = (med: MediatorKontrak) => {
+    setKdMed(med.kd_med);
+    setIsMediatorPickerOpen(false);
+    setIsManualKdMed(false);
+    setMediatorSearch('');
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -135,6 +153,16 @@ export const QuickEntryModal: React.FC<QuickEntryModalProps> = ({
       return;
     }
 
+    if (sumberLead === 'MEDIATOR' && !kdMed.trim()) {
+      setErrorMessage('Pilih atau masukkan KD MED dari Kontrol Mediator sebagai sumber lead!');
+      return;
+    }
+
+    if (sumberLead === 'EX_CUSTOMER' && !refNoPsbLama.trim()) {
+      setErrorMessage('Masukkan nomor PSB lama untuk nasabah ex-customer!');
+      return;
+    }
+
     // Mandatory Wilayah validation
     if (
       !wilayahState.provinsiId ||
@@ -146,13 +174,13 @@ export const QuickEntryModal: React.FC<QuickEntryModalProps> = ({
       return;
     }
 
-    // Mandatory Alamat validation
-    if (!alamatDetail.trim() || alamatDetail.trim().length < 5) {
-      setErrorMessage('Alamat domisili lengkap / patokan wajib diisi minimal 5 karakter!');
-      return;
-    }
-
     setIsSubmitting(true);
+
+    // AO Ref dikunci sesuai user yang menginput data:
+    // Jika CMO yang menginput, otomatis menjadi petugas survei awalnya
+    const aoCode = currentUser.kd_ao || '';
+    const userCabang = currentUser.kd_cabang || 'C16';
+    const userPosko = currentUser.kd_posko || 'QJ0';
 
     const res = await SalesAcquisitionService.createQuickEntryLead(
       {
@@ -160,17 +188,17 @@ export const QuickEntryModal: React.FC<QuickEntryModalProps> = ({
         no_telepon: noTelepon,
         sumber_lead: sumberLead,
         jenis_jaminan: jenisJaminan,
-        kd_med: kdMed,
-        ref_no_psb_lama: refNoPsbLama,
-        assigned_user_id: targetAo ? targetAo.id : currentUser.id,
-        kd_ao: targetAo?.kd_ao || currentUser.kd_ao || '',
-        kd_cabang: targetAo?.kd_cabang || selectedKdCabang,
-        kd_posko: targetAo?.kd_posko || selectedKdPosko,
+        kd_med: sumberLead === 'MEDIATOR' ? kdMed.trim().toUpperCase() : '',
+        ref_no_psb_lama: sumberLead === 'EX_CUSTOMER' ? refNoPsbLama.trim().toUpperCase() : '',
+        assigned_user_id: currentUser.id,
+        kd_ao: aoCode,
+        kd_cabang: userCabang,
+        kd_posko: userPosko,
         wilayah_provinsi_id: wilayahState.provinsiId,
         wilayah_kabupaten_id: wilayahState.kabupatenId,
         wilayah_kecamatan_id: wilayahState.kecamatanId,
         wilayah_desa_id: wilayahState.desaId,
-        alamat_detail: alamatDetail
+        alamat_detail: ''
       },
       currentUser
     );
@@ -209,7 +237,7 @@ export const QuickEntryModal: React.FC<QuickEntryModalProps> = ({
           <button
             type="button"
             onClick={onClose}
-            className="p-1.5 rounded-lg text-[#8e96a8] hover:text-white hover:bg-[#232734] transition-colors"
+            className="p-1.5 rounded-lg text-[#8e96a8] hover:text-white hover:bg-[#232734] transition-colors cursor-pointer"
           >
             <X className="h-5 w-5" />
           </button>
@@ -281,8 +309,14 @@ export const QuickEntryModal: React.FC<QuickEntryModalProps> = ({
               </label>
               <select
                 value={sumberLead}
-                onChange={(e) => setSumberLead(e.target.value as SalesAcquisitionSourceLead)}
-                className="w-full bg-[#181c28] border border-[#2c3345] rounded-xl px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-blue-500 transition-colors"
+                onChange={(e) => {
+                  const val = e.target.value as SalesAcquisitionSourceLead;
+                  setSumberLead(val);
+                  if (val === 'MEDIATOR') {
+                    setIsMediatorPickerOpen(true);
+                  }
+                }}
+                className="w-full bg-[#181c28] border border-[#2c3345] rounded-xl px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-blue-500 transition-colors cursor-pointer"
               >
                 <option value="CANVASSING">CANVASSING (Direct Hunting)</option>
                 <option value="SOSMED">SOSMED (Facebook / IG / TikTok)</option>
@@ -293,7 +327,7 @@ export const QuickEntryModal: React.FC<QuickEntryModalProps> = ({
             </div>
           </div>
 
-          {/* Jenis Jaminan Pinjaman (MANDATORY) */}
+          {/* Jenis Jaminan Pinjaman (MANDATORI) */}
           <div className="space-y-2 p-3.5 bg-[#151926] border border-[#262f45] rounded-2xl">
             <label className="text-xs font-bold text-[#e0e4eb] flex items-center justify-between">
               <span className="flex items-center space-x-1.5">
@@ -363,26 +397,155 @@ export const QuickEntryModal: React.FC<QuickEntryModalProps> = ({
             </div>
           </div>
 
-          {/* Conditional Input: MEDIATOR */}
+          {/* Conditional Input: MEDIATOR (Connected with Kontrol Mediator) */}
           {sumberLead === 'MEDIATOR' && (
-            <div className="p-3.5 bg-blue-950/40 border border-blue-800/60 rounded-xl space-y-2">
-              <label className="text-xs font-bold text-blue-200 flex items-center space-x-1.5">
-                <FileText className="h-3.5 w-3.5 text-blue-400" />
-                <span>Pilih / Masukkan KD MED <strong className="text-rose-400">*</strong></span>
-              </label>
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  required
-                  value={kdMed}
-                  onChange={(e) => setKdMed(e.target.value.toUpperCase())}
-                  placeholder="Ketik KD MED (contoh: MED-001)"
-                  className="flex-1 bg-[#12151f] border border-[#2c3345] rounded-xl px-3 py-2 text-sm text-white font-mono focus:outline-none focus:border-blue-500"
-                />
+            <div className="p-4 bg-[#141a29] border border-blue-800/70 rounded-2xl space-y-3 shadow-sm">
+              <div className="flex items-center justify-between pb-2 border-b border-[#232c42]">
+                <div className="flex items-center space-x-2">
+                  <Users className="h-4 w-4 text-blue-400" />
+                  <span className="text-xs font-bold text-blue-200">
+                    Pilih / Masukkan KD MED (Kontrol Mediator) <strong className="text-rose-400">*</strong>
+                  </span>
+                </div>
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-950 text-blue-300 border border-blue-800 font-mono">
+                  {allMediators.length} Mediator Terdaftar
+                </span>
               </div>
-              <p className="text-[11px] text-blue-300">
-                Pilih mediator yang terdaftar di master data mediator KAMM Manado.
-              </p>
+
+              {/* If Mediator is Selected, Show Detail Card */}
+              {selectedMediator && !isMediatorPickerOpen ? (
+                <div className="p-3.5 bg-[#0f1422] border border-emerald-800/70 rounded-xl space-y-2">
+                  <div className="flex items-start justify-between">
+                    <div className="space-y-0.5">
+                      <div className="flex items-center space-x-2">
+                        <span className="text-sm font-mono font-bold text-emerald-300 bg-emerald-950/70 px-2 py-0.5 rounded border border-emerald-800/80">
+                          {selectedMediator.kd_med}
+                        </span>
+                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                          selectedMediator.status === 'AKTIF' 
+                            ? 'bg-emerald-950 text-emerald-300 border-emerald-800' 
+                            : 'bg-amber-950 text-amber-300 border-amber-800'
+                        }`}>
+                          {selectedMediator.status}
+                        </span>
+                      </div>
+                      <h4 className="text-xs font-bold text-white pt-1">
+                        {selectedMediator.nama_mediator}
+                      </h4>
+                      <p className="text-[11px] text-[#8e96a8] flex items-center space-x-2">
+                        <span>No. Telp: <strong className="text-emerald-400 font-mono">{selectedMediator.no_tlpn}</strong></span>
+                        <span>•</span>
+                        <span>Posko: <strong className="text-white">{selectedMediator.kd_posko || '-'}</strong></span>
+                        <span>•</span>
+                        <span>AO: <strong className="text-purple-300">{selectedMediator.kd_ao || '-'}</strong></span>
+                      </p>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => setIsMediatorPickerOpen(true)}
+                      className="px-2.5 py-1.5 rounded-lg border border-[#2c3345] hover:border-blue-500 bg-[#161b29] hover:bg-blue-950/40 text-[11px] font-semibold text-blue-300 transition-colors cursor-pointer"
+                    >
+                      Ganti Mediator
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                /* Mediator Selector / Search Box */
+                <div className="space-y-2">
+                  <div className="relative">
+                    <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-[#5c6479]" />
+                    <input
+                      type="text"
+                      value={mediatorSearch}
+                      onChange={(e) => setMediatorSearch(e.target.value)}
+                      placeholder="Cari nama mediator, KD MED, atau nomor telepon..."
+                      className="w-full bg-[#0e121d] border border-[#2c3345] rounded-xl pl-9 pr-3.5 py-2 text-xs text-white placeholder-[#5c6479] focus:outline-none focus:border-blue-500 transition-colors"
+                      autoFocus={sumberLead === 'MEDIATOR'}
+                    />
+                  </div>
+
+                  {/* List of Mediators from Kontrol Mediator */}
+                  <div className="max-h-44 overflow-y-auto space-y-1.5 pr-1 border border-[#23293a] rounded-xl p-1.5 bg-[#0b0e17]">
+                    {filteredMediators.length === 0 ? (
+                      <div className="py-4 text-center text-xs text-[#5c6479]">
+                        Tidak ada mediator ditemukan dengan kata kunci &quot;{mediatorSearch}&quot;
+                      </div>
+                    ) : (
+                      filteredMediators.map((med) => {
+                        const isSelected = kdMed.trim().toUpperCase() === med.kd_med?.trim().toUpperCase();
+                        return (
+                          <div
+                            key={med.kd_med || med.temp_id || Math.random()}
+                            onClick={() => handleSelectMediator(med)}
+                            className={`p-2 rounded-lg border transition-all cursor-pointer flex items-center justify-between text-xs ${
+                              isSelected
+                                ? 'bg-blue-600/20 border-blue-500 text-white'
+                                : 'bg-[#141824] hover:bg-[#1a2030] border-[#20273a] hover:border-[#333d59] text-[#c2c9d6]'
+                            }`}
+                          >
+                            <div className="space-y-0.5">
+                              <div className="flex items-center space-x-2">
+                                <span className="font-mono font-bold text-blue-300">
+                                  {med.kd_med || 'PENDING'}
+                                </span>
+                                <span className="font-semibold text-white">
+                                  {med.nama_mediator}
+                                </span>
+                                <span className={`text-[9px] px-1.5 py-0.2 rounded font-mono ${
+                                  med.status === 'AKTIF' ? 'bg-emerald-950 text-emerald-300' : 'bg-zinc-800 text-zinc-300'
+                                }`}>
+                                  {med.status}
+                                </span>
+                              </div>
+                              <div className="text-[10px] text-[#717b94]">
+                                {med.no_tlpn} • Posko {med.kd_posko || '-'} • AO: {med.kd_ao || '-'}
+                              </div>
+                            </div>
+
+                            {isSelected && (
+                              <Check className="h-4 w-4 text-blue-400 shrink-0" />
+                            )}
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+
+                  {/* Manual Typing Toggle */}
+                  <div className="flex items-center justify-between pt-1 text-[11px]">
+                    <span className="text-[#8e96a8]">
+                      KD MED saat ini: <strong className="font-mono text-white">{kdMed || '(Belum dipilih)'}</strong>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setIsManualKdMed(!isManualKdMed)}
+                      className="text-blue-400 hover:underline cursor-pointer"
+                    >
+                      {isManualKdMed ? 'Tutup input manual' : 'Input KD MED manual'}
+                    </button>
+                  </div>
+
+                  {isManualKdMed && (
+                    <div className="pt-1.5 flex gap-2">
+                      <input
+                        type="text"
+                        value={kdMed}
+                        onChange={(e) => setKdMed(e.target.value.toUpperCase())}
+                        placeholder="Contoh: MED-001"
+                        className="flex-1 bg-[#0e121d] border border-[#2c3345] rounded-xl px-3 py-1.5 text-xs text-white font-mono focus:outline-none focus:border-blue-500"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setIsMediatorPickerOpen(false)}
+                        className="px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-xs font-bold text-white transition-colors cursor-pointer"
+                      >
+                        Gunakan Kode
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           )}
 
@@ -407,39 +570,56 @@ export const QuickEntryModal: React.FC<QuickEntryModalProps> = ({
             </div>
           )}
 
-          {/* AO Assignment (For KAPOS, KAOPS, KACAB, SUPER_ADMIN) */}
-          {(currentUser.role === 'SUPER_ADMIN' || currentUser.role === 'KAOPS' || currentUser.role === 'KAPOS' || currentUser.role === 'ADM') && (
-            <div className="space-y-1.5 pt-2 border-t border-[#232734]">
+          {/* AO Ref (Locked automatically to user inputting data) */}
+          <div className="space-y-1.5 p-3.5 bg-[#151926] border border-[#262f45] rounded-2xl">
+            <div className="flex items-center justify-between">
               <label className="text-xs font-bold text-[#e0e4eb] flex items-center space-x-1.5">
-                <Building2 className="h-3.5 w-3.5 text-indigo-400" />
-                <span>Petugas AO / CMO yang Ditugaskan</span>
+                <ShieldCheck className="h-4 w-4 text-indigo-400" />
+                <span>AO Ref</span>
               </label>
-              <select
-                value={assignedUserId}
-                onChange={(e) => setAssignedUserId(e.target.value)}
-                className="w-full bg-[#181c28] border border-[#2c3345] rounded-xl px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-indigo-500 transition-colors"
-              >
-                <option value={currentUser.id}>
-                  {currentUser.nama} ({currentUser.role} • KD AO: {currentUser.kd_ao || '-'}) [Saya Sendiri]
-                </option>
-                {availableAOs
-                  .filter(u => u.id !== currentUser.id)
-                  .map(ao => (
-                    <option key={ao.id} value={ao.id}>
-                      {ao.nama} (KD AO: {ao.kd_ao || '-'} • Posko: {ao.kd_posko || '-'})
-                    </option>
-                  ))}
-              </select>
+              <span className="text-[10px] font-medium bg-indigo-950 text-indigo-300 border border-indigo-800 px-2 py-0.5 rounded-full flex items-center space-x-1">
+                <Lock className="h-3 w-3 mr-0.5 text-indigo-400" />
+                <span>Terkunci Otomatis</span>
+              </span>
             </div>
-          )}
 
-          {/* Alamat & Master Wilayah Domisili (MANDATORI) */}
+            <div className="flex items-center space-x-3 bg-[#10131c] border border-[#232938] rounded-xl p-3">
+              <div className="h-2.5 w-2.5 rounded-full bg-emerald-400 shrink-0"></div>
+              <div className="flex-1 text-xs">
+                <div className="flex items-center space-x-2">
+                  <span className="font-mono font-bold text-white text-sm">
+                    {currentUser.kd_ao ? `Kode AO: ${currentUser.kd_ao}` : `AO Ref: ${currentUser.username}`}
+                  </span>
+                  <span className="text-[11px] text-[#8e96a8]">
+                    ({currentUser.nama} • {currentUser.role})
+                  </span>
+                </div>
+                <div className="text-[11px] text-[#717b94] mt-0.5">
+                  Posko: <strong className="text-white">{currentUser.kd_posko || 'QJ0'}</strong> • Cabang: <strong className="text-white">{currentUser.kd_cabang || 'C16'}</strong>
+                </div>
+              </div>
+            </div>
+
+            <p className="text-[11px] text-[#8e96a8] leading-relaxed">
+              {currentUser.role === 'CMO' ? (
+                <span>
+                  Sebagai <strong className="text-white">CMO</strong> yang menginput prospek ini, Anda otomatis menjadi petugas survei. Penugasan dapat dialihkan oleh <strong className="text-indigo-300">KACAB, RM, atau Super Admin</strong>.
+                </span>
+              ) : (
+                <span>
+                  Prospek dicatat dengan identitas AO Ref penginput. Penentuan petugas survei lapangan dilakukan oleh <strong className="text-indigo-300">KAPOS, KACAB, RM, atau Super Admin</strong> sesuai wewenangnya.
+                </span>
+              )}
+            </p>
+          </div>
+
+          {/* Wilayah Domisili (MANDATORI - Alamat Lengkap / Patokan Jalan Dihapus Sesuai Instruksi) */}
           <div className="border border-emerald-900/60 rounded-2xl overflow-hidden bg-[#0c0f16] p-4 space-y-3.5">
             <div className="flex items-center justify-between pb-2 border-b border-[#232734]">
               <div className="flex items-center space-x-2">
                 <MapPin className="h-4 w-4 text-emerald-400" />
                 <span className="text-xs font-bold text-white uppercase tracking-wider">
-                  Alamat &amp; Wilayah Domisili <strong className="text-rose-400">*</strong>
+                  Wilayah Domisili <strong className="text-rose-400">*</strong>
                 </span>
                 <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-950 text-emerald-300 border border-emerald-800 font-bold">
                   MANDATORI
@@ -455,22 +635,6 @@ export const QuickEntryModal: React.FC<QuickEntryModalProps> = ({
               required={true}
               showSummary={true}
             />
-
-            <div className="space-y-1 pt-1">
-              <label className="text-[11px] font-bold text-[#e0e4eb] flex items-center justify-between">
-                <span>Alamat Lengkap / Patokan Jalan <strong className="text-rose-400">*</strong></span>
-                <span className="text-[10px] text-[#8e96a8]">Maks 255 karakter (Min 5)</span>
-              </label>
-              <textarea
-                rows={2}
-                required
-                maxLength={255}
-                value={alamatDetail}
-                onChange={(e) => setAlamatDetail(e.target.value)}
-                placeholder="Contoh: Jl. Sam Ratulangi No. 45, Lingkungan III, Depan Gereja Sentrum (Wajib)"
-                className="w-full bg-[#181c28] border border-[#2c3345] rounded-xl p-2.5 text-xs text-white placeholder-[#5c6479] focus:outline-none focus:border-emerald-500 resize-none"
-              />
-            </div>
           </div>
 
           {/* Action Buttons */}

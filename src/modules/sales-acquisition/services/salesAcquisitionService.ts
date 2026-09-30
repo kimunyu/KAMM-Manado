@@ -100,12 +100,13 @@ class SalesAcquisitionServiceManager {
       return [...this.cache];
     }
 
-    // Role CMO: Hanya prospek yang di-assign kepadanya atau kode AO miliknya
+    // Role CMO: Hanya prospek yang di-assign kepadanya atau kode AO miliknya, atau yang dibuatnya
     if (user.role === 'CMO') {
       return this.cache.filter((r) => {
         return (
           r.assigned_user_id === user.id ||
-          (user.kd_ao && r.kd_ao === user.kd_ao)
+          (user.kd_ao && r.kd_ao === user.kd_ao) ||
+          r.created_by_user_id === user.id
         );
       });
     }
@@ -113,7 +114,7 @@ class SalesAcquisitionServiceManager {
     // Role KAPOS: Terisolasi pada posko penempatannya
     if (user.role === 'KAPOS') {
       return this.cache.filter((r) => {
-        return !user.kd_posko || r.kd_posko === user.kd_posko;
+        return !user.kd_posko || r.kd_posko === user.kd_posko || r.created_by_user_id === user.id;
       });
     }
 
@@ -122,14 +123,14 @@ class SalesAcquisitionServiceManager {
       return this.cache.filter((r) => {
         const matchCabang = !user.kd_cabang || r.kd_cabang === user.kd_cabang;
         const matchPosko = !user.kd_posko || r.kd_posko === user.kd_posko;
-        return matchCabang && matchPosko;
+        return (matchCabang && matchPosko) || r.created_by_user_id === user.id;
       });
     }
 
-    // Role KAOPS / KACAB: Terisolasi pada cabang penempatannya
-    if (user.role === 'KAOPS' || user.role === 'KACAB') {
+    // Role KAOPS / KACAB / ADM_BPKB: Terisolasi pada cabang penempatannya
+    if (user.role === 'KAOPS' || user.role === 'KACAB' || user.role === 'ADM_BPKB' || user.role === 'ADMIN_BPKB') {
       return this.cache.filter((r) => {
-        return !user.kd_cabang || r.kd_cabang === user.kd_cabang;
+        return !user.kd_cabang || r.kd_cabang === user.kd_cabang || r.created_by_user_id === user.id;
       });
     }
 
@@ -168,7 +169,7 @@ class SalesAcquisitionServiceManager {
         q = query(colRef, where('assigned_user_id', '==', user.id));
       } else if (user.role === 'KAPOS' && user.kd_posko) {
         q = query(colRef, where('kd_posko', '==', user.kd_posko));
-      } else if ((user.role === 'ADM' || user.role === 'KAOPS' || user.role === 'KACAB') && user.kd_cabang) {
+      } else if ((user.role === 'ADM' || user.role === 'KAOPS' || user.role === 'KACAB' || user.role === 'ADM_BPKB' || user.role === 'ADMIN_BPKB') && user.kd_cabang) {
         q = query(colRef, where('kd_cabang', '==', user.kd_cabang));
       }
 

@@ -142,11 +142,15 @@ function MainApp() {
       return;
     }
     if (currentUser?.role === 'ADM_DE') {
-      setActiveTab('kontrol-sales');
+      if (activeTab !== 'sales-acquisition' && activeTab !== 'kontrol-sales') {
+        setActiveTab('kontrol-sales');
+      }
       return;
     }
     if (currentUser?.role === 'ADM_BPKB' || currentUser?.role === 'ADMIN_BPKB') {
-      setActiveTab('ex-customer');
+      if (activeTab !== 'sales-acquisition' && activeTab !== 'ex-customer') {
+        setActiveTab('ex-customer');
+      }
       return;
     }
     if (activeTab === 'user-control' && !canManageUsers) {

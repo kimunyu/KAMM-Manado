@@ -62,14 +62,15 @@ export const ProspekDetailModal: React.FC<ProspekDetailModalProps> = ({
   const isAdm = currentUser.role === 'ADM';
   const isKaops = currentUser.role === 'KAOPS';
   const isKacab = currentUser.role === 'KACAB';
+  const isRm = currentUser.role === 'RM';
   const isSuperAdmin = currentUser.role === 'SUPER_ADMIN';
 
-  const canAdvancePipeline = isKapos || isAdm || isKaops || isSuperAdmin || (
+  const canAdvancePipeline = isKapos || isAdm || isKaops || isKacab || isRm || isSuperAdmin || (
     isCmo && (record.status === 'PROSPEK_BARU' || record.status === 'PROSES_SURVEI')
   );
 
-  const canConvertCair = (isKapos || isAdm || isKaops || isSuperAdmin) && record.status === 'DISETUJUI';
-  const canReassign = (isKapos || isKaops || isKacab || isSuperAdmin) && !isTerminal;
+  const canConvertCair = (isKapos || isAdm || isKaops || isKacab || isRm || isSuperAdmin) && record.status === 'DISETUJUI';
+  const canReassign = (isKapos || isKaops || isKacab || isRm || isSuperAdmin) && !isTerminal;
 
   // Edit Mode State
   const [isEditing, setIsEditing] = useState(false);
@@ -118,8 +119,8 @@ export const ProspekDetailModal: React.FC<ProspekDetailModalProps> = ({
       return;
     }
 
-    if (!alamatDetail.trim() || alamatDetail.trim().length < 5) {
-      setErrorMessage('Alamat domisili detail wajib diisi minimal 5 karakter!');
+    if (alamatDetail && alamatDetail.trim().length > 0 && alamatDetail.trim().length < 5) {
+      setErrorMessage('Jika diisi, alamat domisili detail wajib minimal 5 karakter!');
       return;
     }
 

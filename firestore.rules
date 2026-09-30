@@ -370,10 +370,13 @@ service cloud.firestore {
         (isKaops() && (getUserCabang() == '' || resource.data.get('kd_cabang', '') == getUserCabang())) ||
         (isKapos() && (getUserPosko() == '' || resource.data.get('kd_posko', '') == getUserPosko())) ||
         (isAdm() && (getUserCabang() == '' || resource.data.get('kd_cabang', '') == getUserCabang())) ||
+        (isAdminBpkb() && (getUserCabang() == '' || resource.data.get('kd_cabang', '') == getUserCabang())) ||
         (isCmo() && (
           resource.data.get('assigned_user_id', '') == getUserId() ||
-          resource.data.get('kd_ao', '') == getUserAO()
-        ))
+          resource.data.get('kd_ao', '') == getUserAO() ||
+          resource.data.get('created_by_user_id', '') == getUserId()
+        )) ||
+        resource.data.get('created_by_user_id', '') == getUserId()
       );
     }
 
@@ -400,7 +403,8 @@ service cloud.firestore {
       allow read: if canAccessSalesAcquisitionRead();
 
       allow create: if isRegisteredAndActive() && (
-        isSuperAdmin() ||
+        isSuperAdmin() || isRM() || isAdmDe() ||
+        request.resource.data.created_by_user_id == getUserId() ||
         (
           isCmo() &&
           request.resource.data.assigned_user_id == getUserId() &&
@@ -414,7 +418,7 @@ service cloud.firestore {
           (getUserCabang() == '' || request.resource.data.kd_cabang == getUserCabang())
         ) ||
         (
-          (isAdm() || isKaops()) &&
+          (isAdm() || isKaops() || isKacab() || isAdminBpkb()) &&
           (getUserCabang() == '' || request.resource.data.kd_cabang == getUserCabang())
         )
       ) && isValidInitialAcquisition(request.resource.data, acquisitionId);
@@ -423,9 +427,10 @@ service cloud.firestore {
         isSuperAdmin() ||
         (
           !(resource.data.status in ['CAIR', 'DITOLAK', 'BATAL']) && (
-            // Reassignment by KAPOS, KAOPS, KACAB
+            // Reassignment by KAPOS, KAOPS, KACAB, RM, Super Admin
             (
               (
+                isSuperAdmin() || isRM() ||
                 (isKapos() && (getUserPosko() == '' || resource.data.kd_posko == getUserPosko())) ||
                 ((isKaops() || isKacab()) && (getUserCabang() == '' || resource.data.kd_cabang == getUserCabang()))
               ) &&
@@ -435,10 +440,12 @@ service cloud.firestore {
             // Normal update or status transition
             (
               (
+                isSuperAdmin() || isRM() || isAdmDe() ||
+                resource.data.created_by_user_id == getUserId() ||
                 (isCmo() && (resource.data.assigned_user_id == getUserId() || resource.data.kd_ao == getUserAO())) ||
                 (isKapos() && (getUserPosko() == '' || resource.data.kd_posko == getUserPosko())) ||
                 (isAdm() && (getUserCabang() == '' || resource.data.kd_cabang == getUserCabang())) ||
-                ((isKaops() || isKacab()) && (getUserCabang() == '' || resource.data.kd_cabang == getUserCabang()))
+                ((isKaops() || isKacab() || isAdminBpkb()) && (getUserCabang() == '' || resource.data.kd_cabang == getUserCabang()))
               ) &&
               request.resource.data.id == resource.data.id &&
               request.resource.data.created_at == resource.data.created_at &&

@@ -100,10 +100,10 @@ export const ReassignModal: React.FC<ReassignModalProps> = ({
             </div>
             <div>
               <h2 className="text-base font-bold text-white tracking-tight flex items-center space-x-2">
-                <span>Mutasi / Reassign Petugas AO</span>
+                <span>Penugasan / Alihkan Petugas Survei (AO)</span>
               </h2>
               <p className="text-xs text-indigo-300/80">
-                Alihkan pengelolaan prospek ke Account Officer lain
+                Tentukan atau alihkan penugasan survei prospek (Wewenang KAPOS, KACAB, RM, Super Admin)
               </p>
             </div>
           </div>

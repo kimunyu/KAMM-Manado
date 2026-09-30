@@ -74,7 +74,8 @@ export const SalesAcquisitionModule: React.FC<SalesAcquisitionModuleProps> = ({
   const isAdmDe = currentUser.role === 'ADM_DE';
   const isSuperAdmin = currentUser.role === 'SUPER_ADMIN';
 
-  const canCreateLead = isCmo || isKapos || isAdm || isKaops || isSuperAdmin;
+  // Prospek sales dapat dientry oleh seluruh pengguna terdaftar
+  const canCreateLead = Boolean(currentUser);
 
   // Real-time synchronization
   const loadRecords = () => {

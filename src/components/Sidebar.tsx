@@ -54,15 +54,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const isBpkbAdmin = role === 'ADM_BPKB' || role === 'ADMIN_BPKB';
   const isAdmDe = role === 'ADM_DE';
 
-  const canAccessAcquisition = 
-    role === 'CMO' ||
-    role === 'KAPOS' ||
-    role === 'ADM' ||
-    role === 'KAOPS' ||
-    role === 'KACAB' ||
-    role === 'RM' ||
-    role === 'ADM_DE' ||
-    role === 'SUPER_ADMIN';
+  // Prospek Sales dapat diakses oleh semua user
+  const canAccessAcquisition = !!currentUser;
 
   const canAccessSales = 
     role === 'ADM_DE' || 
