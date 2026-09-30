@@ -1,297 +1,292 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState } from 'react';
+import { SalesRecord, UbahJtRecord } from '../types';
+import { User, Posko } from '../../../types';
+import { DataTable, Column } from '../../../components/DataTable';
 import { 
-  LayoutDashboard, 
-  Users, 
+  FileSpreadsheet, 
+  DollarSign, 
+  CalendarClock, 
   PlusCircle, 
-  ShieldCheck, 
-  Building2,
-  CalendarClock
+  CheckCircle2, 
+  AlertTriangle,
+  TrendingUp,
+  Award
 } from 'lucide-react';
-import { User, Cabang, Posko } from '../../../types';
-import { SalesControlRecord } from '../types';
-import { SalesService } from '../services/salesService';
-import { isUbahJt } from '../utils/slaUtils';
-import { DashboardRekapitulasi } from './DashboardRekapitulasi';
-import { TableDataKonsumen } from './TableDataKonsumen';
-import { TableDataUbahJt } from './TableDataUbahJt';
-import { FormInputPencairan } from './FormInputPencairan';
-import { ModalValidasiAdmDe } from './ModalValidasiAdmDe';
-import { ModalCopyWaCabang } from './ModalCopyWaCabang';
+
+const INITIAL_SALES: SalesRecord[] = [
+  {
+    no_psb: 'PSB-2024-001',
+    nama_konsumen: 'Vicky Lumentut',
+    tgl_cair: '2024-09-15',
+    tgl_jt: '2024-10-15',
+    plafon: 25000000,
+    tenor: 18,
+    angsuran: 1850000,
+    kd_cabang: 'C16',
+    kd_posko: 'QJ0',
+    kd_ao: 'AO-01',
+    jenis_jaminan: 'R4'
+  },
+  {
+    no_psb: 'PSB-2024-002',
+    nama_konsumen: 'Priscilia Manoppo',
+    tgl_cair: '2024-09-18',
+    tgl_jt: '2024-10-18',
+    plafon: 12000000,
+    tenor: 12,
+    angsuran: 1250000,
+    kd_cabang: 'C16',
+    kd_posko: 'QJ1',
+    kd_ao: 'AO-02',
+    jenis_jaminan: 'R2'
+  }
+];
 
 interface KontrolSalesModuleProps {
   currentUser: User;
-  allCabang: Cabang[];
-  allPosko: Posko[];
+  poskoList?: Posko[];
+  allCabang?: any[];
+  allPosko?: any[];
+  activeSubTab?: string;
+  onSelectSubTab?: (tab: string) => void;
 }
-
-type SubTab = 'dashboard' | 'table' | 'ubah_jt' | 'input';
 
 export const KontrolSalesModule: React.FC<KontrolSalesModuleProps> = ({
   currentUser,
-  allCabang,
-  allPosko,
+  poskoList = [],
+  allCabang = [],
+  allPosko = [],
+  activeSubTab: propSubTab,
+  onSelectSubTab: propOnSelectSubTab
 }) => {
-  const isAdmDe = currentUser.role === 'ADM_DE';
-  const isSuperAdmin = currentUser.role === 'SUPER_ADMIN';
-  const canAccessUbahJt = isSuperAdmin || isAdmDe;
-  // Poin 3: ADM_DE juga diizinkan mengakses dan menginput pencairan
-  const canInput = currentUser.role === 'ADM' || currentUser.role === 'KAOPS' || isAdmDe || isSuperAdmin;
+  const [internalSubTab, setInternalSubTab] = useState<'rekap' | 'input' | 'table'>('rekap');
+  const activeSubTab = propSubTab || internalSubTab;
+  const onSelectSubTab = propOnSelectSubTab || ((t: any) => setInternalSubTab(t));
 
-  // Active SubTab
-  const [activeSubTab, setActiveSubTab] = useState<SubTab>(
-    isAdmDe ? 'table' : 'dashboard'
-  );
+  const [salesData, setSalesData] = useState<SalesRecord[]>(INITIAL_SALES);
 
-  useEffect(() => {
-    if (activeSubTab === 'ubah_jt' && !canAccessUbahJt) {
-      setActiveSubTab('table');
-    }
-  }, [activeSubTab, canAccessUbahJt]);
+  // Form input pencairan
+  const [noPsb, setNoPsb] = useState('');
+  const [namaKonsumen, setNamaKonsumen] = useState('');
+  const [plafon, setPlafon] = useState<number>(10000000);
+  const [tenor, setTenor] = useState<number>(12);
+  const [angsuran, setAngsuran] = useState<number>(1100000);
+  const [kdPosko, setKdPosko] = useState(currentUser.kd_posko || 'QJ0');
+  const [kdAo, setKdAo] = useState(currentUser.kd_ao || 'AO-01');
+  const [successMsg, setSuccessMsg] = useState(false);
 
-  // Real-time Records State
-  const [records, setRecords] = useState<SalesControlRecord[]>([]);
-  const [isLoading, setIsLoading] = useState<boolean>(true);
-  const [filterOnlyHoldDana, setFilterOnlyHoldDana] = useState<boolean>(false);
+  const totalPlafon = salesData.reduce((acc, curr) => acc + (curr.plafon || 0), 0);
 
-  // Modals state
-  const [validasiRecord, setValidasiRecord] = useState<SalesControlRecord | null>(null);
-  const [copyWaState, setCopyWaState] = useState<{
-    isOpen: boolean;
-    kdCabang: string;
-    namaCabang: string;
-  }>({
-    isOpen: false,
-    kdCabang: '',
-    namaCabang: '',
-  });
-
-  const handleNavigateToHoldDana = () => {
-    setFilterOnlyHoldDana(true);
-    setActiveSubTab('table');
-  };
-
-  // Subscribe to real-time sales control records with role filter
-  useEffect(() => {
-    setIsLoading(true);
-    const unsubscribe = SalesService.subscribe(
-      currentUser,
-      (updated) => {
-        setRecords(updated);
-        setIsLoading(false);
-      },
-      (err) => {
-        console.warn('Sync notice:', err);
-        setIsLoading(false);
-      }
-    );
-
-    return () => {
-      unsubscribe();
+  const handleAddSales = (e: React.FormEvent) => {
+    e.preventDefault();
+    const newEntry: SalesRecord = {
+      no_psb: noPsb.trim().toUpperCase(),
+      nama_konsumen: namaKonsumen.trim(),
+      tgl_cair: new Date().toISOString().split('T')[0],
+      tgl_jt: new Date(Date.now() + 30 * 24 * 3600000).toISOString().split('T')[0],
+      plafon: Number(plafon),
+      tenor: Number(tenor),
+      angsuran: Number(angsuran),
+      kd_cabang: currentUser.kd_cabang || 'C16',
+      kd_posko: kdPosko,
+      kd_ao: kdAo,
+      jenis_jaminan: 'R2'
     };
-  }, [currentUser]);
 
-  // Hitung jumlah data Ubah JT (ACCEPT + beda hari)
-  const ubahJtCount = useMemo(() => {
-    return records.filter(r => {
-      if (r.status !== 'ACCEPT') return false;
-      return r.is_ubah_jt !== undefined ? r.is_ubah_jt : isUbahJt(r.tgl_cair, r.tgl_jt);
-    }).length;
-  }, [records]);
-
-  const handleOpenValidasi = (rec: SalesControlRecord) => {
-    setValidasiRecord(rec);
+    setSalesData([newEntry, ...salesData]);
+    setSuccessMsg(true);
+    setNoPsb('');
+    setNamaKonsumen('');
+    setTimeout(() => setSuccessMsg(false), 2000);
   };
 
-  const handleOpenCopyWa = (kdCabang: string, namaCabang: string) => {
-    setCopyWaState({
-      isOpen: true,
-      kdCabang,
-      namaCabang,
-    });
-  };
+  const columns: Column<SalesRecord>[] = [
+    {
+      key: 'no_psb',
+      header: 'No. PSB',
+      sortable: true,
+      render: (s) => <span className="font-mono text-white font-bold">{s.no_psb}</span>
+    },
+    {
+      key: 'nama_konsumen',
+      header: 'Nama Nasabah',
+      sortable: true,
+      render: (s) => <span className="font-semibold text-white">{s.nama_konsumen}</span>
+    },
+    {
+      key: 'tgl_cair',
+      header: 'Tgl Cair',
+      sortable: true
+    },
+    {
+      key: 'tgl_jt',
+      header: 'Tgl JT',
+      sortable: true,
+      render: (s) => <span className="text-amber-400 font-mono">{s.tgl_jt}</span>
+    },
+    {
+      key: 'plafon',
+      header: 'Plafon (Rp)',
+      sortable: true,
+      render: (s) => <span className="font-mono font-bold text-emerald-400">Rp {s.plafon.toLocaleString('id-ID')}</span>
+    },
+    {
+      key: 'angsuran',
+      header: 'Angsuran (Rp)',
+      render: (s) => <span className="font-mono text-[#a3adc2]">Rp {s.angsuran.toLocaleString('id-ID')}</span>
+    },
+    {
+      key: 'kd_posko',
+      header: 'Posko',
+      render: (s) => <span className="font-mono text-white">{s.kd_posko}</span>
+    },
+    {
+      key: 'kd_ao',
+      header: 'AO',
+      render: (s) => <span className="font-mono text-indigo-300">{s.kd_ao}</span>
+    }
+  ];
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto pb-12 animate-in fade-in duration-300">
-      {/* Top Banner & Header */}
-      <div className="bg-[#141721] border border-[#272d3e] rounded-2xl p-6 shadow-xl relative overflow-hidden">
-        {/* Subtle Background Accent */}
-        <div className="absolute top-0 right-0 -mt-8 -mr-8 w-64 h-64 bg-purple-600/10 rounded-full blur-3xl pointer-events-none" />
-        <div className="absolute bottom-0 left-1/3 -mb-8 w-64 h-64 bg-blue-600/10 rounded-full blur-3xl pointer-events-none" />
-
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 relative z-10">
-          <div>
-            <div className="flex items-center space-x-2.5 mb-1.5">
-              <span className="px-2.5 py-0.5 rounded-md text-[11px] font-extrabold uppercase tracking-wider bg-purple-950/80 text-purple-300 border border-purple-800/60 flex items-center space-x-1">
-                <ShieldCheck className="h-3 w-3" />
-                <span>Modul Terisolasi</span>
-              </span>
-              <span className="text-xs text-[#8e96a8]">
-                Role Anda: <strong className="text-white font-mono">{currentUser.role}</strong>
-                {currentUser.role === 'SUPER_ADMIN' || currentUser.role === 'ADM_DE' || currentUser.role === 'RM' ? (
-                  <span className="text-purple-300 font-semibold"> • Lingkup: Nasional (Seluruh Cabang &amp; Posko)</span>
-                ) : (
-                  <>
-                    {currentUser.kd_cabang && ` • Cabang: ${currentUser.kd_cabang}`}
-                    {currentUser.kd_posko && ` • Posko: ${currentUser.kd_posko}`}
-                  </>
-                )}
-              </span>
-            </div>
-            <h1 className="text-2xl font-black text-white tracking-tight flex items-center space-x-2.5">
-              <span>KONTROL SALES</span>
-              <span className="text-[#8e96a8] font-normal text-lg">•</span>
-              <span className="text-purple-400 font-bold text-lg">Monitoring Pencairan Konsumen</span>
-            </h1>
-            <p className="text-xs text-[#8e96a8] mt-1 max-w-2xl">
-              Pusat rekonsiliasi data pencairan nasabah baru, verifikasi berkas oleh ADM Data Entry (ADM_DE), dan deteksi dini SLA Hold Dana.
-            </p>
+    <div className="space-y-6">
+      {/* KPI Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="p-4 rounded-2xl bg-[#12151f] border border-[#232734] space-y-2">
+          <div className="flex justify-between items-center text-xs text-[#8e96a8]">
+            <span>Total Kontrak Cair</span>
+            <FileSpreadsheet className="h-4 w-4 text-blue-400" />
           </div>
+          <div className="text-2xl font-black text-white">{salesData.length} Nasabah</div>
+          <div className="text-[11px] text-[#717b94]">Bulan Berjalan</div>
+        </div>
 
-          {/* SubTab Navigation Pills */}
-          <div className="flex items-center p-1.5 bg-[#10121a] border border-[#272d3e] rounded-xl self-start md:self-auto">
-            <button
-              type="button"
-              onClick={() => setActiveSubTab('dashboard')}
-              className={`px-3.5 py-2 rounded-lg text-xs font-bold transition-all flex items-center space-x-2 cursor-pointer ${
-                activeSubTab === 'dashboard'
-                  ? 'bg-[#1e2330] text-white shadow-sm border border-[#2e3547]'
-                  : 'text-[#8e96a8] hover:text-white hover:bg-[#181a24]'
-              }`}
-            >
-              <LayoutDashboard className="h-4 w-4 text-purple-400" />
-              <span>Dashboard Rekap</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => {
-                setActiveSubTab('table');
-                setFilterOnlyHoldDana(false);
-              }}
-              className={`px-3.5 py-2 rounded-lg text-xs font-bold transition-all flex items-center space-x-2 cursor-pointer ${
-                activeSubTab === 'table'
-                  ? 'bg-[#1e2330] text-white shadow-sm border border-[#2e3547]'
-                  : 'text-[#8e96a8] hover:text-white hover:bg-[#181a24]'
-              }`}
-            >
-              <Users className="h-4 w-4 text-blue-400" />
-              <span>Data Konsumen</span>
-              <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-blue-950 text-blue-300 font-mono">
-                {records.length}
-              </span>
-            </button>
-
-            {canAccessUbahJt && (
-              <button
-                type="button"
-                onClick={() => {
-                  setActiveSubTab('ubah_jt');
-                  setFilterOnlyHoldDana(false);
-                }}
-                className={`px-3.5 py-2 rounded-lg text-xs font-bold transition-all flex items-center space-x-2 cursor-pointer ${
-                  activeSubTab === 'ubah_jt'
-                    ? 'bg-[#1e2330] text-amber-300 shadow-sm border border-amber-800/60'
-                    : 'text-[#8e96a8] hover:text-white hover:bg-[#181a24]'
-                }`}
-              >
-                <CalendarClock className="h-4 w-4 text-amber-400" />
-                <span>Data Ubah JT</span>
-                {ubahJtCount > 0 && (
-                  <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-amber-950 text-amber-300 font-mono border border-amber-800/60">
-                    {ubahJtCount}
-                  </span>
-                )}
-              </button>
-            )}
-
-            {canInput && (
-              <button
-                type="button"
-                onClick={() => {
-                  setActiveSubTab('input');
-                  setFilterOnlyHoldDana(false);
-                }}
-                className={`px-3.5 py-2 rounded-lg text-xs font-bold transition-all flex items-center space-x-2 cursor-pointer ${
-                  activeSubTab === 'input'
-                    ? 'bg-blue-600 text-white shadow-sm'
-                    : 'text-[#8e96a8] hover:text-white hover:bg-[#181a24]'
-                }`}
-              >
-                <PlusCircle className="h-4 w-4" />
-                <span>Input Pencairan</span>
-              </button>
-            )}
+        <div className="p-4 rounded-2xl bg-[#12151f] border border-[#232734] space-y-2">
+          <div className="flex justify-between items-center text-xs text-[#8e96a8]">
+            <span>Total Realisasi Plafon</span>
+            <DollarSign className="h-4 w-4 text-emerald-400" />
           </div>
+          <div className="text-2xl font-black text-emerald-400">
+            Rp {(totalPlafon / 1000000).toFixed(1)} Juta
+          </div>
+          <div className="text-[11px] text-emerald-500/80">Rp {totalPlafon.toLocaleString('id-ID')}</div>
+        </div>
+
+        <div className="p-4 rounded-2xl bg-[#12151f] border border-[#232734] space-y-2">
+          <div className="flex justify-between items-center text-xs text-[#8e96a8]">
+            <span>Posko Aktif</span>
+            <Award className="h-4 w-4 text-amber-400" />
+          </div>
+          <div className="text-2xl font-black text-white">{poskoList.length} Posko</div>
+          <div className="text-[11px] text-[#717b94]">Area Manado &amp; Sekitarnya</div>
         </div>
       </div>
 
-      {/* Main Content Body */}
-      <div>
-        {activeSubTab === 'dashboard' && (
-          <DashboardRekapitulasi
-            records={records}
-            allCabang={allCabang}
-            allPosko={allPosko}
-            currentUser={currentUser}
-            onOpenCopyWaModal={handleOpenCopyWa}
-            onNavigateToHoldDana={handleNavigateToHoldDana}
-          />
-        )}
+      {/* Input Pencairan Section */}
+      {activeSubTab === 'input-pencairan' && (
+        <div className="p-6 rounded-2xl bg-[#12151f] border border-[#232734] space-y-4">
+          <div className="flex items-center space-x-2 text-white font-bold text-sm pb-2 border-b border-[#232734]">
+            <PlusCircle className="h-4 w-4 text-blue-400" />
+            <span>Form Input Pencairan Baru</span>
+          </div>
 
-        {activeSubTab === 'table' && (
-          <TableDataKonsumen
-            records={records}
-            allCabang={allCabang}
-            allPosko={allPosko}
-            currentUser={currentUser}
-            initialOnlyHoldDana={filterOnlyHoldDana}
-            onOpenValidasiModal={handleOpenValidasi}
-            onOpenCopyWaModal={handleOpenCopyWa}
-          />
-        )}
-
-        {activeSubTab === 'ubah_jt' && canAccessUbahJt && (
-          <TableDataUbahJt
-            records={records}
-            allCabang={allCabang}
-            allPosko={allPosko}
-            currentUser={currentUser}
-          />
-        )}
-
-        {activeSubTab === 'input' && canInput && (
-          <FormInputPencairan
-            currentUser={currentUser}
-            allCabang={allCabang}
-            allPosko={allPosko}
-            onNavigateToTable={() => setActiveSubTab('table')}
-          />
-        )}
-      </div>
-
-      {/* Modal Validasi Khusus ADM_DE & Super Admin (Poin 1: Koreksi TGL CAIR) */}
-      {validasiRecord && (
-        <ModalValidasiAdmDe
-          isOpen={!!validasiRecord}
-          onClose={() => setValidasiRecord(null)}
-          record={validasiRecord}
-          currentUser={currentUser}
-        />
-      )}
-
-      {/* Poin 7: Modal Copy WA Laporan Agregasi Per-Cabang */}
-      {copyWaState.isOpen && (
-        <ModalCopyWaCabang
-          isOpen={copyWaState.isOpen}
-          onClose={() => setCopyWaState(prev => ({ ...prev, isOpen: false }))}
-          kdCabang={copyWaState.kdCabang}
-          namaCabang={copyWaState.namaCabang}
-          records={records.filter(r => 
-            r.cabang_id === copyWaState.kdCabang || (r as any).kd_cabang === copyWaState.kdCabang
+          {successMsg && (
+            <div className="p-3 bg-emerald-950/70 border border-emerald-800 rounded-xl text-xs text-emerald-300 flex items-center space-x-2">
+              <CheckCircle2 className="h-4 w-4" />
+              <span>Data pencairan berhasil ditambahkan!</span>
+            </div>
           )}
-          allPosko={allPosko}
-        />
+
+          <form onSubmit={handleAddSales} className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
+            <div className="space-y-1">
+              <label className="text-white font-semibold">Nomor PSB <strong className="text-rose-400">*</strong></label>
+              <input
+                type="text"
+                required
+                value={noPsb}
+                onChange={(e) => setNoPsb(e.target.value.toUpperCase())}
+                placeholder="Contoh: PSB-2024-003"
+                className="w-full bg-[#181c28] border border-[#2c3345] rounded-xl px-3 py-2 text-white font-mono"
+              />
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-white font-semibold">Nama Konsumen <strong className="text-rose-400">*</strong></label>
+              <input
+                type="text"
+                required
+                value={namaKonsumen}
+                onChange={(e) => setNamaKonsumen(e.target.value)}
+                placeholder="Contoh: Meidy Mandagi"
+                className="w-full bg-[#181c28] border border-[#2c3345] rounded-xl px-3 py-2 text-white"
+              />
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-white font-semibold">Plafon Realisasi (Rp)</label>
+              <input
+                type="number"
+                required
+                value={plafon}
+                onChange={(e) => setPlafon(Number(e.target.value))}
+                className="w-full bg-[#181c28] border border-[#2c3345] rounded-xl px-3 py-2 text-white font-mono"
+              />
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-white font-semibold">Angsuran per Bulan (Rp)</label>
+              <input
+                type="number"
+                required
+                value={angsuran}
+                onChange={(e) => setAngsuran(Number(e.target.value))}
+                className="w-full bg-[#181c28] border border-[#2c3345] rounded-xl px-3 py-2 text-white font-mono"
+              />
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-white font-semibold">Posko</label>
+              <select
+                value={kdPosko}
+                onChange={(e) => setKdPosko(e.target.value)}
+                className="w-full bg-[#181c28] border border-[#2c3345] rounded-xl px-3 py-2 text-white"
+              >
+                {poskoList.map(p => (
+                  <option key={p.kd_posko} value={p.kd_posko}>{p.kd_posko} - {p.nama_posko}</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-white font-semibold">AO Pengelola</label>
+              <input
+                type="text"
+                value={kdAo}
+                onChange={(e) => setKdAo(e.target.value.toUpperCase())}
+                className="w-full bg-[#181c28] border border-[#2c3345] rounded-xl px-3 py-2 text-white font-mono"
+              />
+            </div>
+
+            <div className="sm:col-span-2 flex justify-end pt-2">
+              <button
+                type="submit"
+                className="px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold shadow-md cursor-pointer"
+              >
+                Simpan Pencairan
+              </button>
+            </div>
+          </form>
+        </div>
       )}
+
+      {/* Main Table Data Konsumen Cair */}
+      <DataTable
+        data={salesData}
+        columns={columns}
+        keyExtractor={(item) => item.no_psb}
+        title="Data Konsumen Cair (Sales KAMM)"
+        subtitle="Daftar realisasi pinjaman konsumen baru yang telah cair"
+        searchPlaceholder="Cari nama, no. PSB, atau AO..."
+      />
     </div>
   );
 };

@@ -1,295 +1,187 @@
-import { 
-  collection, 
-  getDocs, 
-  query, 
-  where, 
-  orderBy 
-} from 'firebase/firestore';
-import { db } from './firebase';
-import { 
-  WilayahProvinsi, 
-  WilayahKabupaten, 
-  WilayahKecamatan, 
-  WilayahDesa 
-} from '../types';
+// Master Data Wilayah Sulawesi Utara
 
-/**
- * Cache Configuration
- * TTL: 30 days (Master data administratif sangat stabil)
- */
-const CACHE_PREFIX = 'kamm:wilayah:v1';
-const CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 Hari
-
-interface CacheEntry<T> {
-  version: 'v1';
-  timestamp: number;
-  data: T;
+export interface WilayahNode {
+  id: string;
+  nama: string;
 }
 
-class WilayahService {
-  // In-Memory Cache layer untuk respon instan tanpa I/O
-  private memoryCache: Map<string, { timestamp: number; data: any }> = new Map();
+export const PROVINSI_LIST: WilayahNode[] = [
+  { id: '71', nama: 'SULAWESI UTARA' },
+  { id: '72', nama: 'SULAWESI TENGAH' },
+  { id: '73', nama: 'SULAWESI SELATAN' },
+  { id: '75', nama: 'GORONTALO' }
+];
 
-  /**
-   * Helper pembacaan cache defensive (Memory -> localStorage -> null)
-   */
-  private getFromCache<T>(key: string): T | null {
-    const now = Date.now();
+export const KABUPATEN_MAP: Record<string, WilayahNode[]> = {
+  '71': [
+    { id: '7171', nama: 'KOTA MANADO' },
+    { id: '7172', nama: 'KOTA BITUNG' },
+    { id: '7173', nama: 'KOTA TOMOHON' },
+    { id: '7174', nama: 'KOTA KOTAMOBAGU' },
+    { id: '7102', nama: 'KABUPATEN MINAHASA' },
+    { id: '7106', nama: 'KABUPATEN MINAHASA UTARA' },
+    { id: '7105', nama: 'KABUPATEN MINAHASA SELATAN' },
+    { id: '7109', nama: 'KABUPATEN MINAHASA TENGGARA' }
+  ]
+};
 
-    // 1. Cek In-Memory Cache
-    const mem = this.memoryCache.get(key);
-    if (mem && (now - mem.timestamp < CACHE_TTL_MS)) {
-      return mem.data as T;
-    }
+export const KECAMATAN_MAP: Record<string, WilayahNode[]> = {
+  '7171': [
+    { id: '7171010', nama: 'WENANG' },
+    { id: '7171020', nama: 'TUMINTING' },
+    { id: '7171030', nama: 'MALALAYANG' },
+    { id: '7171040', nama: 'SARIO' },
+    { id: '7171050', nama: 'WANEA' },
+    { id: '7171060', nama: 'MAPANGET' },
+    { id: '7171070', nama: 'TIKALA' },
+    { id: '7171080', nama: 'SINGKIL' },
+    { id: '7171100', nama: 'PAAL DUA' }
+  ],
+  '7173': [
+    { id: '7173010', nama: 'TOMOHON UTARA' },
+    { id: '7173020', nama: 'TOMOHON SELATAN' },
+    { id: '7173030', nama: 'TOMOHON TENGAH' },
+    { id: '7173040', nama: 'TOMOHON TIMUR' },
+    { id: '7173050', nama: 'TOMOHON BARAT' }
+  ],
+  '7172': [
+    { id: '7172010', nama: 'MADIDIR' },
+    { id: '7172020', nama: 'MATUARI' },
+    { id: '7172030', nama: 'GIRIAN' },
+    { id: '7172040', nama: 'AERTIMBAGA' },
+    { id: '7172050', nama: 'RANOWULU' }
+  ]
+};
 
-    // 2. Cek localStorage (Defensive parsing)
-    try {
-      const raw = localStorage.getItem(key);
-      if (!raw) return null;
+export const DESA_MAP: Record<string, WilayahNode[]> = {
+  '7171010': [
+    { id: '7171010001', nama: 'Bumi Beringin' },
+    { id: '7171010002', nama: 'Komo Luar' },
+    { id: '7171010003', nama: 'Pinaesaan' },
+    { id: '7171010004', nama: 'Teling Bawah' },
+    { id: '7171010005', nama: 'Wenang Selatan' },
+    { id: '7171010006', nama: 'Wenang Utara' }
+  ],
+  '7171020': [
+    { id: '7171020001', nama: 'Bitung Karangria' },
+    { id: '7171020002', nama: 'Islam' },
+    { id: '7171020003', nama: 'Maasing' },
+    { id: '7171020004', nama: 'Mahawu' },
+    { id: '7171020005', nama: 'Sindulang Satu' },
+    { id: '7171020006', nama: 'Sindulang Dua' },
+    { id: '7171020007', nama: 'Tuminting' },
+    { id: '7171020008', nama: 'Tumumpa Satu' },
+    { id: '7171020009', nama: 'Tumumpa Dua' }
+  ],
+  '7171030': [
+    { id: '7171030001', nama: 'Bahu' },
+    { id: '7171030002', nama: 'Batu Kota' },
+    { id: '7171030003', nama: 'Kleak' },
+    { id: '7171030004', nama: 'Malalayang Satu' },
+    { id: '7171030005', nama: 'Malalayang Satu Barat' },
+    { id: '7171030006', nama: 'Malalayang Satu Timur' },
+    { id: '7171030007', nama: 'Malalayang Dua' },
+    { id: '7171030008', nama: 'Winangun Satu' },
+    { id: '7171030009', nama: 'Winangun Dua' }
+  ],
+  '7171040': [
+    { id: '7171040001', nama: 'Ranotana' },
+    { id: '7171040002', nama: 'Sario' },
+    { id: '7171040003', nama: 'Sario Kotabaru' },
+    { id: '7171040004', nama: 'Sario Tumpaan' },
+    { id: '7171040005', nama: 'Sario Utara' },
+    { id: '7171040006', nama: 'Titiwungen Selatan' },
+    { id: '7171040007', nama: 'Titiwungen Utara' }
+  ],
+  '7171050': [
+    { id: '7171050001', nama: 'Bumi Nyiur' },
+    { id: '7171050002', nama: 'Karombasan Selatan' },
+    { id: '7171050003', nama: 'Karombasan Utara' },
+    { id: '7171050004', nama: 'Pakowa' },
+    { id: '7171050005', nama: 'Ranotana Weru' },
+    { id: '7171050006', nama: 'Tanjung Batu' },
+    { id: '7171050007', nama: 'Tingkulu' },
+    { id: '7171050008', nama: 'Teling Atas' },
+    { id: '7171050009', nama: 'Wanea' }
+  ],
+  '7171060': [
+    { id: '7171060001', nama: 'Bengkol' },
+    { id: '7171060002', nama: 'Buha' },
+    { id: '7171060003', nama: 'Kairagi Satu' },
+    { id: '7171060004', nama: 'Kairagi Dua' },
+    { id: '7171060005', nama: 'Kima Atas' },
+    { id: '7171060006', nama: 'Lapangan' },
+    { id: '7171060007', nama: 'Paniki Bawah' },
+    { id: '7171060008', nama: 'Paniki Satu' },
+    { id: '7171060009', nama: 'Paniki Dua' }
+  ],
+  '7171070': [
+    { id: '7171070001', nama: 'Banjer' },
+    { id: '7171070002', nama: 'Paal IV' },
+    { id: '7171070003', nama: 'Taas' },
+    { id: '7171070004', nama: 'Tikala Ares' },
+    { id: '7171070005', nama: 'Tikala Baru' }
+  ],
+  '7171080': [
+    { id: '7171080001', nama: 'Karame' },
+    { id: '7171080002', nama: 'Ketang Baru' },
+    { id: '7171080003', nama: 'Kombos Barat' },
+    { id: '7171080004', nama: 'Kombos Timur' },
+    { id: '7171080005', nama: 'Singkil Satu' },
+    { id: '7171080006', nama: 'Singkil Dua' },
+    { id: '7171080007', nama: 'Ternate Baru' },
+    { id: '7171080008', nama: 'Ternate Tanjung' },
+    { id: '7171080009', nama: 'Wawonasa' }
+  ],
+  '7171100': [
+    { id: '7171100001', nama: 'Dendengan Dalam' },
+    { id: '7171100002', nama: 'Dendengan Luar' },
+    { id: '7171100003', nama: 'Kairagi Weru' },
+    { id: '7171100004', nama: 'Malendeng' },
+    { id: '7171100005', nama: 'Paal Dua' },
+    { id: '7171100006', nama: 'Perkamil' },
+    { id: '7171100007', nama: 'Ranomuut' }
+  ]
+};
 
-      const parsed = JSON.parse(raw) as CacheEntry<T>;
-      if (!parsed || parsed.version !== 'v1' || !Array.isArray(parsed.data)) {
-        localStorage.removeItem(key);
-        return null;
-      }
-
-      // Cek TTL
-      if (now - parsed.timestamp > CACHE_TTL_MS) {
-        localStorage.removeItem(key);
-        return null;
-      }
-
-      // Simpan kembali ke memory cache untuk akses cepat berikutnya
-      this.memoryCache.set(key, { timestamp: parsed.timestamp, data: parsed.data });
-      return parsed.data;
-    } catch (err) {
-      // Jika localStorage corrupt atau error, fail safe dengan anggap cache miss
-      console.warn(`[WilayahService] Cache read error for ${key}:`, err);
-      try {
-        localStorage.removeItem(key);
-      } catch (_) {}
-      return null;
-    }
+export class WilayahService {
+  static getProvinsi(): WilayahNode[] {
+    return PROVINSI_LIST;
   }
 
-  /**
-   * Helper penyimpanan cache defensive (Memory + localStorage)
-   */
-  private saveToCache<T>(key: string, data: T): void {
-    const now = Date.now();
-    this.memoryCache.set(key, { timestamp: now, data });
-
-    try {
-      const entry: CacheEntry<T> = {
-        version: 'v1',
-        timestamp: now,
-        data
-      };
-      localStorage.setItem(key, JSON.stringify(entry));
-    } catch (err) {
-      // Quota exceeded atau storage disabled, abaikan tanpa crash
-      console.warn(`[WilayahService] Cache write error for ${key}:`, err);
-    }
+  static getKabupaten(provinsiId: string): WilayahNode[] {
+    return KABUPATEN_MAP[provinsiId] || [];
   }
 
-  /**
-   * Membaca seluruh master Provinsi (diurutkan berdasarkan nama ASC)
-   */
-  async getProvinsi(): Promise<WilayahProvinsi[]> {
-    const cacheKey = `${CACHE_PREFIX}:provinsi`;
-    const cached = this.getFromCache<WilayahProvinsi[]>(cacheKey);
-    if (cached) {
-      return cached;
-    }
-
-    if (!db) {
-      throw new Error('Firestore instance belum terinisialisasi');
-    }
-
-    try {
-      const colRef = collection(db, 'wilayah_provinsi');
-      const q = query(colRef, orderBy('nama', 'asc'));
-      const snapshot = await getDocs(q);
-
-      const list: WilayahProvinsi[] = [];
-      snapshot.forEach((docSnap) => {
-        const d = docSnap.data();
-        if (d && typeof d.nama === 'string') {
-          list.push({
-            id: String(d.id || docSnap.id),
-            nama: String(d.nama)
-          });
-        }
-      });
-
-      this.saveToCache(cacheKey, list);
-      return list;
-    } catch (err) {
-      console.error('[WilayahService] Error getProvinsi:', err);
-      throw err;
-    }
+  static getKecamatan(kabupatenId: string): WilayahNode[] {
+    return KECAMATAN_MAP[kabupatenId] || [];
   }
 
-  /**
-   * Membaca Kabupaten/Kota berdasarkan provinsi_id (diurutkan berdasarkan nama ASC)
-   */
-  async getKabupatenByProvinsiId(provinsiId: string): Promise<WilayahKabupaten[]> {
-    const cleanId = String(provinsiId).trim();
-    if (!cleanId) return [];
-
-    const cacheKey = `${CACHE_PREFIX}:kabupaten:${cleanId}`;
-    const cached = this.getFromCache<WilayahKabupaten[]>(cacheKey);
-    if (cached) {
-      return cached;
-    }
-
-    if (!db) {
-      throw new Error('Firestore instance belum terinisialisasi');
-    }
-
-    try {
-      const colRef = collection(db, 'wilayah_kabupaten');
-      const q = query(
-        colRef, 
-        where('provinsi_id', '==', cleanId)
-      );
-      const snapshot = await getDocs(q);
-
-      const list: WilayahKabupaten[] = [];
-      snapshot.forEach((docSnap) => {
-        const d = docSnap.data();
-        if (d && typeof d.nama === 'string') {
-          list.push({
-            id: String(d.id || docSnap.id),
-            provinsi_id: String(d.provinsi_id || cleanId),
-            nama: String(d.nama),
-            tipe: d.tipe === 'KOTA' ? 'KOTA' : 'KABUPATEN'
-          });
-        }
-      });
-
-      list.sort((a, b) => a.nama.localeCompare(b.nama, 'id'));
-      this.saveToCache(cacheKey, list);
-      return list;
-    } catch (err) {
-      console.error(`[WilayahService] Error getKabupatenByProvinsiId(${cleanId}):`, err);
-      throw err;
-    }
+  static getDesa(kecamatanId: string): WilayahNode[] {
+    return DESA_MAP[kecamatanId] || [];
   }
 
-  /**
-   * Membaca Kecamatan berdasarkan kabupaten_id (diurutkan berdasarkan nama ASC)
-   */
-  async getKecamatanByKabupatenId(kabupatenId: string): Promise<WilayahKecamatan[]> {
-    const cleanId = String(kabupatenId).trim();
-    if (!cleanId) return [];
-
-    const cacheKey = `${CACHE_PREFIX}:kecamatan:${cleanId}`;
-    const cached = this.getFromCache<WilayahKecamatan[]>(cacheKey);
-    if (cached) {
-      return cached;
-    }
-
-    if (!db) {
-      throw new Error('Firestore instance belum terinisialisasi');
-    }
-
-    try {
-      const colRef = collection(db, 'wilayah_kecamatan');
-      const q = query(
-        colRef, 
-        where('kabupaten_id', '==', cleanId)
-      );
-      const snapshot = await getDocs(q);
-
-      const list: WilayahKecamatan[] = [];
-      snapshot.forEach((docSnap) => {
-        const d = docSnap.data();
-        if (d && typeof d.nama === 'string') {
-          list.push({
-            id: String(d.id || docSnap.id),
-            kabupaten_id: String(d.kabupaten_id || cleanId),
-            provinsi_id: String(d.provinsi_id || ''),
-            nama: String(d.nama)
-          });
-        }
-      });
-
-      list.sort((a, b) => a.nama.localeCompare(b.nama, 'id'));
-      this.saveToCache(cacheKey, list);
-      return list;
-    } catch (err) {
-      console.error(`[WilayahService] Error getKecamatanByKabupatenId(${cleanId}):`, err);
-      throw err;
-    }
+  static getKabupatenByProvinsiId(provinsiId: string): WilayahNode[] {
+    return this.getKabupaten(provinsiId);
   }
 
-  /**
-   * Membaca Desa/Kelurahan berdasarkan kecamatan_id (diurutkan berdasarkan nama ASC)
-   */
-  async getDesaByKecamatanId(kecamatanId: string): Promise<WilayahDesa[]> {
-    const cleanId = String(kecamatanId).trim();
-    if (!cleanId) return [];
-
-    const cacheKey = `${CACHE_PREFIX}:desa:${cleanId}`;
-    const cached = this.getFromCache<WilayahDesa[]>(cacheKey);
-    if (cached) {
-      return cached;
-    }
-
-    if (!db) {
-      throw new Error('Firestore instance belum terinisialisasi');
-    }
-
-    try {
-      const colRef = collection(db, 'wilayah_desa');
-      const q = query(
-        colRef, 
-        where('kecamatan_id', '==', cleanId)
-      );
-      const snapshot = await getDocs(q);
-
-      const list: WilayahDesa[] = [];
-      snapshot.forEach((docSnap) => {
-        const d = docSnap.data();
-        if (d && typeof d.nama === 'string') {
-          list.push({
-            id: String(d.id || docSnap.id),
-            kecamatan_id: String(d.kecamatan_id || cleanId),
-            kabupaten_id: String(d.kabupaten_id || ''),
-            provinsi_id: String(d.provinsi_id || ''),
-            nama: String(d.nama)
-          });
-        }
-      });
-
-      list.sort((a, b) => a.nama.localeCompare(b.nama, 'id'));
-      this.saveToCache(cacheKey, list);
-      return list;
-    } catch (err) {
-      console.error(`[WilayahService] Error getDesaByKecamatanId(${cleanId}):`, err);
-      throw err;
-    }
+  static getKecamatanByKabupatenId(kabupatenId: string): WilayahNode[] {
+    return this.getKecamatan(kabupatenId);
   }
 
-  /**
-   * Helper untuk membersihkan cache wilayah secara manual jika dibutuhkan
-   */
-  clearCache(): void {
-    this.memoryCache.clear();
-    try {
-      const keysToRemove: string[] = [];
-      for (let i = 0; i < localStorage.length; i++) {
-        const k = localStorage.key(i);
-        if (k && k.startsWith(CACHE_PREFIX)) {
-          keysToRemove.push(k);
-        }
-      }
-      keysToRemove.forEach((k) => localStorage.removeItem(k));
-    } catch (err) {
-      console.warn('[WilayahService] Error clearing cache:', err);
-    }
+  static getDesaByKecamatanId(kecamatanId: string): WilayahNode[] {
+    return this.getDesa(kecamatanId);
+  }
+
+  static getFormattedName(provinsiId?: string, kabupatenId?: string, kecamatanId?: string, desaId?: string): string {
+    const prov = PROVINSI_LIST.find(p => p.id === provinsiId)?.nama || '';
+    const kab = kabupatenId && provinsiId ? (KABUPATEN_MAP[provinsiId]?.find(k => k.id === kabupatenId)?.nama || '') : '';
+    const kec = kecamatanId && kabupatenId ? (KECAMATAN_MAP[kabupatenId]?.find(k => k.id === kecamatanId)?.nama || '') : '';
+    const desa = desaId && kecamatanId ? (DESA_MAP[kecamatanId]?.find(d => d.id === desaId)?.nama || '') : '';
+
+    return [desa, kec, kab, prov].filter(Boolean).join(', ');
   }
 }
 
-export const wilayahService = new WilayahService();
+export const wilayahService = WilayahService;
+

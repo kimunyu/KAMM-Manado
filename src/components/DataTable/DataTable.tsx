@@ -387,7 +387,7 @@ export function DataTable<T>({
                             {shouldTruncate && isSimpleString ? (
                               <div 
                                 className="truncate max-w-[220px]" 
-                                title={cellContent}
+                                title={cellContent as string}
                               >
                                 {cellContent}
                               </div>

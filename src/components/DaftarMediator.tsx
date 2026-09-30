@@ -1,743 +1,283 @@
 import React, { useState, useMemo } from 'react';
-import { MediatorKontrak, MediatorStatus } from '../types';
-import { formatDateIndo, categorizeFU, getFUCategoryBadge } from '../utils/dateUtils';
+import { MediatorKontrak, Posko, User } from '../types';
 import { useAuth } from '../context/AuthContext';
+import { DataTable, Column } from './DataTable';
+import { MediatorDetailModal } from './MediatorDetailModal';
+import { MediatorEditModal } from './MediatorEditModal';
+import { ConfirmDeleteModal } from './ConfirmDeleteModal';
+
 import { 
-  Search, 
-  Filter, 
-  ArrowUpDown, 
-  ArrowUp, 
-  ArrowDown, 
+  Users, 
+  Phone, 
   Eye, 
-  Edit3, 
+  Edit2, 
   Trash2, 
-  PhoneCall, 
-  Plus, 
-  Download, 
+  MessageSquare, 
+  Filter, 
+  Copy, 
+  Check, 
   CheckCircle2, 
   Clock, 
-  AlertCircle,
-  Building,
-  Building2,
-  User,
-  UploadCloud,
-  FileSpreadsheet,
-  FileText
+  FileEdit,
+  ExternalLink
 } from 'lucide-react';
-import { ActiveTab } from './Sidebar';
-import { ImportMediatorModal } from './ImportMediatorModal';
-import { ConfirmDeleteModal } from './ConfirmDeleteModal';
-import { DataTable, ColumnDef } from './DataTable';
 
 interface DaftarMediatorProps {
   mediators: MediatorKontrak[];
-  onSelectMediatorForFU: (kd_med: string) => void;
-  onViewDetail: (mediator: MediatorKontrak) => void;
-  onEditMediator: (mediator: MediatorKontrak) => void;
-  onDeleteMediator: (kd_med: string) => void;
-  onNavigate: (tab: ActiveTab) => void;
+  poskoList?: Posko[];
+  currentUser?: User;
+  onUpdateMediator?: (updated: MediatorKontrak) => void;
+  onDeleteMediator?: (id: string) => void;
+  onSelectMediatorForFU?: (kd_med: string) => void;
+  onViewDetail?: (med: MediatorKontrak) => void;
+  onEditMediator?: (med: MediatorKontrak) => void;
+  onNavigate?: (tab: string) => void;
 }
+
 
 export const DaftarMediator: React.FC<DaftarMediatorProps> = ({
   mediators,
+  poskoList = [],
+  currentUser: propUser,
+  onUpdateMediator,
+  onDeleteMediator,
   onSelectMediatorForFU,
   onViewDetail,
   onEditMediator,
-  onDeleteMediator,
-  onNavigate,
+  onNavigate
 }) => {
-  const { 
-    currentUser, 
-    canEditMediatorData, 
-    canEditMediator,
-    canDeleteMediator, 
-    canRegisterMediator, 
-    canInputFU,
-    allPosko 
-  } = useAuth();
+  const { currentUser: authUser } = useAuth();
+  const currentUser = propUser || authUser || ({ role: 'CMO', id: '', nama: '' } as User);
 
-  const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState<string>('ALL');
-  const [cabangFilter, setCabangFilter] = useState<string>('ALL');
-  const [poskoFilter, setPoskoFilter] = useState<string>('ALL');
-  const [fuFilter, setFuFilter] = useState<string>('ALL');
-  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
-  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
-  const [mediatorToDelete, setMediatorToDelete] = useState<MediatorKontrak | null>(null);
+  const [selectedPosko, setSelectedPosko] = useState<string>('ALL');
 
-  // Branch/Posko restriction for non-national roles
-  const isNational = currentUser?.role === 'SUPER_ADMIN' || currentUser?.role === 'RM';
-  const userCabang = currentUser?.kd_cabang;
-  const isCMO = currentUser?.role === 'CMO';
-  const isKAPOS = currentUser?.role === 'KAPOS';
-  const isADM = currentUser?.role === 'ADM';
-  const userAo = currentUser?.kd_ao;
-  const userPosko = currentUser?.kd_posko;
-  const isBranchRestricted = !isNational && !!userCabang;
-  const isPoskoRestricted = !isNational && !!userPosko;
+  const [selectedStatus, setSelectedStatus] = useState<string>('ALL');
+  const [detailMediator, setDetailMediator] = useState<MediatorKontrak | null>(null);
+  const [editMediator, setEditMediator] = useState<MediatorKontrak | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<MediatorKontrak | null>(null);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
 
-  // Unique cabangs
-  const cabangList = useMemo(() => {
-    const set = new Set<string>();
-    mediators.forEach(m => {
-      if (m.kd_cabang) set.add(m.kd_cabang);
+  const canEdit = ['SUPER_ADMIN', 'KACAB', 'KAOPS', 'ADM'].includes(currentUser.role);
+  const canDelete = ['SUPER_ADMIN', 'KACAB'].includes(currentUser.role);
+
+  const filteredMediators = useMemo(() => {
+    return mediators.filter(m => {
+      if (selectedPosko !== 'ALL' && m.kd_posko !== selectedPosko) return false;
+      if (selectedStatus !== 'ALL' && m.status !== selectedStatus) return false;
+      return true;
     });
-    return Array.from(set).sort();
-  }, [mediators]);
+  }, [mediators, selectedPosko, selectedStatus]);
 
-  // Unique poskos (cascading with cabangFilter if selected)
-  const isPoskoSelectionAllowed = isBranchRestricted || cabangFilter !== 'ALL';
-  const effectiveCabang = isBranchRestricted && userCabang ? userCabang : cabangFilter;
-
-  const poskoList = useMemo(() => {
-    if (!isPoskoSelectionAllowed || effectiveCabang === 'ALL') {
-      return [];
-    }
-    const set = new Set<string>();
-    if (allPosko && allPosko.length > 0) {
-      allPosko.forEach(p => {
-        if (p.kd_cabang.toUpperCase() === effectiveCabang.toUpperCase()) {
-          set.add(p.kd_posko);
-        }
-      });
-    }
-    mediators.forEach(m => {
-      if (m.kd_cabang && m.kd_cabang.toUpperCase() === effectiveCabang.toUpperCase()) {
-        if (m.kd_posko) set.add(m.kd_posko);
-      }
-    });
-    return Array.from(set).sort();
-  }, [mediators, allPosko, effectiveCabang, isPoskoSelectionAllowed]);
-
-  // Filter and sort ascending by kd_med by default as strictly required by specification
-  const filteredAndSortedMediators = useMemo(() => {
-    return mediators
-      .filter(m => {
-        // Territory and Role Restrictions
-        if (!isNational) {
-          // CMO restriction: strictly locked to mediators registered by this CMO
-          if (isCMO) {
-            const matchAo = userAo ? (m.kd_ao || '').trim().toUpperCase() === userAo.trim().toUpperCase() : false;
-            const matchCreated = !!(currentUser?.nama && m.created_by_user === currentUser.nama);
-            if (!matchAo && !matchCreated) {
-              return false;
-            }
-          }
-
-          // Posko restriction (for KAPOS, ADM Posko, or any user with assigned Posko)
-          if (userPosko) {
-            if (!m.kd_posko || m.kd_posko.trim().toUpperCase() !== userPosko.trim().toUpperCase()) {
-              return false;
-            }
-          }
-
-          // Cabang restriction (for ADM Cabang, KAOPS, KACAB, etc.)
-          if (userCabang) {
-            if (!m.kd_cabang || m.kd_cabang.trim().toUpperCase() !== userCabang.trim().toUpperCase()) {
-              return false;
-            }
-          }
-        }
-
-        // Search
-        if (searchTerm.trim()) {
-          const term = searchTerm.toLowerCase();
-          const matchCode = m.kd_med?.toLowerCase().includes(term);
-          const matchName = m.nama_mediator?.toLowerCase().includes(term);
-          const matchPhone = m.no_tlpn?.toLowerCase().includes(term);
-          const matchAo = m.kd_ao?.toLowerCase().includes(term);
-          const matchPosko = m.kd_posko?.toLowerCase().includes(term);
-          if (!matchCode && !matchName && !matchPhone && !matchAo && !matchPosko) return false;
-        }
-
-        // Status filter
-        if (statusFilter !== 'ALL' && m.status !== statusFilter) {
-          return false;
-        }
-
-        // Cabang filter (only active for national users or when not locked)
-        if (isNational && cabangFilter !== 'ALL' && m.kd_cabang !== cabangFilter) {
-          return false;
-        }
-
-        // Posko filter (per posko feature)
-        if (!isPoskoRestricted && poskoFilter !== 'ALL') {
-          if (!m.kd_posko || m.kd_posko.toUpperCase() !== poskoFilter.toUpperCase()) {
-            return false;
-          }
-        }
-
-        // FU Category filter
-        if (fuFilter !== 'ALL') {
-          const cat = categorizeFU(m.tgl_akhir_fu);
-          if (cat !== fuFilter) return false;
-        }
-
-        return true;
-      })
-      .sort((a, b) => {
-        // Specification requirement: Sorted ascending by kd_med
-        const codeA = (a.kd_med || '').toUpperCase();
-        const codeB = (b.kd_med || '').toUpperCase();
-        if (sortOrder === 'asc') {
-          return codeA.localeCompare(codeB, undefined, { numeric: true, sensitivity: 'base' });
-        } else {
-          return codeB.localeCompare(codeA, undefined, { numeric: true, sensitivity: 'base' });
-        }
-      });
-  }, [mediators, searchTerm, statusFilter, cabangFilter, poskoFilter, fuFilter, sortOrder, isCMO, isKAPOS, isNational, isPoskoRestricted, userAo, userPosko, isBranchRestricted, userCabang, currentUser?.nama]);
-
-  const handleExportCSV = () => {
-    if (currentUser?.role !== 'SUPER_ADMIN') {
-      alert('Akses Ditolak: Fitur Ekspor CSV hanya dapat diakses oleh Super Admin.');
-      return;
-    }
-    const headers = ['KD MED', 'NAMA MEDIATOR', 'STATUS', 'NO TELEPON', 'KD AO', 'KD POSKO', 'KD CABANG', 'TGL AKHIR FU'];
-    const rows = filteredAndSortedMediators.map(m => [
-      m.kd_med,
-      `"${m.nama_mediator.replace(/"/g, '""')}"`,
-      m.status,
-      m.no_tlpn,
-      m.kd_ao,
-      m.kd_posko,
-      m.kd_cabang,
-      m.tgl_akhir_fu || '-'
-    ]);
-
-    const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map(e => e.join(','))].join('\n');
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement('a');
-    link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `daftar_mediator_${new Date().toISOString().slice(0, 10)}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+  const handleCopy = (text: string, id: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedId(id);
+    setTimeout(() => setCopiedId(null), 1500);
   };
 
-  // Columns Definition for Universal DataTable
-  const columns: ColumnDef<MediatorKontrak>[] = useMemo(() => [
+  const columns: Column<MediatorKontrak>[] = [
     {
       key: 'kd_med',
       header: 'KD MED',
-      sticky: 'left',
       sortable: true,
-      hideable: false,
-      width: 'min-w-[140px]',
-      render: (med) => {
-        if (med.status === 'BELUM_AKTIF') {
-          return (
-            <div className="inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-lg bg-blue-950/70 text-blue-300 border border-blue-800/60 text-xs font-mono font-bold">
-              <FileText className="h-3 w-3 text-blue-400" />
-              <span>{med.kd_med}</span>
-            </div>
-          );
-        }
-        if (med.status === 'PENDING') {
-          return (
-            <div className="inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-lg bg-amber-950/60 text-amber-300 border border-amber-800/60 text-xs font-mono font-bold">
-              <Clock className="h-3 w-3 text-amber-400" />
-              <span>{med.kd_med}</span>
-            </div>
-          );
-        }
-        if (med.status === 'DITOLAK') {
-          return (
-            <span className="text-rose-300 bg-rose-950/70 px-2.5 py-0.5 rounded-lg font-semibold border border-rose-800/60 text-xs font-mono font-bold">
-              {med.kd_med}
-            </span>
-          );
-        }
-        return (
-          <span className="text-emerald-300 bg-emerald-950/70 px-2.5 py-0.5 rounded-lg font-semibold border border-emerald-800/60 text-xs font-mono font-bold">
-            {med.kd_med}
-          </span>
-        );
-      }
+      render: (m) => (
+        <div className="flex items-center space-x-1.5 font-mono">
+          <span className="font-bold text-white">{m.kd_med}</span>
+          <button
+            onClick={() => handleCopy(m.kd_med, `kd_${m.kd_med}`)}
+            className="text-[#5c6479] hover:text-blue-400 p-0.5"
+            title="Salin Kode"
+          >
+            {copiedId === `kd_${m.kd_med}` ? (
+              <Check className="h-3 w-3 text-emerald-400" />
+            ) : (
+              <Copy className="h-3 w-3" />
+            )}
+          </button>
+        </div>
+      )
     },
     {
       key: 'nama_mediator',
-      header: 'NAMA MEDIATOR',
+      header: 'Nama Mediator',
       sortable: true,
-      width: 'min-w-[200px]',
-      render: (med) => (
+      render: (m) => (
         <div>
-          <div className="font-semibold text-[#f1f3f7] text-sm max-w-xs truncate uppercase" title={med.nama_mediator}>
-            {med.nama_mediator}
-          </div>
-          <div className="text-[11px] text-[#8e96a8] flex items-center space-x-1 mt-0.5">
-            <span>📞 {med.no_tlpn}</span>
-          </div>
+          <div className="font-semibold text-white">{m.nama_mediator}</div>
+          <div className="text-[11px] text-[#8e96a8] truncate max-w-[180px]">{m.alamat || '-'}</div>
         </div>
       )
     },
     {
-      key: 'status',
-      header: 'STATUS',
-      align: 'center',
+      key: 'no_tlpn',
+      header: 'No. Telepon / WA',
+      render: (m) => (
+        <div className="flex items-center space-x-2">
+          <span className="font-mono text-white">{m.no_tlpn}</span>
+          <a
+            href={`https://wa.me/${m.no_tlpn.replace(/^0/, '62')}`}
+            target="_blank"
+            rel="noreferrer"
+            className="p-1 rounded-lg bg-emerald-950/60 hover:bg-emerald-900/60 text-emerald-400 border border-emerald-800"
+            title="Kirim Pesan WhatsApp"
+          >
+            <MessageSquare className="h-3 w-3" />
+          </a>
+        </div>
+      )
+    },
+    {
+      key: 'kd_posko',
+      header: 'Posko',
       sortable: true,
-      width: 'min-w-[150px]',
-      render: (med) => {
-        if (med.status === 'BELUM_AKTIF') {
-          return (
-            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-blue-950/80 text-blue-300 border border-blue-800/70">
-              BELUM AKTIF (Review)
-            </span>
-          );
-        }
-        if (med.status === 'PENDING') {
-          return (
-            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-950/80 text-amber-300 border border-amber-800/70">
-              PENDING (Input KD MED)
-            </span>
-          );
-        }
-        if (med.status === 'AKTIF') {
-          return (
-            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-950/80 text-emerald-300 border border-emerald-800/70">
-              <CheckCircle2 className="h-3 w-3 mr-1 text-emerald-400" />
-              AKTIF
-            </span>
-          );
-        }
-        if (med.status === 'INAKTIF') {
-          return (
-            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-[#1a1d27] text-[#8e96a8] border border-[#2e3446]">
-              INAKTIF
-            </span>
-          );
-        }
+      render: (m) => (
+        <span className="font-mono px-2 py-0.5 rounded bg-[#161b28] border border-[#232a3c] text-white">
+          {m.kd_posko}
+        </span>
+      )
+    },
+    {
+      key: 'kd_ao',
+      header: 'AO Pembina',
+      sortable: true,
+      render: (m) => <span className="font-mono text-[#a3adc2]">{m.kd_ao || '-'}</span>
+    },
+    {
+      key: 'status',
+      header: 'Status',
+      sortable: true,
+      render: (m) => {
+        const badgeColors = {
+          AKTIF: 'bg-emerald-950/80 text-emerald-300 border-emerald-800',
+          PENDING: 'bg-amber-950/80 text-amber-300 border-amber-800',
+          BELUM_AKTIF: 'bg-indigo-950/80 text-indigo-300 border-indigo-800',
+          DITOLAK: 'bg-rose-950/80 text-rose-300 border-rose-800',
+          NONAKTIF: 'bg-zinc-900 text-zinc-400 border-zinc-700'
+        }[m.status] || 'bg-zinc-800 text-zinc-300 border-zinc-700';
+
         return (
-          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-rose-950/80 text-rose-300 border border-rose-800/70">
-            DITOLAK
+          <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${badgeColors}`}>
+            {m.status}
           </span>
         );
       }
     },
     {
-      key: 'tgl_akhir_fu',
-      header: 'TGL AKHIR FU',
-      sortable: true,
-      width: 'min-w-[160px]',
-      render: (med) => {
-        const fuCat = categorizeFU(med.tgl_akhir_fu);
-        const fuBadge = getFUCategoryBadge(fuCat);
-        return (
-          <div className="space-y-1">
-            <div className="font-medium text-[#f1f3f7]">
-              {formatDateIndo(med.tgl_akhir_fu)}
-            </div>
-            <div>
-              <span className={`inline-block text-[10px] font-semibold px-2 py-0.5 rounded-md border ${fuBadge.bg} ${fuBadge.textCol} ${fuBadge.border}`}>
-                {fuBadge.text}
-              </span>
-            </div>
-          </div>
-        );
-      }
-    },
-    {
-      key: 'kd_cabang',
-      header: 'CABANG / AO',
-      align: 'center',
-      width: 'min-w-[130px]',
-      render: (med) => (
-        <div>
-          <div className="text-[#c2c7d0] font-medium text-xs">{med.kd_cabang}</div>
-          <div className="text-[10px] text-[#6b7280]">{med.kd_posko} | AO: {med.kd_ao}</div>
-        </div>
-      )
-    },
-    {
       key: 'actions',
-      header: 'AKSI',
-      sticky: 'right',
-      align: 'right',
-      hideable: false,
-      width: 'min-w-[140px]',
-      render: (med) => (
-        <div className="flex items-center justify-end space-x-1.5">
-          {canInputFU && (
-            <button
-              id={`btn-fu-med-${med.kd_med}`}
-              onClick={() => onSelectMediatorForFU(med.kd_med)}
-              className="p-1.5 text-blue-400 hover:bg-blue-950/60 hover:text-blue-300 rounded-lg transition-colors cursor-pointer"
-              title="Input Follow-Up (FU)"
-            >
-              <PhoneCall className="h-4 w-4" />
-            </button>
-          )}
-
+      header: 'Aksi',
+      className: 'text-right',
+      render: (m) => (
+        <div className="flex items-center justify-end space-x-1">
           <button
-            id={`btn-detail-med-${med.kd_med}`}
-            onClick={() => onViewDetail(med)}
-            className="p-1.5 text-[#8e96a8] hover:text-[#f1f3f7] hover:bg-[#1f2330] rounded-lg transition-colors cursor-pointer"
-            title="Lihat Detail Lengkap"
+            type="button"
+            onClick={() => setDetailMediator(m)}
+            className="p-1.5 rounded-lg text-[#8e96a8] hover:text-white hover:bg-[#1f2535] transition-colors cursor-pointer"
+            title="Lihat Detail"
           >
-            <Eye className="h-4 w-4" />
+            <Eye className="h-3.5 w-3.5" />
           </button>
 
-          {canEditMediator(med.status) && (
+          {canEdit && (
             <button
-              id={`btn-edit-med-${med.kd_med}`}
-              onClick={() => onEditMediator(med)}
-              className="p-1.5 text-amber-400 hover:bg-amber-950/60 hover:text-amber-300 rounded-lg transition-colors cursor-pointer"
-              title={
-                currentUser?.role === 'SUPER_ADMIN' || currentUser?.role === 'KAOPS'
-                  ? 'Edit / Koreksi Data Mediator (Akses Penuh)'
-                  : currentUser?.role === 'ADM'
-                  ? 'Edit / Koreksi Data Mediator (Status Baru / Pending)'
-                  : 'Edit / Koreksi Data Mediator (Status Baru)'
-              }
+              type="button"
+              onClick={() => setEditMediator(m)}
+              className="p-1.5 rounded-lg text-blue-400 hover:text-blue-300 hover:bg-blue-950/40 transition-colors cursor-pointer"
+              title="Edit Data"
             >
-              <Edit3 className="h-4 w-4" />
+              <Edit2 className="h-3.5 w-3.5" />
             </button>
           )}
 
-          {canDeleteMediator && (
+          {canDelete && (
             <button
-              id={`btn-del-med-${med.kd_med}`}
-              onClick={() => setMediatorToDelete(med)}
-              className="p-1.5 text-rose-400 hover:bg-rose-950/60 hover:text-rose-300 rounded-lg transition-colors cursor-pointer"
-              title="Hapus Data (SUPER_ADMIN)"
+              type="button"
+              onClick={() => setDeleteTarget(m)}
+              className="p-1.5 rounded-lg text-rose-400 hover:text-rose-300 hover:bg-rose-950/40 transition-colors cursor-pointer"
+              title="Hapus Data"
             >
-              <Trash2 className="h-4 w-4" />
+              <Trash2 className="h-3.5 w-3.5" />
             </button>
           )}
         </div>
       )
     }
-  ], [canInputFU, canEditMediator, canDeleteMediator, currentUser?.role, onSelectMediatorForFU, onViewDetail, onEditMediator]);
+  ];
 
   return (
-    <div className="space-y-5">
-      {/* Page Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-2 border-b border-[#232734]">
-        <div>
-          <h1 className="text-xl font-bold text-[#f1f3f7] tracking-tight flex items-center space-x-2">
-            <span>
-              {isCMO ? 'Daftar Mediator Saya (CMO)' : isKAPOS ? `Daftar Mediator Posko (${userPosko || 'Posko'})` : 'Daftar Seluruh Mediator'}
-            </span>
-            <span className="text-xs px-2.5 py-0.5 rounded-full bg-blue-950/80 text-blue-300 font-semibold border border-blue-800/60">
-              {filteredAndSortedMediators.length} Mediator
-            </span>
-          </h1>
-          <p className="text-xs text-[#8e96a8] mt-0.5">
-            {isCMO
-              ? `Terkunci khusus mediator terdaftar dengan Kode CMO ${userAo || 'CMO'} (${currentUser?.nama})`
-              : isKAPOS
-              ? `Terkunci khusus mediator terdaftar di Posko ${userPosko || '-'} Cabang ${userCabang || '-'} (${currentUser?.nama})`
-              : 'Tabel database mediator kontrak terurut otomatis berdasarkan KD MED (Ascending)'}
-          </p>
+    <div className="space-y-4">
+      {/* Filters Toolbar */}
+      <div className="flex flex-wrap items-center gap-3 p-4 rounded-2xl bg-[#12151f] border border-[#232734]">
+        <div className="flex items-center space-x-1.5 text-xs text-[#8e96a8]">
+          <Filter className="h-3.5 w-3.5 text-blue-400" />
+          <span className="font-semibold">Filter:</span>
         </div>
 
-        <div className="flex items-center space-x-2">
-          {currentUser?.role === 'SUPER_ADMIN' && (
-            <>
-              <button
-                id="btn-import-csv"
-                onClick={() => setIsImportModalOpen(true)}
-                className="px-3 py-2 bg-blue-950/60 hover:bg-blue-900/70 text-blue-300 hover:text-blue-200 text-xs font-semibold rounded-xl border border-blue-800/60 transition-colors flex items-center space-x-1.5 cursor-pointer shadow-sm"
-              >
-                <UploadCloud className="h-4 w-4" />
-                <span>Import CSV / Excel</span>
-              </button>
+        {/* Filter Posko */}
+        <select
+          value={selectedPosko}
+          onChange={(e) => setSelectedPosko(e.target.value)}
+          className="bg-[#181c28] border border-[#2c3345] rounded-xl px-3 py-1.5 text-xs text-white focus:outline-none focus:border-blue-500"
+        >
+          <option value="ALL">Semua Posko</option>
+          {poskoList.map(p => (
+            <option key={p.kd_posko} value={p.kd_posko}>Posko {p.kd_posko} ({p.nama_posko})</option>
+          ))}
+        </select>
 
-              <button
-                id="btn-export-csv"
-                onClick={handleExportCSV}
-                className="px-3 py-2 bg-[#181a24] hover:bg-[#202534] text-[#c2c7d0] hover:text-[#f1f3f7] text-xs font-medium rounded-xl border border-[#272d3e] transition-colors flex items-center space-x-1.5 cursor-pointer"
-              >
-                <Download className="h-4 w-4 text-[#8e96a8]" />
-                <span>Ekspor CSV</span>
-              </button>
-            </>
-          )}
+        {/* Filter Status */}
+        <select
+          value={selectedStatus}
+          onChange={(e) => setSelectedStatus(e.target.value)}
+          className="bg-[#181c28] border border-[#2c3345] rounded-xl px-3 py-1.5 text-xs text-white focus:outline-none focus:border-blue-500"
+        >
+          <option value="ALL">Semua Status</option>
+          <option value="AKTIF">AKTIF</option>
+          <option value="PENDING">PENDING</option>
+          <option value="BELUM_AKTIF">BELUM_AKTIF</option>
+          <option value="DITOLAK">DITOLAK</option>
+          <option value="NONAKTIF">NONAKTIF</option>
+        </select>
 
-          {canRegisterMediator && (
-            <button
-              id="btn-nav-registrasi"
-              onClick={() => onNavigate('registrasi')}
-              className="px-3.5 py-2 bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold rounded-xl shadow-md shadow-blue-950/40 transition-colors flex items-center space-x-1 cursor-pointer"
-            >
-              <Plus className="h-4 w-4" />
-              <span>Registrasi Baru</span>
-            </button>
-          )}
+        <div className="ml-auto text-xs text-[#8e96a8]">
+          Ditemukan <strong className="text-white">{filteredMediators.length}</strong> mediator
         </div>
       </div>
 
-      {/* CMO Lock Notice Banner */}
-      {isCMO && (
-        <div className="p-3.5 bg-blue-950/50 border border-blue-800/70 rounded-2xl text-xs text-blue-200 flex items-center justify-between shadow-sm">
-          <div className="flex items-center space-x-2.5">
-            <div className="p-1.5 rounded-lg bg-blue-900/60 text-blue-300 border border-blue-700/60">
-              <User className="h-4 w-4" />
-            </div>
-            <div>
-              <p className="font-bold text-blue-100">
-                Hak Akses CMO: Data Dikunci Khusus Kode AO/CMO <span className="font-mono bg-blue-900/80 px-2 py-0.5 rounded text-blue-300 border border-blue-700">{userAo || 'CMO'}</span>
-              </p>
-              <p className="text-[11px] text-blue-300/80 mt-0.5">
-                Anda hanya dapat melihat dan mengelola mediator yang Anda daftarkan sendiri ke sistem.
-              </p>
-            </div>
-          </div>
-          <span className="text-xs font-bold text-blue-300 bg-blue-900/40 px-3 py-1 rounded-xl border border-blue-800/50 shrink-0">
-            {filteredAndSortedMediators.length} Mediator
-          </span>
-        </div>
-      )}
-
-      {/* KAPOS / ADM Posko Lock Notice Banner */}
-      {(isKAPOS || (isADM && userPosko)) && (
-        <div className="p-3.5 bg-emerald-950/50 border border-emerald-800/70 rounded-2xl text-xs text-emerald-200 flex items-center justify-between shadow-sm">
-          <div className="flex items-center space-x-2.5">
-            <div className="p-1.5 rounded-lg bg-emerald-900/60 text-emerald-300 border border-emerald-700/60">
-              <Building2 className="h-4 w-4" />
-            </div>
-            <div>
-              <p className="font-bold text-emerald-100">
-                Hak Akses {currentUser?.role}: Data Dikunci Khusus Posko <span className="font-mono bg-emerald-900/80 px-2 py-0.5 rounded text-emerald-300 border border-emerald-700">{userPosko || 'Posko'}</span> ({userCabang})
-              </p>
-              <p className="text-[11px] text-emerald-300/80 mt-0.5">
-                Anda hanya dapat melihat dan mengelola data mediator yang terdaftar di wilayah posko Anda.
-              </p>
-            </div>
-          </div>
-          <span className="text-xs font-bold text-emerald-300 bg-emerald-900/40 px-3 py-1 rounded-xl border border-emerald-800/50 shrink-0">
-            {filteredAndSortedMediators.length} Mediator
-          </span>
-        </div>
-      )}
-
-      {/* ADM Cabang / KAOPS / KACAB Lock Notice Banner (without posko) */}
-      {!isNational && !isCMO && !isKAPOS && (!isADM || !userPosko) && userCabang && (
-        <div className="p-3.5 bg-indigo-950/50 border border-indigo-800/70 rounded-2xl text-xs text-indigo-200 flex items-center justify-between shadow-sm">
-          <div className="flex items-center space-x-2.5">
-            <div className="p-1.5 rounded-lg bg-indigo-900/60 text-indigo-300 border border-indigo-700/60">
-              <Building className="h-4 w-4" />
-            </div>
-            <div>
-              <p className="font-bold text-indigo-100">
-                Hak Akses {currentUser?.role}: Data Terkunci Cabang <span className="font-mono bg-indigo-900/80 px-2 py-0.5 rounded text-indigo-300 border border-indigo-700">{userCabang}</span>
-              </p>
-              <p className="text-[11px] text-indigo-300/80 mt-0.5">
-                Mencakup seluruh posko operasional di bawah naungan Cabang {userCabang}.
-              </p>
-            </div>
-          </div>
-          <span className="text-xs font-bold text-indigo-300 bg-indigo-900/40 px-3 py-1 rounded-xl border border-indigo-800/50 shrink-0">
-            {filteredAndSortedMediators.length} Mediator
-          </span>
-        </div>
-      )}
-
-      {/* Filter and Search Bar */}
-      <div className="bg-[#13151c] p-4 rounded-2xl border border-[#232734] shadow-md space-y-3">
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3">
-          {/* Search Box */}
-          <div className="lg:col-span-2 relative">
-            <Search className="h-4 w-4 absolute left-3 top-2.5 text-[#6b7280]" />
-            <input
-              id="search-input-mediator"
-              type="text"
-              placeholder="Cari KD MED, Nama, No HP, Posko, AO..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-9 pr-3 py-2 text-xs bg-[#0d0e12] border border-[#272d3e] text-[#e0e4eb] placeholder-[#6b7280] rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 transition-all"
-            />
-          </div>
-
-          {/* Status Filter */}
-          <div>
-            <select
-              id="filter-status"
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              className="w-full py-2 px-3 text-xs bg-[#0d0e12] border border-[#272d3e] text-[#e0e4eb] rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/50 font-medium"
-            >
-              <option value="ALL">Semua Status</option>
-              <option value="BELUM_AKTIF">BELUM AKTIF (Review)</option>
-              <option value="PENDING">PENDING (Input KD MED)</option>
-              <option value="AKTIF">Status: AKTIF</option>
-              <option value="INAKTIF">Status: INAKTIF</option>
-              <option value="DITOLAK">Status: DITOLAK</option>
-            </select>
-          </div>
-
-          {/* Cabang Filter */}
-          {!isBranchRestricted && (
-            <div>
-              <select
-                id="filter-cabang"
-                value={cabangFilter}
-                onChange={(e) => {
-                  setCabangFilter(e.target.value);
-                  setPoskoFilter('ALL');
-                }}
-                className="w-full py-2 px-3 text-xs bg-[#0d0e12] border border-[#272d3e] text-[#e0e4eb] rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/50 font-medium"
-              >
-                <option value="ALL">Semua Cabang</option>
-                {cabangList.map(cab => (
-                  <option key={cab} value={cab}>{cab}</option>
-                ))}
-              </select>
-            </div>
-          )}
-
-          {/* Posko Filter (Fitur Filter per Posko - Cascading after Cabang) */}
-          {!isPoskoRestricted && (
-            <div>
-              <select
-                id="filter-posko"
-                value={poskoFilter}
-                disabled={!isPoskoSelectionAllowed}
-                onChange={(e) => setPoskoFilter(e.target.value)}
-                className={`w-full py-2 px-3 text-xs bg-[#0d0e12] border border-[#272d3e] text-[#e0e4eb] rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/50 font-medium ${
-                  !isPoskoSelectionAllowed ? 'opacity-50 cursor-not-allowed' : ''
-                }`}
-              >
-                {!isPoskoSelectionAllowed ? (
-                  <option value="ALL">-- Pilih Cabang Dahulu --</option>
-                ) : (
-                  <>
-                    <option value="ALL">
-                      {effectiveCabang !== 'ALL' ? `Semua Posko (${effectiveCabang})` : 'Semua Posko'}
-                    </option>
-                    {poskoList.map(pos => (
-                      <option key={pos} value={pos}>{pos}</option>
-                    ))}
-                  </>
-                )}
-              </select>
-            </div>
-          )}
-
-          {/* FU Category Filter */}
-          <div className={isBranchRestricted && isPoskoRestricted ? 'lg:col-span-3' : isBranchRestricted || isPoskoRestricted ? 'lg:col-span-2' : ''}>
-            <select
-              id="filter-fu-category"
-              value={fuFilter}
-              onChange={(e) => setFuFilter(e.target.value)}
-              className="w-full py-2 px-3 text-xs bg-[#0d0e12] border border-[#272d3e] text-[#e0e4eb] rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/50 font-medium"
-            >
-              <option value="ALL">Semua Status FU</option>
-              <option value="BELUM_FU">Belum di FU</option>
-              <option value="LEBIH_30_HARI">FU &gt; 30 Hari</option>
-              <option value="LEBIH_15_HARI">FU &gt; 15 Hari</option>
-              <option value="SUDAH_FU">Sudah di FU (≤15 Hari)</option>
-            </select>
-          </div>
-        </div>
-
-        {/* Quick Active Filters tags */}
-        {(searchTerm || statusFilter !== 'ALL' || cabangFilter !== 'ALL' || poskoFilter !== 'ALL' || fuFilter !== 'ALL') && (
-          <div className="flex flex-wrap items-center gap-1.5 pt-2 border-t border-[#1f2330] text-xs text-[#8e96a8]">
-            <Filter className="h-3.5 w-3.5 text-[#6b7280]" />
-            <span>Filter Aktif:</span>
-            {searchTerm && (
-              <span className="bg-[#1a1d27] text-[#c2c7d0] border border-[#2e3446] px-2 py-0.5 rounded-md font-medium">
-                Pencarian: "{searchTerm}"
-              </span>
-            )}
-            {statusFilter !== 'ALL' && (
-              <span className="bg-[#1a1d27] text-[#c2c7d0] border border-[#2e3446] px-2 py-0.5 rounded-md font-medium">
-                Status: {statusFilter}
-              </span>
-            )}
-            {cabangFilter !== 'ALL' && (
-              <span className="bg-[#1a1d27] text-[#c2c7d0] border border-[#2e3446] px-2 py-0.5 rounded-md font-medium">
-                Cabang: {cabangFilter}
-              </span>
-            )}
-            {poskoFilter !== 'ALL' && (
-              <span className="bg-[#1a1d27] text-[#c2c7d0] border border-[#2e3446] px-2 py-0.5 rounded-md font-medium">
-                Posko: {poskoFilter}
-              </span>
-            )}
-            {fuFilter !== 'ALL' && (
-              <span className="bg-[#1a1d27] text-[#c2c7d0] border border-[#2e3446] px-2 py-0.5 rounded-md font-medium">
-                FU: {fuFilter}
-              </span>
-            )}
-            <button
-              onClick={() => {
-                setSearchTerm('');
-                setStatusFilter('ALL');
-                setCabangFilter('ALL');
-                setPoskoFilter('ALL');
-                setFuFilter('ALL');
-              }}
-              className="text-blue-400 hover:text-blue-300 font-semibold ml-2 cursor-pointer"
-            >
-              Reset Filter
-            </button>
-          </div>
-        )}
-      </div>
-
-      {/* UNIVERSAL PAGINATED DATATABLE */}
-      <DataTable<MediatorKontrak>
-        tableKey="mediator-kontrak-table"
+      {/* Main Table */}
+      <DataTable
+        data={filteredMediators}
         columns={columns}
-        data={filteredAndSortedMediators}
-        keyExtractor={(med, idx) => med.kd_med || med.temp_id || String(idx)}
-        emptyIcon={<FileSpreadsheet className="h-8 w-8 text-blue-400" />}
-        emptyTitle="Belum Ada Data Mediator"
-        emptyDescription="Mulai input data mediator secara manual atau langsung unggah seluruh data agen yang sudah Anda miliki menggunakan file CSV/Excel."
-        emptyAction={
-          <div className="flex items-center justify-center space-x-2 pt-2">
-            {currentUser?.role === "SUPER_ADMIN" && (
-              <button
-                id="btn-empty-state-import"
-                onClick={() => setIsImportModalOpen(true)}
-                className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl text-xs flex items-center space-x-1.5 shadow-lg shadow-blue-950/40 transition-colors cursor-pointer"
-              >
-                <UploadCloud className="h-4 w-4" />
-                <span>Import Berkas CSV</span>
-              </button>
-            )}
-            {canRegisterMediator && (
-              <button
-                id="btn-empty-state-reg"
-                onClick={() => onNavigate("registrasi")}
-                className="px-4 py-2 bg-[#1c202d] hover:bg-[#252b3d] text-[#e0e4eb] font-semibold rounded-xl text-xs border border-[#2d3448] flex items-center space-x-1.5 transition-colors cursor-pointer"
-              >
-                <Plus className="h-4 w-4" />
-                <span>Registrasi Manual</span>
-              </button>
-            )}
-          </div>
-        }
-        title="Daftar Mediator Kontrak"
-        subtitle={`Total ${filteredAndSortedMediators.length} mediator`}
-        initialPageSize={25}
+        keyExtractor={(med, idx) => med.firestore_id || med.temp_id || `${med.kd_med}_${idx}`}
+        title="Daftar Master Data Mediator"
+        subtitle="Data mediator kontrak KAMM Manado dan jaringan mitra lapangan"
+        searchPlaceholder="Cari nama, KD MED, atau nomor telepon..."
       />
 
-      {/* Import Modal */}
-      <ImportMediatorModal
-        isOpen={isImportModalOpen}
-        onClose={() => setIsImportModalOpen(false)}
-        onSuccess={() => {
-          setIsImportModalOpen(false);
-        }}
+      {/* Modals */}
+      <MediatorDetailModal
+        isOpen={Boolean(detailMediator)}
+        onClose={() => setDetailMediator(null)}
+        mediator={detailMediator}
       />
 
-      {/* Delete Confirmation Modal */}
+      <MediatorEditModal
+        isOpen={Boolean(editMediator)}
+        onClose={() => setEditMediator(null)}
+        mediator={editMediator}
+        poskoList={poskoList}
+        onSave={onUpdateMediator}
+      />
+
       <ConfirmDeleteModal
-        isOpen={!!mediatorToDelete}
-        title="Hapus Data Mediator"
-        itemCode={mediatorToDelete?.kd_med}
-        itemName={mediatorToDelete?.nama_mediator}
-        description={`Anda akan menghapus data mediator ${mediatorToDelete?.nama_mediator} (${mediatorToDelete?.kd_med}). Seluruh data mediator ini akan dihapus dari sistem secara permanen.`}
-        confirmButtonText="Hapus Mediator"
+        isOpen={Boolean(deleteTarget)}
+        onClose={() => setDeleteTarget(null)}
         onConfirm={() => {
-          if (mediatorToDelete) {
-            onDeleteMediator(mediatorToDelete.kd_med);
-            setMediatorToDelete(null);
+          if (deleteTarget) {
+            onDeleteMediator(deleteTarget.firestore_id || deleteTarget.kd_med);
+            setDeleteTarget(null);
           }
         }}
-        onClose={() => setMediatorToDelete(null)}
+        title="Konfirmasi Hapus Mediator"
+        message={`Apakah Anda yakin ingin menghapus mediator "${deleteTarget?.nama_mediator}" (${deleteTarget?.kd_med})? Tindakan ini tidak dapat dibatalkan.`}
       />
     </div>
   );

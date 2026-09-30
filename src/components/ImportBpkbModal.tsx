@@ -115,7 +115,7 @@ export const ImportBpkbModal: React.FC<ImportBpkbModalProps> = ({
   };
 
   // Execute Import
-  const handleExecuteImport = () => {
+  const handleExecuteImport = async () => {
     if (currentUser?.role !== 'SUPER_ADMIN') {
       setParseErrors(['Akses Ditolak: Hanya Super Admin yang diizinkan melakukan import data BPKB.']);
       return;
@@ -126,7 +126,7 @@ export const ImportBpkbModal: React.FC<ImportBpkbModalProps> = ({
       return;
     }
 
-    const res = DatabaseService.importExCustomers(
+    const res = await DatabaseService.importExCustomers(
       validRows.map(r => ({
         no_psb: r.no_psb,
         kd_cab: r.kd_cab,

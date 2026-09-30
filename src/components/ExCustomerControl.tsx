@@ -1044,7 +1044,7 @@ export const ExCustomerControl: React.FC<ExCustomerControlProps> = ({
                   id="input-ex-namakonsumen"
                   type="text"
                   value={inputNama}
-                  onChange={(e) => setInputNama(e.target.value.toUpperCase())}
+                  onChange={(e) => setInputNama(e.target.value)}
                   placeholder="Nama Lengkap Konsumen"
                   className="w-full px-3.5 py-2.5 bg-[#0d0e12] border border-[#272d3e] rounded-xl text-xs text-[#f1f3f7] uppercase focus:outline-none focus:border-amber-500 placeholder-[#6b7280]"
                   required
@@ -1548,7 +1548,7 @@ export const ExCustomerControl: React.FC<ExCustomerControlProps> = ({
                   <input
                     type="text"
                     value={editingCustomer.nama_konsumen}
-                    onChange={(e) => setEditingCustomer({ ...editingCustomer, nama_konsumen: e.target.value.toUpperCase() })}
+                    onChange={(e) => setEditingCustomer({ ...editingCustomer, nama_konsumen: e.target.value })}
                     className="w-full px-3 py-2 bg-[#0d0e12] border border-[#272d3e] rounded-xl text-[#f1f3f7] uppercase"
                     required
                   />

@@ -1,2444 +1,813 @@
-import { Cabang, Posko, User, UserRole, MediatorKontrak, FULog, MediatorStatus, HasilFU, ExCustomer, ExCustomerFULog, StatusKreditLunas, HasilFUExCustomer } from '../types';
-import { INITIAL_CABANG, INITIAL_POSKO, INITIAL_USERS, INITIAL_MEDIATORS, INITIAL_FU_LOGS, INITIAL_EX_CUSTOMERS, INITIAL_EX_CUSTOMER_FU_LOGS } from '../data/initialData';
-import { db, auth, firebaseConfigData } from './firebase';
-import { AuditService } from './auditService';
+import { 
+  MediatorKontrak, 
+  User, 
+  Cabang, 
+  Posko, 
+  ExCustomer, 
+  FollowUpLog, 
+  ExCustomerFollowUpLog, 
+  ActivityLog, 
+  MediatorStatus 
+} from '../types';
+import { 
+  INITIAL_MEDIATORS, 
+  INITIAL_USERS, 
+  INITIAL_CABANG, 
+  INITIAL_POSKO, 
+  INITIAL_EX_CUSTOMERS 
+} from '../data/initialData';
+import { db } from './firebase';
 import { 
   collection, 
   doc, 
-  getDoc,
   setDoc, 
   deleteDoc, 
   onSnapshot, 
-  writeBatch,
-  getDocs
+  query, 
+  limit, 
+  serverTimestamp 
 } from 'firebase/firestore';
 
-const STORAGE_KEYS = {
-  CABANG: 'med_control_cabang_v2',
-  POSKO: 'med_control_posko_v2',
-  USERS: 'med_control_users_v2',
-  MEDIATORS: 'med_control_mediators_v2',
-  FU_LOGS: 'med_control_fu_logs_v2',
-  CURRENT_USER: 'med_control_auth_user_v2',
-  EX_CUSTOMERS: 'med_control_ex_customers_v2',
-  EX_CUSTOMER_FU_LOGS: 'med_control_ex_customer_fu_logs_v2',
+export const STORAGE_KEYS = {
+  MEDIATORS: 'kamm_mediators',
+  USERS: 'kamm_users',
+  CABANG: 'kamm_cabang',
+  POSKO: 'kamm_posko',
+  EX_CUSTOMERS: 'kamm_ex_customers',
+  FOLLOW_UPS: 'kamm_follow_ups',
+  EX_FOLLOW_UPS: 'kamm_ex_follow_ups',
+  LOGS: 'kamm_activity_logs'
 };
 
-export interface SystemFullBackup {
-  meta: {
-    appName: string;
-    version: string;
-    timestamp: string;
-    exportedBy: string;
-    environment: string;
-  };
-  data: {
-    users: User[];
-    cabang: Cabang[];
-    posko: Posko[];
-    mediators: MediatorKontrak[];
-    fu_logs: FULog[];
-  };
-}
+// Global subscription listeners for real-time reactivity
+const subscribers = new Set<() => void>();
 
-// Initializer helper
-export function getInitialOrStored<T>(key: string, fallback: T): T {
-  try {
-    const item = localStorage.getItem(key);
-    if (!item) {
-      return fallback;
+function notifySubscribers() {
+  subscribers.forEach(cb => {
+    try {
+      cb();
+    } catch (err) {
+      console.error('Subscriber callback error:', err);
     }
-    return JSON.parse(item);
-  } catch (e) {
-    console.error(`Error loading ${key} from storage:`, e);
-    return fallback;
-  }
+  });
 }
 
 export function saveToStorage<T>(key: string, data: T): void {
   try {
     localStorage.setItem(key, JSON.stringify(data));
   } catch (e) {
-    console.error(`Error saving ${key} to storage:`, e);
+    console.warn(`Gagal menyimpan key "${key}" ke localStorage:`, e);
   }
 }
 
-// Subscribers for cross-device & real-time updates
-type StorageListener = () => void;
-const listeners: Set<StorageListener> = new Set();
-
-function notifyAllListeners() {
-  listeners.forEach((fn) => {
+export class StorageService {
+  // --- Mediators ---
+  static getMediators(): MediatorKontrak[] {
+    const raw = localStorage.getItem(STORAGE_KEYS.MEDIATORS);
+    if (!raw) {
+      localStorage.setItem(STORAGE_KEYS.MEDIATORS, JSON.stringify(INITIAL_MEDIATORS));
+      return INITIAL_MEDIATORS;
+    }
     try {
-      fn();
-    } catch (err) {
-      console.error('Error notifying storage listener:', err);
-    }
-  });
-}
-
-// Sanitize key for Firestore doc ID (replace / and other special characters)
-export function sanitizeDocId(id: string): string {
-  return encodeURIComponent(id).replace(/\./g, '%2E');
-}
-
-// Clean undefined fields for Firestore (Firestore throws error on undefined values)
-export function cleanForFirestore<T>(data: T): any {
-  if (data === null || data === undefined) return null;
-  if (typeof data !== 'object') return data;
-  if (Array.isArray(data)) return data.map(cleanForFirestore);
-
-  const cleanObj: any = {};
-  for (const [key, value] of Object.entries(data as any)) {
-    if (value !== undefined) {
-      cleanObj[key] = cleanForFirestore(value);
+      return JSON.parse(raw);
+    } catch {
+      return INITIAL_MEDIATORS;
     }
   }
-  return cleanObj;
-}
 
-/**
- * P0-2C.12 Structured Firestore Write Logging
- */
-export function logFirestoreWrite(params: {
-  collection: string;
-  documentId: string;
-  operation?: 'create' | 'update' | 'delete' | 'set' | 'batch';
-  method?: string;
-  uid?: string | null;
-  businessUserId?: string | null;
-  role?: string | null;
-  status?: string | null;
-  result: 'SUCCESS' | 'FAILED';
-  errorCode?: string | null;
-  errorMessage?: string | null;
-}) {
-  const activeUid = params.uid ?? auth?.currentUser?.uid ?? null;
-  const currentProjectId = firebaseConfigData?.projectId || 'kamm-manado';
-  const currentDbId = (firebaseConfigData as any)?.firestoreDatabaseId || 'ai-studio-mediatorkontrakm-919304e3-4fb7-4025-a4e8-2c90f5b0fe3e';
-  const path = `${params.collection}/${params.documentId}`;
+  static saveMediator(mediator: MediatorKontrak): MediatorKontrak {
+    const list = this.getMediators();
+    const existingIdx = list.findIndex(m => 
+      (m.firestore_id && m.firestore_id === mediator.firestore_id) ||
+      (m.kd_med && m.kd_med === mediator.kd_med) ||
+      (m.temp_id && m.temp_id === mediator.temp_id)
+    );
 
-  if (params.result === 'FAILED') {
-    console.error('[FORENSIC-FIRESTORE-DENIED]', {
-      operation: params.operation || 'write',
-      path,
-      method: params.method || 'setDoc',
-      projectId: currentProjectId,
-      databaseId: currentDbId,
-      authUid: activeUid,
-      errorCode: params.errorCode || 'unknown',
-      errorMessage: params.errorMessage || 'Unknown Firestore error'
-    });
-  }
-
-  console.log(
-    `[FS-WRITE] collection=${params.collection} documentId=${params.documentId} uid=${activeUid || 'null'} businessUserId=${params.businessUserId || 'null'} role=${params.role || 'null'} status=${params.status || 'null'} result=${params.result}${params.errorCode ? ` errorCode=${params.errorCode}` : ''}${params.errorMessage ? ` errorMessage="${params.errorMessage}"` : ''}`
-  );
-}
-
-// Setup real-time listeners to Firestore for cloud sync
-let activeSyncUnsubscribers: (() => void)[] = [];
-let activeSyncKey: string | null = null;
-
-export function stopFirebaseSync() {
-  const previousKey = activeSyncKey;
-  const count = activeSyncUnsubscribers.length;
-  if (activeSyncUnsubscribers.length > 0) {
-    activeSyncUnsubscribers.forEach((unsub) => {
-      try {
-        unsub();
-      } catch (err) {
-        console.warn('Error unsubscribing sync listener:', err);
-      }
-    });
-    activeSyncUnsubscribers = [];
-  }
-  AuditService.stopSync();
-  activeSyncKey = null;
-  if (count > 0 || previousKey) {
-    console.log(`[SYNC-LIFECYCLE] action=stop syncKey=${previousKey} unsubscribeCount=${count}`);
-  }
-}
-
-export function startFirebaseSync(currentUser: User | null = null, authenticatedUid?: string | null) {
-  if (!db || !auth) return;
-
-  const currentAuthUid = authenticatedUid || auth.currentUser?.uid;
-  if (!currentAuthUid) {
-    // Unauthenticated: Abort to prevent permission denial
-    stopFirebaseSync();
-    return;
-  }
-
-  // If no active user or user is inactive, clean up existing listeners and do not attach new ones
-  if (!currentUser || currentUser.status !== 'AKTIF') {
-    stopFirebaseSync();
-    return;
-  }
-
-  const syncKey = `${currentUser.id}_${currentAuthUid}_${currentUser.role}_${currentUser.status}`;
-  if (activeSyncKey === syncKey && activeSyncUnsubscribers.length > 0) {
-    return; // Already actively syncing for this user session
-  }
-
-  // Clean up any previous session listeners
-  stopFirebaseSync();
-  activeSyncKey = syncKey;
-
-  console.log(`[SYNC-LIFECYCLE] action=start uid=${currentAuthUid} role=${currentUser.role} status=${currentUser.status} syncKey=${syncKey}`);
-
-  try {
-    // 1. Sync Users
-    console.log(`[FS-SYNC-DEBUG] collection=users operation=onSnapshot firebaseAuthUid=${currentAuthUid} businessUserId=${currentUser.id} role=${currentUser.role} status=${currentUser.status} activeSyncKey=${syncKey}`);
-    const usersCol = collection(db, 'users');
-    const unsubUsers = onSnapshot(usersCol, (snapshot) => {
-      console.log(`[FS-SNAPSHOT] collection=users documentCount=${snapshot.size}`);
-      const cloudUsers: User[] = snapshot.docs.map(docSnap => docSnap.data() as User);
-      saveToStorage(STORAGE_KEYS.USERS, cloudUsers);
-      notifyAllListeners();
-    }, (err) => console.warn('[FS-SYNC-ERROR] collection=users onSnapshot error:', err));
-    activeSyncUnsubscribers.push(unsubUsers);
-
-    // 2. Sync Cabang
-    console.log(`[FS-SYNC-DEBUG] collection=cabang operation=onSnapshot firebaseAuthUid=${currentAuthUid} businessUserId=${currentUser.id} role=${currentUser.role} status=${currentUser.status} activeSyncKey=${syncKey}`);
-    const cabangCol = collection(db, 'cabang');
-    const unsubCabang = onSnapshot(cabangCol, (snapshot) => {
-      console.log(`[FS-SNAPSHOT] collection=cabang documentCount=${snapshot.size}`);
-      const cloudCabang: Cabang[] = snapshot.docs.map(docSnap => docSnap.data() as Cabang);
-      saveToStorage(STORAGE_KEYS.CABANG, cloudCabang);
-      notifyAllListeners();
-    }, (err) => console.warn('[FS-SYNC-ERROR] collection=cabang onSnapshot error:', err));
-    activeSyncUnsubscribers.push(unsubCabang);
-
-    // 3. Sync Posko
-    console.log(`[FS-SYNC-DEBUG] collection=posko operation=onSnapshot firebaseAuthUid=${currentAuthUid} businessUserId=${currentUser.id} role=${currentUser.role} status=${currentUser.status} activeSyncKey=${syncKey}`);
-    const poskoCol = collection(db, 'posko');
-    const unsubPosko = onSnapshot(poskoCol, (snapshot) => {
-      console.log(`[FS-SNAPSHOT] collection=posko documentCount=${snapshot.size}`);
-      const cloudPosko: Posko[] = snapshot.docs.map(docSnap => docSnap.data() as Posko);
-      saveToStorage(STORAGE_KEYS.POSKO, cloudPosko);
-      notifyAllListeners();
-    }, (err) => console.warn('[FS-SYNC-ERROR] collection=posko onSnapshot error:', err));
-    activeSyncUnsubscribers.push(unsubPosko);
-
-    // 4. Sync Mediators (Isolated: ADM_BPKB and ADM_DE are forbidden from mediator collection)
-    if (currentUser.role !== 'ADM_BPKB' && currentUser.role !== 'ADMIN_BPKB' && currentUser.role !== 'ADM_DE') {
-      console.log(
-        "[CROSS-DEVICE-SYNC]",
-        {
-          collection: "mediators",
-          firebaseAuthUid: currentAuthUid ?? null,
-          businessUserId: currentUser?.id ?? null,
-          role: currentUser?.role ?? null
-        }
-      );
-      console.log(`[FS-SYNC-DEBUG] collection=mediators operation=onSnapshot firebaseAuthUid=${currentAuthUid} businessUserId=${currentUser.id} role=${currentUser.role} status=${currentUser.status} activeSyncKey=${syncKey}`);
-      const mediatorsCol = collection(db, 'mediators');
-      const unsubMediators = onSnapshot(mediatorsCol, (snapshot) => {
-        console.log(`[FS-SNAPSHOT] collection=mediators documentCount=${snapshot.size}`);
-        console.log(
-          "[FIRESTORE-SNAPSHOT]",
-          {
-            collection: "mediators",
-            documentCount: snapshot.size,
-            documents: snapshot.docs.map(docSnap => ({
-              id: docSnap.id,
-              ...docSnap.data()
-            }))
-          }
-        );
-        const cloudMediators: MediatorKontrak[] = snapshot.docs.map(docSnap => {
-          const data = docSnap.data() as MediatorKontrak;
-          return {
-            ...data,
-            firestore_id: docSnap.id
-          };
-        });
-        saveToStorage(STORAGE_KEYS.MEDIATORS, cloudMediators);
-        notifyAllListeners();
-      }, (err) => {
-        if (err?.code === 'unavailable') {
-          console.warn('[FIRESTORE-SNAPSHOT-OFFLINE] Firestore beroperasi dalam mode offline (backend unavailable).');
-        } else {
-          console.error(
-            "[FIRESTORE-SNAPSHOT-ERROR]",
-            err
-          );
-        }
+    if (existingIdx >= 0) {
+      list[existingIdx] = { ...list[existingIdx], ...mediator, updated_at: new Date().toISOString() };
+    } else {
+      list.unshift({
+        ...mediator,
+        firestore_id: mediator.firestore_id || `MED_${Date.now()}`,
+        created_at: new Date().toISOString()
       });
-      activeSyncUnsubscribers.push(unsubMediators);
-
-      // 5. Sync FU Logs (Isolated: ADM_BPKB and ADM_DE are forbidden from fu_logs collection)
-      console.log(`[FS-SYNC-DEBUG] collection=fu_logs operation=onSnapshot firebaseAuthUid=${currentAuthUid} businessUserId=${currentUser.id} role=${currentUser.role} status=${currentUser.status} activeSyncKey=${syncKey}`);
-      const fuLogsCol = collection(db, 'fu_logs');
-      const unsubFuLogs = onSnapshot(fuLogsCol, (snapshot) => {
-        console.log(`[FS-SNAPSHOT] collection=fu_logs documentCount=${snapshot.size}`);
-        const cloudLogs: FULog[] = snapshot.docs.map(docSnap => docSnap.data() as FULog);
-        saveToStorage(STORAGE_KEYS.FU_LOGS, cloudLogs);
-        notifyAllListeners();
-      }, (err) => console.warn('[FS-SYNC-ERROR] collection=fu_logs onSnapshot error:', err));
-      activeSyncUnsubscribers.push(unsubFuLogs);
     }
 
-    // 6. Sync Ex-Customers (Isolated: ADM_DE forbidden)
-    if (currentUser.role !== 'ADM_DE') {
-      console.log(`[FS-SYNC-DEBUG] collection=ex_customers operation=onSnapshot firebaseAuthUid=${currentAuthUid} businessUserId=${currentUser.id} role=${currentUser.role} status=${currentUser.status} activeSyncKey=${syncKey}`);
-      const exCustCol = collection(db, 'ex_customers');
-      const unsubExCust = onSnapshot(exCustCol, (snapshot) => {
-        console.log(`[FS-SNAPSHOT] collection=ex_customers documentCount=${snapshot.size}`);
-        const cloudEx: ExCustomer[] = snapshot.docs.map(docSnap => docSnap.data() as ExCustomer);
-        saveToStorage(STORAGE_KEYS.EX_CUSTOMERS, cloudEx);
-        notifyAllListeners();
-      }, (err) => console.warn('[FS-SYNC-ERROR] collection=ex_customers onSnapshot error:', err));
-      activeSyncUnsubscribers.push(unsubExCust);
+    localStorage.setItem(STORAGE_KEYS.MEDIATORS, JSON.stringify(list));
+    notifySubscribers();
+    return mediator;
+  }
 
-      // 7. Sync Ex-Customer FU Logs (Isolated: ADM_DE forbidden)
-      console.log(`[FS-SYNC-DEBUG] collection=ex_customer_fu_logs operation=onSnapshot firebaseAuthUid=${currentAuthUid} businessUserId=${currentUser.id} role=${currentUser.role} status=${currentUser.status} activeSyncKey=${syncKey}`);
-      const exLogsCol = collection(db, 'ex_customer_fu_logs');
-      const unsubExLogs = onSnapshot(exLogsCol, (snapshot) => {
-        console.log(`[FS-SNAPSHOT] collection=ex_customer_fu_logs documentCount=${snapshot.size}`);
-        const cloudExLogs: ExCustomerFULog[] = snapshot.docs.map(docSnap => docSnap.data() as ExCustomerFULog);
-        saveToStorage(STORAGE_KEYS.EX_CUSTOMER_FU_LOGS, cloudExLogs);
-        notifyAllListeners();
-      }, (err) => console.warn('[FS-SYNC-ERROR] collection=ex_customer_fu_logs onSnapshot error:', err));
-      activeSyncUnsubscribers.push(unsubExLogs);
+  static addDraftMediator(input: Partial<MediatorKontrak>): MediatorKontrak {
+    const list = this.getMediators();
+    let draftNum = list.filter(m => m.status === 'BELUM_AKTIF').length + 1;
+    while (list.some(m => m.kd_med === `DRAFT-${String(draftNum).padStart(3, '0')}`)) {
+      draftNum++;
+    }
+    const tempCode = `DRAFT-${String(draftNum).padStart(3, '0')}`;
+    const tempId = `TMP-${Date.now().toString().slice(-6)}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
+
+    const newMed: MediatorKontrak = {
+      firestore_id: `MED_${Date.now()}`,
+      kd_med: tempCode,
+      temp_id: tempId,
+      nama_mediator: input.nama_mediator || '',
+      no_tlpn: input.no_tlpn || '',
+      kd_cabang: input.kd_cabang || 'C16',
+      kd_posko: input.kd_posko || 'QJ0',
+      kd_ao: input.kd_ao || '',
+      status: 'BELUM_AKTIF',
+      tanggal_bergabung: new Date().toISOString().split('T')[0],
+      no_ktp: input.no_ktp || '',
+      alamat: input.alamat || '',
+      tempat_lahir: input.tempat_lahir || '',
+      tgl_lahir: input.tgl_lahir || '',
+      nama_bank: input.nama_bank || '',
+      no_rekening: input.no_rekening || '',
+      atas_nama_rekening: input.atas_nama_rekening || '',
+      catatan: input.catatan || '',
+      created_by: input.created_by || '',
+      created_at: new Date().toISOString()
+    };
+
+    list.unshift(newMed);
+    localStorage.setItem(STORAGE_KEYS.MEDIATORS, JSON.stringify(list));
+    notifySubscribers();
+    return newMed;
+  }
+
+  static updateMediatorStatus(
+    identifier: string, 
+    status: MediatorKontrak['status'], 
+    newKdMed?: string, 
+    userNama?: string
+  ): boolean {
+    const list = this.getMediators();
+    const idx = list.findIndex(m => m.firestore_id === identifier || m.kd_med === identifier || m.temp_id === identifier);
+    if (idx === -1) return false;
+
+    list[idx].status = status;
+    if (newKdMed) list[idx].kd_med = newKdMed;
+    if (status === 'PENDING') list[idx].reviewed_by = userNama;
+    if (status === 'AKTIF') list[idx].activated_by = userNama;
+    list[idx].updated_at = new Date().toISOString();
+
+    localStorage.setItem(STORAGE_KEYS.MEDIATORS, JSON.stringify(list));
+    notifySubscribers();
+    return true;
+  }
+
+  static deleteMediator(identifier: string): boolean {
+    const list = this.getMediators();
+    const filtered = list.filter(m => m.firestore_id !== identifier && m.kd_med !== identifier && m.temp_id !== identifier);
+    localStorage.setItem(STORAGE_KEYS.MEDIATORS, JSON.stringify(filtered));
+    notifySubscribers();
+    return true;
+  }
+
+  // --- Users ---
+  static getUsers(): User[] {
+    const raw = localStorage.getItem(STORAGE_KEYS.USERS);
+    if (!raw) {
+      localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(INITIAL_USERS));
+      return INITIAL_USERS;
+    }
+    try {
+      return JSON.parse(raw);
+    } catch {
+      return INITIAL_USERS;
+    }
+  }
+
+  static saveUser(user: User): User {
+    const list = this.getUsers();
+    const idx = list.findIndex(u => u.id === user.id || u.username === user.username);
+    if (idx >= 0) {
+      list[idx] = { ...list[idx], ...user, updated_at: new Date().toISOString() };
+    } else {
+      list.push({ ...user, created_at: user.created_at || new Date().toISOString() });
+    }
+    localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(list));
+    notifySubscribers();
+    return user;
+  }
+
+  // --- Cabang & Posko ---
+  static getCabang(): Cabang[] {
+    const raw = localStorage.getItem(STORAGE_KEYS.CABANG);
+    if (!raw) {
+      localStorage.setItem(STORAGE_KEYS.CABANG, JSON.stringify(INITIAL_CABANG));
+      return INITIAL_CABANG;
+    }
+    try {
+      return JSON.parse(raw);
+    } catch {
+      return INITIAL_CABANG;
+    }
+  }
+
+  static getPosko(): Posko[] {
+    const raw = localStorage.getItem(STORAGE_KEYS.POSKO);
+    if (!raw) {
+      localStorage.setItem(STORAGE_KEYS.POSKO, JSON.stringify(INITIAL_POSKO));
+      return INITIAL_POSKO;
+    }
+    try {
+      return JSON.parse(raw);
+    } catch {
+      return INITIAL_POSKO;
+    }
+  }
+
+  // --- Ex-Customers ---
+  static getExCustomers(): ExCustomer[] {
+    const raw = localStorage.getItem(STORAGE_KEYS.EX_CUSTOMERS);
+    if (!raw) {
+      localStorage.setItem(STORAGE_KEYS.EX_CUSTOMERS, JSON.stringify(INITIAL_EX_CUSTOMERS));
+      return INITIAL_EX_CUSTOMERS;
+    }
+    try {
+      return JSON.parse(raw);
+    } catch {
+      return INITIAL_EX_CUSTOMERS;
+    }
+  }
+
+  static saveExCustomer(cust: ExCustomer): ExCustomer {
+    const list = this.getExCustomers();
+    const idx = list.findIndex(c => c.no_psb === cust.no_psb);
+    if (idx >= 0) {
+      list[idx] = { ...list[idx], ...cust, updated_at: new Date().toISOString() };
+    } else {
+      list.unshift({ ...cust, created_at: cust.created_at || new Date().toISOString() });
+    }
+    localStorage.setItem(STORAGE_KEYS.EX_CUSTOMERS, JSON.stringify(list));
+    notifySubscribers();
+    return cust;
+  }
+
+  static addExCustomerFollowUp(log: Omit<ExCustomerFollowUpLog, 'id' | 'created_at'>): ExCustomerFollowUpLog {
+    const logs = this.getExCustomerFollowUps();
+    const newLog: ExCustomerFollowUpLog = {
+      ...log,
+      id: `EXLOG_${Date.now()}`,
+      created_at: new Date().toISOString()
+    };
+    logs.unshift(newLog);
+    localStorage.setItem(STORAGE_KEYS.EX_FOLLOW_UPS, JSON.stringify(logs));
+
+    // Update customer status
+    const custs = this.getExCustomers();
+    const cIdx = custs.findIndex(c => c.no_psb === log.no_psb);
+    if (cIdx >= 0) {
+      custs[cIdx].status_prospek = log.status_baru;
+      custs[cIdx].catatan_terakhir = log.catatan;
+      custs[cIdx].tgl_follow_up_terakhir = log.tanggal;
+      localStorage.setItem(STORAGE_KEYS.EX_CUSTOMERS, JSON.stringify(custs));
     }
 
-    // 8. Sync Audit Logs
-    AuditService.startSync(currentUser, currentAuthUid);
+    notifySubscribers();
+    return newLog;
+  }
 
-  } catch (e) {
-    console.warn('Firebase sync listener setup failed:', e);
+  static getExCustomerFollowUps(): ExCustomerFollowUpLog[] {
+    const raw = localStorage.getItem(STORAGE_KEYS.EX_FOLLOW_UPS);
+    if (!raw) return [];
+    try {
+      return JSON.parse(raw);
+    } catch {
+      return [];
+    }
+  }
+
+  // --- Follow Up Mediator ---
+  static getFollowUps(): FollowUpLog[] {
+    const raw = localStorage.getItem(STORAGE_KEYS.FOLLOW_UPS);
+    if (!raw) return [];
+    try {
+      return JSON.parse(raw);
+    } catch {
+      return [];
+    }
+  }
+
+  static addFollowUp(log: Omit<FollowUpLog, 'id' | 'created_at'>): FollowUpLog {
+    const logs = this.getFollowUps();
+    const newLog: FollowUpLog = {
+      ...log,
+      id: `FU_${Date.now()}`,
+      created_at: new Date().toISOString()
+    };
+    logs.unshift(newLog);
+    localStorage.setItem(STORAGE_KEYS.FOLLOW_UPS, JSON.stringify(logs));
+    notifySubscribers();
+    return newLog;
+  }
+
+  // --- Activity Logs ---
+  static getLogs(): ActivityLog[] {
+    const raw = localStorage.getItem(STORAGE_KEYS.LOGS);
+    if (!raw) return [];
+    try {
+      return JSON.parse(raw);
+    } catch {
+      return [];
+    }
+  }
+
+  static logActivity(userId: string, username: string, action: string, module: string, details: string) {
+    const logs = this.getLogs();
+    logs.unshift({
+      id: `ACT_${Date.now()}`,
+      timestamp: new Date().toISOString(),
+      user_id: userId,
+      username,
+      action,
+      module,
+      details
+    });
+    localStorage.setItem(STORAGE_KEYS.LOGS, JSON.stringify(logs.slice(0, 500)));
   }
 }
 
-export function initializeFirebaseSync(user?: User | null, authenticatedUid?: string | null) {
-  startFirebaseSync(user || null, authenticatedUid || null);
-}
-
-// Master Data APIs
+// -------------------------------------------------------------
+// DatabaseService: Unified Database facade supporting real-time Firestore sync & Local Storage
+// -------------------------------------------------------------
 export const DatabaseService = {
-  subscribe(listener: StorageListener): () => void {
-    listeners.add(listener);
-    return () => listeners.delete(listener);
-  },
-
-  // Cabang & Posko Management
-  getCabangList(): Cabang[] {
-    return getInitialOrStored<Cabang[]>(STORAGE_KEYS.CABANG, INITIAL_CABANG);
-  },
-
-  async saveCabang(cabang: Cabang, isEdit: boolean = false, oldKdCabang?: string): Promise<{ success: boolean; message: string }> {
-    const list = this.getCabangList();
-    const cleanKd = cabang.kd_cabang.trim().toUpperCase();
-    const cleanNama = cabang.nama_cabang.trim().toUpperCase();
-    const cleanWilayah = cabang.wilayah ? cabang.wilayah.trim() : 'Wilayah 1';
-
-    if (!cleanKd || !cleanNama) {
-      return { success: false, message: 'Kode Cabang dan Nama Cabang wajib diisi!' };
-    }
-
-    const duplicateIndex = list.findIndex(c => c.kd_cabang.toUpperCase() === cleanKd);
-    if (!isEdit && duplicateIndex >= 0) {
-      return { success: false, message: `Kode Cabang "${cleanKd}" sudah ada!` };
-    }
-
-    const newRecord: Cabang = { kd_cabang: cleanKd, nama_cabang: cleanNama, wilayah: cleanWilayah };
-
-    if (db) {
-      try {
-        const docId = sanitizeDocId(cleanKd);
-        await setDoc(doc(db, 'cabang', docId), cleanForFirestore(newRecord));
-        logFirestoreWrite({
-          collection: 'cabang',
-          documentId: cleanKd,
-          result: 'SUCCESS'
-        });
-
-        if (isEdit && oldKdCabang && cleanKd !== oldKdCabang.toUpperCase()) {
-          await deleteDoc(doc(db, 'cabang', sanitizeDocId(oldKdCabang))).catch(() => {});
-        }
-      } catch (err: any) {
-        logFirestoreWrite({
-          collection: 'cabang',
-          documentId: cleanKd,
-          result: 'FAILED',
-          errorCode: err?.code,
-          errorMessage: err?.message
-        });
-        return {
-          success: false,
-          message: `Gagal menyimpan cabang ke Firestore: ${err?.message || 'Permission denied'}`
-        };
-      }
-    }
-
-    if (isEdit && oldKdCabang) {
-      const editIndex = list.findIndex(c => c.kd_cabang.toUpperCase() === oldKdCabang.toUpperCase());
-      if (editIndex >= 0) {
-        list[editIndex] = newRecord;
-      } else {
-        list.push(newRecord);
-      }
-    } else {
-      list.push(newRecord);
-    }
-
-    saveToStorage(STORAGE_KEYS.CABANG, list);
-    notifyAllListeners();
-    return { success: true, message: `Cabang ${cleanKd} (${cleanNama}) berhasil disimpan!` };
-  },
-
-  async deleteCabang(kd_cabang: string): Promise<{ success: boolean; message: string }> {
-    const cleanKd = kd_cabang.toUpperCase();
-
-    if (db) {
-      try {
-        await deleteDoc(doc(db, 'cabang', sanitizeDocId(cleanKd)));
-        logFirestoreWrite({
-          collection: 'cabang',
-          documentId: cleanKd,
-          result: 'SUCCESS'
-        });
-      } catch (err: any) {
-        logFirestoreWrite({
-          collection: 'cabang',
-          documentId: cleanKd,
-          result: 'FAILED',
-          errorCode: err?.code,
-          errorMessage: err?.message
-        });
-        return { success: false, message: `Gagal menghapus cabang: ${err?.message || 'Permission denied'}` };
-      }
-    }
-
-    const cabangList = this.getCabangList().filter(c => c.kd_cabang.toUpperCase() !== cleanKd);
-    saveToStorage(STORAGE_KEYS.CABANG, cabangList);
-
-    const poskoList = this.getPoskoList().filter(p => p.kd_cabang.toUpperCase() !== cleanKd);
-    saveToStorage(STORAGE_KEYS.POSKO, poskoList);
-
-    notifyAllListeners();
-    return { success: true, message: `Cabang ${cleanKd} berhasil dihapus.` };
-  },
-
-  getPoskoList(): Posko[] {
-    return getInitialOrStored<Posko[]>(STORAGE_KEYS.POSKO, INITIAL_POSKO);
-  },
-
-  async savePosko(posko: Posko, isEdit: boolean = false, oldKdPosko?: string): Promise<{ success: boolean; message: string }> {
-    const list = this.getPoskoList();
-    const cleanKd = posko.kd_posko.trim().toUpperCase();
-    const cleanNama = posko.nama_posko.trim().toUpperCase();
-    const cleanCabang = posko.kd_cabang.trim().toUpperCase();
-
-    if (!cleanKd || !cleanNama || !cleanCabang) {
-      return { success: false, message: 'Kode Posko, Nama Posko, dan Cabang Induk wajib diisi!' };
-    }
-
-    const duplicateIndex = list.findIndex(p => p.kd_posko.toUpperCase() === cleanKd);
-    if (!isEdit && duplicateIndex >= 0) {
-      return { success: false, message: `Kode Posko "${cleanKd}" sudah ada!` };
-    }
-
-    const newRecord: Posko = { kd_posko: cleanKd, nama_posko: cleanNama, kd_cabang: cleanCabang };
-
-    if (db) {
-      try {
-        const docId = sanitizeDocId(cleanKd);
-        await setDoc(doc(db, 'posko', docId), cleanForFirestore(newRecord));
-        logFirestoreWrite({
-          collection: 'posko',
-          documentId: cleanKd,
-          result: 'SUCCESS'
-        });
-
-        if (isEdit && oldKdPosko && cleanKd !== oldKdPosko.toUpperCase()) {
-          await deleteDoc(doc(db, 'posko', sanitizeDocId(oldKdPosko))).catch(() => {});
-        }
-      } catch (err: any) {
-        logFirestoreWrite({
-          collection: 'posko',
-          documentId: cleanKd,
-          result: 'FAILED',
-          errorCode: err?.code,
-          errorMessage: err?.message
-        });
-        return {
-          success: false,
-          message: `Gagal menyimpan posko ke Firestore: ${err?.message || 'Permission denied'}`
-        };
-      }
-    }
-
-    if (isEdit && oldKdPosko) {
-      const editIndex = list.findIndex(p => p.kd_posko.toUpperCase() === oldKdPosko.toUpperCase());
-      if (editIndex >= 0) {
-        list[editIndex] = newRecord;
-      } else {
-        list.push(newRecord);
-      }
-    } else {
-      list.push(newRecord);
-    }
-
-    saveToStorage(STORAGE_KEYS.POSKO, list);
-    notifyAllListeners();
-    return { success: true, message: `Posko ${cleanKd} (${cleanNama}) berhasil disimpan!` };
-  },
-
-  async deletePosko(kd_posko: string): Promise<{ success: boolean; message: string }> {
-    const cleanKd = kd_posko.toUpperCase();
-
-    if (db) {
-      try {
-        await deleteDoc(doc(db, 'posko', sanitizeDocId(cleanKd)));
-        logFirestoreWrite({
-          collection: 'posko',
-          documentId: cleanKd,
-          result: 'SUCCESS'
-        });
-      } catch (err: any) {
-        logFirestoreWrite({
-          collection: 'posko',
-          documentId: cleanKd,
-          result: 'FAILED',
-          errorCode: err?.code,
-          errorMessage: err?.message
-        });
-        return { success: false, message: `Gagal menghapus posko: ${err?.message || 'Permission denied'}` };
-      }
-    }
-
-    const poskoList = this.getPoskoList().filter(p => p.kd_posko.toUpperCase() !== cleanKd);
-    saveToStorage(STORAGE_KEYS.POSKO, poskoList);
-
-    notifyAllListeners();
-    return { success: true, message: `Posko ${cleanKd} berhasil dihapus.` };
-  },
-
-  getPoskoByCabang(kd_cabang: string): Posko[] {
-    const cleanKd = kd_cabang.toUpperCase();
-    return this.getPoskoList().filter(p => p.kd_cabang.toUpperCase() === cleanKd);
-  },
-
-  // User Management
   getUsers(): User[] {
-    const raw = getInitialOrStored<User[]>(STORAGE_KEYS.USERS, INITIAL_USERS);
-    let hasMigrated = false;
-    const migrated = raw.map(u => {
-      if (u.role === 'ADMIN_BPKB') {
-        hasMigrated = true;
-        return {
-          ...u,
-          role: 'ADM_BPKB' as UserRole,
-          kd_ao: (u.kd_ao === 'BPKB-C16' || !u.kd_ao) ? 'ADM BPKB' : u.kd_ao,
-          nama: u.nama.includes('BPKB ADMIN') ? u.nama.replace('BPKB ADMIN', 'ADM BPKB') : u.nama
-        };
-      }
-      return u;
-    });
-    if (hasMigrated) {
-      saveToStorage(STORAGE_KEYS.USERS, migrated);
-    }
-    return migrated;
+    return StorageService.getUsers();
   },
 
-  async saveUser(user: User, isEdit: boolean = false): Promise<{ success: boolean; message: string }> {
-    const users = this.getUsers();
-    if (!user.username.trim() || !user.nama.trim()) {
-      return { success: false, message: 'Username dan Nama wajib diisi!' };
-    }
-
-    const cleanUsername = user.username.trim().toLowerCase();
-    const cleanNama = user.nama.trim().toUpperCase();
-    const cleanAo = (user.kd_ao || user.username).trim().toUpperCase();
-
-    // Clear branch/posko for national roles
-    if (user.role === 'SUPER_ADMIN' || user.role === 'RM' || user.role === 'ADM_BPKB' || user.role === 'ADMIN_BPKB') {
-      user.kd_cabang = undefined;
-      user.kd_posko = undefined;
-    }
-
-    // Check duplicate username (excluding current user on edit)
-    const existingUserIndex = users.findIndex(
-      u => u.username.toLowerCase() === cleanUsername && (!isEdit || u.id !== user.id)
-    );
-    if (existingUserIndex >= 0) {
-      return { success: false, message: `Username "${cleanUsername}" sudah digunakan oleh akun lain! Username harus unik.` };
-    }
-
-    // Check duplicate Kode AO (excluding current user on edit)
-    if (cleanAo) {
-      const existingAoIndex = users.findIndex(
-        u => (u.kd_ao || '').toUpperCase() === cleanAo && (!isEdit || u.id !== user.id)
-      );
-      if (existingAoIndex >= 0) {
-        return { success: false, message: `Kode AO "${cleanAo}" sudah digunakan oleh pengguna "${users[existingAoIndex].nama}"! Kode AO harus unik.` };
-      }
-    }
-
-    let savedUser: User;
-
-    if (isEdit) {
-      const editIndex = users.findIndex(u => u.id === user.id);
-      if (editIndex >= 0) {
-        savedUser = {
-          ...users[editIndex],
+  async saveUser(user: User, isUpdate = true): Promise<{ success: boolean; message: string }> {
+    StorageService.saveUser(user);
+    if (db) {
+      try {
+        const docRef = doc(db, 'users', user.id);
+        await setDoc(docRef, {
           ...user,
-          username: cleanUsername,
-          nama: cleanNama,
-          kd_ao: cleanAo,
-          password: user.password || users[editIndex].password || '1234',
-        };
-      } else {
-        savedUser = { ...user, username: cleanUsername, nama: cleanNama, kd_ao: cleanAo };
-      }
-    } else {
-      savedUser = {
-        ...user,
-        id: user.id || `USR-${Date.now().toString().slice(-6)}`,
-        username: cleanUsername,
-        nama: cleanNama,
-        kd_ao: cleanAo,
-        password: user.password || 'test1234',
-        must_change_password: true,
-        status: user.status || 'AKTIF'
-      };
-    }
-
-    if (db) {
-      try {
-        const docId = sanitizeDocId(savedUser.id);
-        await setDoc(doc(db, 'users', docId), cleanForFirestore(savedUser));
-        logFirestoreWrite({
-          collection: 'users',
-          documentId: savedUser.id,
-          result: 'SUCCESS'
-        });
-
-        if (savedUser.firebase_uid) {
-          await setDoc(doc(db, 'user_auth', sanitizeDocId(savedUser.firebase_uid)), cleanForFirestore({
-            user_id: savedUser.id,
-            linked_at: new Date().toISOString(),
-            email: savedUser.email,
-            status: savedUser.status
-          }), { merge: true }).catch(() => {});
-        }
+          updated_at: new Date().toISOString(),
+          updated_at_timestamp: serverTimestamp()
+        }, { merge: true });
       } catch (err: any) {
-        logFirestoreWrite({
-          collection: 'users',
-          documentId: savedUser.id,
-          result: 'FAILED',
-          errorCode: err?.code,
-          errorMessage: err?.message
-        });
-        return {
-          success: false,
-          message: `Gagal menyimpan user ke Firestore: ${err?.message || 'Permission denied'}`
-        };
+        console.warn('Firestore user save note:', err?.message || err);
       }
     }
-
-    if (isEdit) {
-      const editIndex = users.findIndex(u => u.id === user.id);
-      if (editIndex >= 0) {
-        users[editIndex] = savedUser;
-      } else {
-        users.push(savedUser);
-      }
-    } else {
-      users.push(savedUser);
-    }
-
-    saveToStorage(STORAGE_KEYS.USERS, users);
-    notifyAllListeners();
-
-    const currentUser = this.getStoredAuthUser();
-    AuditService.record(
-      currentUser || { id: 'SYSTEM', nama: 'System', role: 'SUPER_ADMIN' },
-      'USER_MANAGEMENT',
-      isEdit ? 'UPDATE_USER' : 'CREATE_USER',
-      `${isEdit ? 'Memperbarui' : 'Membuat'} akun pengguna "${savedUser.nama}" (@${cleanUsername} - Role: ${savedUser.role})`,
-      savedUser.id,
-      { role: savedUser.role, kd_ao: savedUser.kd_ao, kd_cabang: savedUser.kd_cabang, kd_posko: savedUser.kd_posko }
-    );
-
-    return { success: true, message: `Akun "${user.nama}" (@${cleanUsername} / ${cleanAo}) berhasil disimpan ke sistem cloud!` };
-  },
-
-  async resetUserPassword(userId: string): Promise<{ success: boolean; message: string }> {
-    const users = this.getUsers();
-    const userIndex = users.findIndex(u => u.id === userId);
-    if (userIndex === -1) {
-      return { success: false, message: 'Pengguna tidak ditemukan!' };
-    }
-
-    const updatedUser: User = {
-      ...users[userIndex],
-      password: 'test1234',
-      must_change_password: true,
-      last_password_change: new Date().toISOString()
-    };
-
-    if (db) {
-      try {
-        await setDoc(doc(db, 'users', sanitizeDocId(updatedUser.id)), cleanForFirestore(updatedUser));
-        logFirestoreWrite({
-          collection: 'users',
-          documentId: updatedUser.id,
-          result: 'SUCCESS'
-        });
-      } catch (err: any) {
-        logFirestoreWrite({
-          collection: 'users',
-          documentId: updatedUser.id,
-          result: 'FAILED',
-          errorCode: err?.code,
-          errorMessage: err?.message
-        });
-        return {
-          success: false,
-          message: `Gagal reset password di Firestore: ${err?.message || 'Permission denied'}`
-        };
-      }
-    }
-
-    users[userIndex] = updatedUser;
-    saveToStorage(STORAGE_KEYS.USERS, users);
-    notifyAllListeners();
-
-    const currentUser = this.getStoredAuthUser();
-    AuditService.record(
-      currentUser || { id: 'SYSTEM', nama: 'Super Admin', role: 'SUPER_ADMIN' },
-      'USER_MANAGEMENT',
-      'RESET_PASSWORD',
-      `Mereset password pengguna "${updatedUser.nama}" (@${updatedUser.username}) kembali ke default "test1234" (Wajib ganti password)`,
-      updatedUser.id
-    );
-
-    return { 
-      success: true, 
-      message: `Password akun ${updatedUser.nama} berhasil direset ke "test1234". Pengguna wajib mengganti password saat login berikutnya.` 
-    };
+    return { success: true, message: 'Data user berhasil disimpan' };
   },
 
   async changeUserPassword(userId: string, newPassword: string): Promise<{ success: boolean; message: string }> {
-    const users = this.getUsers();
-    const userIndex = users.findIndex(u => u.id === userId);
-    if (userIndex === -1) {
-      return { success: false, message: 'Pengguna tidak ditemukan!' };
+    const users = StorageService.getUsers();
+    const idx = users.findIndex(u => u.id === userId);
+    if (idx === -1) {
+      return { success: false, message: 'User tidak ditemukan' };
     }
-
-    if (!newPassword || newPassword.length < 6) {
-      return { success: false, message: 'Password harus memiliki panjang minimal 6 karakter!' };
-    }
-
-    const trimmedPassword = newPassword.trim();
-    if (trimmedPassword === '1234' || trimmedPassword === 'test1234' || trimmedPassword === 'password') {
-      return { success: false, message: 'Password baru tidak boleh menggunakan kata sandi bawaan/default sistem!' };
-    }
-
-    const updatedUser: User = {
-      ...users[userIndex],
-      password: trimmedPassword,
-      must_change_password: false,
-      last_password_change: new Date().toISOString()
-    };
+    users[idx].password = newPassword;
+    users[idx].must_change_password = false;
+    users[idx].updated_at = new Date().toISOString();
+    localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(users));
+    notifySubscribers();
 
     if (db) {
       try {
-        await setDoc(doc(db, 'users', sanitizeDocId(updatedUser.id)), cleanForFirestore(updatedUser));
-        logFirestoreWrite({
-          collection: 'users',
-          documentId: updatedUser.id,
-          result: 'SUCCESS'
-        });
+        const docRef = doc(db, 'users', userId);
+        await setDoc(docRef, {
+          password: newPassword,
+          must_change_password: false,
+          updated_at: new Date().toISOString()
+        }, { merge: true });
       } catch (err: any) {
-        logFirestoreWrite({
-          collection: 'users',
-          documentId: updatedUser.id,
-          result: 'FAILED',
-          errorCode: err?.code,
-          errorMessage: err?.message
-        });
-        return {
-          success: false,
-          message: `Gagal mengubah password di Firestore: ${err?.message || 'Permission denied'}`
-        };
+        console.warn('Firestore password change note:', err?.message || err);
       }
     }
 
-    users[userIndex] = updatedUser;
-    saveToStorage(STORAGE_KEYS.USERS, users);
-    notifyAllListeners();
-
-    AuditService.record(
-      { id: updatedUser.id, nama: updatedUser.nama, role: updatedUser.role, kd_ao: updatedUser.kd_ao },
-      'AUTH',
-      'CHANGE_PASSWORD',
-      `Pengguna "${updatedUser.nama}" memperbarui kata sandi`,
-      updatedUser.id
-    );
-
-    return { success: true, message: 'Password berhasil diperbarui!' };
+    return { success: true, message: 'Password berhasil diubah' };
   },
 
-  async deleteUser(userId: string): Promise<{ success: boolean; message: string }> {
-    const users = this.getUsers();
-    const targetUser = users.find(u => u.id === userId);
-
-    if (db) {
-      try {
-        await deleteDoc(doc(db, 'users', sanitizeDocId(userId)));
-        if (targetUser?.firebase_uid) {
-          await deleteDoc(doc(db, 'user_auth', sanitizeDocId(targetUser.firebase_uid))).catch(() => {});
-        }
-        logFirestoreWrite({
-          collection: 'users',
-          documentId: userId,
-          result: 'SUCCESS'
-        });
-      } catch (err: any) {
-        logFirestoreWrite({
-          collection: 'users',
-          documentId: userId,
-          result: 'FAILED',
-          errorCode: err?.code,
-          errorMessage: err?.message
-        });
-        return { success: false, message: `Gagal menghapus user di Firestore: ${err?.message || 'Permission denied'}` };
-      }
-    }
-
-    const filtered = users.filter(u => u.id !== userId);
-    saveToStorage(STORAGE_KEYS.USERS, filtered);
-    notifyAllListeners();
-
-    const currentUser = this.getStoredAuthUser();
-    AuditService.record(
-      currentUser || { id: 'SYSTEM', nama: 'Super Admin', role: 'SUPER_ADMIN' },
-      'USER_MANAGEMENT',
-      'DELETE_USER',
-      `Menghapus akun pengguna "${targetUser?.nama || userId}" (@${targetUser?.username || '-'})`,
-      userId
-    );
-
-    return { success: true, message: 'User berhasil dihapus.' };
+  async resetUserPassword(userId: string): Promise<{ success: boolean; message: string }> {
+    const defaultPassword = 'password123';
+    return this.changeUserPassword(userId, defaultPassword);
   },
 
-  // Helper to resolve the exact Firestore document ID for a mediator
-  async resolveMediatorDocId(mediator: MediatorKontrak): Promise<string> {
-    if (!db) {
-      return sanitizeDocId(mediator.firestore_id || mediator.kd_med || mediator.temp_id || 'unknown');
-    }
-
-    // 1. If we already have the exact firestore doc id recorded from a snapshot
-    if (mediator.firestore_id) {
-      return sanitizeDocId(mediator.firestore_id);
-    }
-
-    const cleanKdMed = mediator.kd_med ? sanitizeDocId(mediator.kd_med) : '';
-    const cleanTempId = mediator.temp_id ? sanitizeDocId(mediator.temp_id) : '';
-
-    // 2. Check if cleanKdMed document exists in Firestore (especially for active/imported mediators)
-    if (cleanKdMed && !cleanKdMed.startsWith('DRAFT-') && !cleanKdMed.startsWith('PENDING-')) {
-      try {
-        const snap = await getDoc(doc(db, 'mediators', cleanKdMed));
-        if (snap.exists()) {
-          return cleanKdMed;
-        }
-      } catch {
-        // ignore error and proceed
-      }
-    }
-
-    // 3. Check if cleanTempId document exists in Firestore
-    if (cleanTempId) {
-      try {
-        const snap = await getDoc(doc(db, 'mediators', cleanTempId));
-        if (snap.exists()) {
-          return cleanTempId;
-        }
-      } catch {
-        // ignore error and proceed
-      }
-    }
-
-    // 4. Default heuristic: active/validated mediators use kd_med, unvalidated/drafts use temp_id
-    if (cleanKdMed && !cleanKdMed.startsWith('DRAFT-') && !cleanKdMed.startsWith('PENDING-')) {
-      return cleanKdMed;
-    }
-    return cleanTempId || cleanKdMed || 'unknown';
+  getCabangList(): Cabang[] {
+    return StorageService.getCabang();
   },
 
-  // Mediator Management
+  getPoskoList(): Posko[] {
+    return StorageService.getPosko();
+  },
+
   getMediators(): MediatorKontrak[] {
-    return getInitialOrStored<MediatorKontrak[]>(STORAGE_KEYS.MEDIATORS, INITIAL_MEDIATORS);
+    return StorageService.getMediators();
   },
 
-  async submitMediator(params: {
-    nama_mediator: string;
-    no_tlpn: string;
-    kd_ao: string;
-    kd_posko: string;
-    kd_cabang: string;
-    catatan_admin?: string;
-    created_by_user: string;
-    created_by_role: string;
-  }): Promise<{ success: boolean; message: string; data?: MediatorKontrak }> {
-    const mediators = this.getMediators();
-
-    if (!params.nama_mediator?.trim()) {
-      return { success: false, message: 'Nama mediator wajib diisi!' };
-    }
-
-    if (params.nama_mediator.trim().length > 100) {
-      return { success: false, message: 'Nama mediator melebihi batas maksimal 100 karakter!' };
-    }
-
-    if (!params.no_tlpn?.trim()) {
-      return { success: false, message: 'Nomor telepon wajib diisi!' };
-    }
-
-    const cleanRole = (params.created_by_role as UserRole) || 'CMO';
-    const cleanAo = (params.kd_ao || '').trim().toUpperCase();
-    const cleanCabang = (params.kd_cabang || '').trim().toUpperCase();
-    const cleanPosko = (params.kd_posko || '').trim().toUpperCase();
-
-    // Strict Scope Verification before interacting with Firestore
-    if (cleanRole === 'CMO') {
-      if (!cleanAo || !cleanCabang || !cleanPosko) {
-        return {
-          success: false,
-          message: 'Data scope CMO tidak lengkap (Kode AO, Cabang, dan Posko wajib ada). Silakan hubungi Administrator.'
-        };
-      }
-    } else if (cleanRole === 'KAPOS' || cleanRole === 'ADM') {
-      if (!cleanCabang || !cleanPosko) {
-        return {
-          success: false,
-          message: `Data scope ${cleanRole} tidak lengkap (Cabang dan Posko wajib ada).`
-        };
-      }
-    } else if (cleanRole === 'KAOPS') {
-      if (!cleanCabang) {
-        return {
-          success: false,
-          message: 'Data scope KAOPS tidak lengkap (Cabang wajib ada).'
-        };
-      }
-    }
-
-    const draftCount = mediators.filter(m => m.status === 'BELUM_AKTIF').length + 1;
-    const tempCode = `DRAFT-${String(draftCount).padStart(3, '0')}`;
-    const tempId = `TMP-${Date.now().toString().slice(-6)}`;
-
-    const newMediator: MediatorKontrak = {
-      kd_med: tempCode,
-      temp_id: tempId,
-      nama_mediator: params.nama_mediator.trim().toUpperCase(),
-      no_tlpn: params.no_tlpn.trim(),
-      status: 'BELUM_AKTIF',
-      kd_ao: cleanAo,
-      kd_posko: cleanPosko,
-      kd_cabang: cleanCabang,
-      tgl_akhir_fu: null,
-      created_at: new Date().toISOString(),
-      created_by_user: (params.created_by_user || 'Petugas Registrasi').trim(),
-      created_by_role: cleanRole,
-      catatan_admin: (params.catatan_admin || '').trim(),
-    };
-
-    const currentAuthUid = auth?.currentUser?.uid || null;
-    const currentProjectId = firebaseConfigData?.projectId || 'kamm-manado';
-    const currentDbId = (firebaseConfigData as any)?.firestoreDatabaseId || 'ai-studio-mediatorkontrakm-919304e3-4fb7-4025-a4e8-2c90f5b0fe3e';
-    const docId = sanitizeDocId(newMediator.temp_id || newMediator.kd_med);
-
-    console.log('[FORENSIC-MEDIATOR-WRITE-START]', {
-      projectId: currentProjectId,
-      databaseId: currentDbId,
-      collection: 'mediators',
-      documentId: docId,
-      authUid: currentAuthUid,
-      userId: (params as any)?.userId || cleanAo,
-      role: cleanRole,
-      status: newMediator.status,
-      kd_ao: newMediator.kd_ao,
-      kd_cabang: newMediator.kd_cabang,
-      kd_posko: newMediator.kd_posko
-    });
-
-    console.log('[FORENSIC-MEDIATOR-WRITE]', {
-      projectId: currentProjectId,
-      databaseId: currentDbId,
-      collection: 'mediators',
-      documentId: docId,
-      authUid: currentAuthUid,
-      status: newMediator.status,
-      kd_ao: newMediator.kd_ao,
-      kd_cabang: newMediator.kd_cabang,
-      kd_posko: newMediator.kd_posko
-    });
-
-    if (db) {
+  saveMediator(mediator: MediatorKontrak): MediatorKontrak {
+    const res = StorageService.saveMediator(mediator);
+    if (db && mediator.kd_med) {
       try {
-        await setDoc(doc(db, 'mediators', docId), cleanForFirestore(newMediator));
-        
-        console.log('[FORENSIC-MEDIATOR-RESULT]', {
-          result: 'SUCCESS',
-          documentId: docId,
-          projectId: currentProjectId,
-          databaseId: currentDbId,
-          authUid: currentAuthUid
-        });
-
-        logFirestoreWrite({
-          collection: 'mediators',
-          documentId: docId,
-          operation: 'create',
-          method: 'setDoc',
-          role: cleanRole,
-          result: 'SUCCESS'
-        });
-      } catch (err: any) {
-        const errorCode = err?.code || 'unknown';
-        const errorMessage = err?.message || String(err);
-
-        console.error('[FORENSIC-FIRESTORE-DENIED]', {
-          operation: 'create',
-          path: `mediators/${docId}`,
-          method: 'setDoc',
-          projectId: currentProjectId,
-          databaseId: currentDbId,
-          authUid: currentAuthUid,
-          errorCode,
-          errorMessage
-        });
-
-        console.error('[FORENSIC-MEDIATOR-ERROR]', {
-          result: 'FAILED',
-          documentId: docId,
-          errorCode,
-          errorMessage,
-          projectId: currentProjectId,
-          databaseId: currentDbId,
-          authUid: currentAuthUid,
-          payloadSummary: {
-            status: newMediator.status,
-            kd_ao: newMediator.kd_ao,
-            kd_cabang: newMediator.kd_cabang,
-            kd_posko: newMediator.kd_posko
-          }
-        });
-
-        logFirestoreWrite({
-          collection: 'mediators',
-          documentId: docId,
-          operation: 'create',
-          method: 'setDoc',
-          role: cleanRole,
-          result: 'FAILED',
-          errorCode,
-          errorMessage
-        });
-        return {
-          success: false,
-          message: `Gagal menyimpan mediator ke Firestore: ${errorMessage || 'Permission denied'}`
-        };
-      }
+        const docRef = doc(db, 'mediators', mediator.kd_med);
+        setDoc(docRef, { ...res, updated_at_timestamp: serverTimestamp() }, { merge: true }).catch(() => {});
+      } catch {}
     }
-
-    mediators.push(newMediator);
-    saveToStorage(STORAGE_KEYS.MEDIATORS, mediators);
-    notifyAllListeners();
-
-    return { 
-      success: true, 
-      message: `Mediator "${newMediator.nama_mediator}" berhasil diajukan dengan status BELUM AKTIF (${tempCode}). Menunggu peninjauan berkas oleh Admin.`,
-      data: newMediator
-    };
-  },
-
-  async registerMediator(params: {
-    nama_mediator: string;
-    no_tlpn: string;
-    kd_ao?: string;
-    kd_posko: string;
-    kd_cabang: string;
-    created_by_user?: string;
-    created_by_role?: any;
-    catatan_admin?: string;
-  }): Promise<{ success: boolean; message: string; data?: MediatorKontrak }> {
-    return this.submitMediator({
-      nama_mediator: params.nama_mediator,
-      no_tlpn: params.no_tlpn,
-      kd_ao: params.kd_ao || '',
-      kd_posko: params.kd_posko || '',
-      kd_cabang: params.kd_cabang || '',
-      created_by_user: params.created_by_user || 'Petugas Registrasi',
-      created_by_role: params.created_by_role || 'CMO',
-      catatan_admin: params.catatan_admin
-    });
-  },
-
-  // Tahap 2: Admin melakukan peninjauan berkas -> Mengubah status BELUM_AKTIF menjadi PENDING
-  async reviewAndApproveToPending(params: {
-    targetTempOrCode: string;
-    reviewed_by: string;
-    catatan_admin?: string;
-  }): Promise<{ success: boolean; message: string }> {
-    const mediators = this.getMediators();
-    const index = mediators.findIndex(
-      m => m.kd_med === params.targetTempOrCode || m.temp_id === params.targetTempOrCode
-    );
-
-    if (index === -1) {
-      return { success: false, message: 'Data mediator tidak ditemukan!' };
-    }
-
-    const pendingCount = mediators.filter(m => m.status === 'PENDING').length + 1;
-    const pendingCode = `PENDING-${String(pendingCount).padStart(3, '0')}`;
-    const oldCode = mediators[index].kd_med;
-
-    const updatedMed: MediatorKontrak = {
-      ...mediators[index],
-      status: 'PENDING',
-      kd_med: pendingCode,
-      reviewed_at: new Date().toISOString(),
-      reviewed_by: params.reviewed_by,
-      catatan_admin: params.catatan_admin !== undefined ? params.catatan_admin : mediators[index].catatan_admin
-    };
-
-    if (db) {
-      const docId = await this.resolveMediatorDocId(mediators[index]);
-      try {
-        await setDoc(doc(db, 'mediators', docId), cleanForFirestore(updatedMed), { merge: true });
-        logFirestoreWrite({
-          collection: 'mediators',
-          documentId: docId,
-          result: 'SUCCESS'
-        });
-      } catch (err: any) {
-        logFirestoreWrite({
-          collection: 'mediators',
-          documentId: docId,
-          result: 'FAILED',
-          errorCode: err?.code,
-          errorMessage: err?.message
-        });
-        return {
-          success: false,
-          message: `Gagal memperbarui status mediator di Firestore: ${err?.message || 'Permission denied'}`
-        };
-      }
-    }
-
-    mediators[index] = updatedMed;
-    saveToStorage(STORAGE_KEYS.MEDIATORS, mediators);
-    notifyAllListeners();
-
-    return {
-      success: true,
-      message: `Mediator "${updatedMed.nama_mediator}" disetujui (Status: PENDING - ${pendingCode}). Siap untuk penetapan KD MED oleh KAOPS / Super Admin.`
-    };
-  },
-
-  // Admin atau KAPOS menolak pengajuan
-  async rejectMediator(params: {
-    targetTempOrCode: string;
-    rejected_by: string;
-    alasan: string;
-  }): Promise<{ success: boolean; message: string }> {
-    const mediators = this.getMediators();
-    const index = mediators.findIndex(
-      m => m.kd_med === params.targetTempOrCode || m.temp_id === params.targetTempOrCode
-    );
-
-    if (index === -1) {
-      return { success: false, message: 'Data mediator tidak ditemukan!' };
-    }
-
-    const updatedMed: MediatorKontrak = {
-      ...mediators[index],
-      status: 'DITOLAK',
-      catatan_admin: `[DITOLAK oleh ${params.rejected_by}]: ${params.alasan.trim()}`
-    };
-
-    if (db) {
-      const docId = await this.resolveMediatorDocId(mediators[index]);
-      try {
-        await setDoc(doc(db, 'mediators', docId), cleanForFirestore(updatedMed), { merge: true });
-        logFirestoreWrite({
-          collection: 'mediators',
-          documentId: docId,
-          result: 'SUCCESS'
-        });
-      } catch (err: any) {
-        logFirestoreWrite({
-          collection: 'mediators',
-          documentId: docId,
-          result: 'FAILED',
-          errorCode: err?.code,
-          errorMessage: err?.message
-        });
-        return {
-          success: false,
-          message: `Gagal menolak mediator di Firestore: ${err?.message || 'Permission denied'}`
-        };
-      }
-    }
-
-    mediators[index] = updatedMed;
-    saveToStorage(STORAGE_KEYS.MEDIATORS, mediators);
-    notifyAllListeners();
-
-    return {
-      success: true,
-      message: `Pendaftaran mediator "${updatedMed.nama_mediator}" telah ditolak.`
-    };
-  },
-
-  async validateAndActivateKdMed(params: {
-    targetTempOrCode: string;
-    new_kd_med: string;
-    validated_by: string;
-  }): Promise<{ success: boolean; message: string }> {
-    const mediators = this.getMediators();
-    const cleanKdMed = params.new_kd_med.trim().toUpperCase();
-
-    if (!cleanKdMed) {
-      return { success: false, message: 'Kode Mediator (KD MED) tidak boleh kosong!' };
-    }
-
-    const duplicate = mediators.find(
-      m => m.kd_med.toUpperCase() === cleanKdMed && (m.temp_id !== params.targetTempOrCode && m.kd_med !== params.targetTempOrCode)
-    );
-    if (duplicate) {
-      return { success: false, message: `Kode Mediator "${cleanKdMed}" sudah terdaftar untuk mediator "${duplicate.nama_mediator}"!` };
-    }
-
-    const index = mediators.findIndex(
-      m => m.kd_med === params.targetTempOrCode || m.temp_id === params.targetTempOrCode
-    );
-
-    if (index === -1) {
-      return { success: false, message: 'Data mediator pending tidak ditemukan!' };
-    }
-
-    const oldCode = mediators[index].kd_med;
-    const updatedMed: MediatorKontrak = {
-      ...mediators[index],
-      kd_med: cleanKdMed,
-      status: 'AKTIF',
-      validated_at: new Date().toISOString(),
-      validated_by: params.validated_by
-    };
-
-    if (db) {
-      const docId = await this.resolveMediatorDocId(mediators[index]);
-      try {
-        await setDoc(doc(db, 'mediators', docId), cleanForFirestore(updatedMed), { merge: true });
-        logFirestoreWrite({
-          collection: 'mediators',
-          documentId: docId,
-          result: 'SUCCESS'
-        });
-      } catch (err: any) {
-        logFirestoreWrite({
-          collection: 'mediators',
-          documentId: docId,
-          result: 'FAILED',
-          errorCode: err?.code,
-          errorMessage: err?.message
-        });
-        return {
-          success: false,
-          message: `Gagal aktivasi mediator di Firestore: ${err?.message || 'Permission denied'}`
-        };
-      }
-    }
-
-    mediators[index] = updatedMed;
-
-    // Update any existing FU logs if referenced
-    const logs = this.getFULogs();
-    let logsUpdated = false;
-    logs.forEach(log => {
-      if (log.kd_med === oldCode) {
-        log.kd_med = cleanKdMed;
-        logsUpdated = true;
-        if (db) setDoc(doc(db, 'fu_logs', sanitizeDocId(log.id)), cleanForFirestore(log)).catch(() => {});
-      }
-    });
-    if (logsUpdated) {
-      saveToStorage(STORAGE_KEYS.FU_LOGS, logs);
-    }
-
-    saveToStorage(STORAGE_KEYS.MEDIATORS, mediators);
-    notifyAllListeners();
-
-    return {
-      success: true,
-      message: `Kode Mediator ${cleanKdMed} berhasil ditetapkan. Status mediator otomatis berubah menjadi AKTIF.`
-    };
+    return res;
   },
 
   async updateMediator(params: {
     kd_med: string;
-    nama_mediator?: string;
-    no_tlpn?: string;
-    kd_ao?: string;
-    kd_posko?: string;
+    nama_mediator: string;
+    no_tlpn: string;
+    kd_ao: string;
     kd_cabang?: string;
-    status?: MediatorStatus;
+    kd_posko: string;
+    status: MediatorStatus;
     catatan_admin?: string;
-    updated_by_role?: UserRole;
+    updated_by_role?: string;
     updated_by_user?: string;
   }): Promise<{ success: boolean; message: string }> {
-    const mediators = this.getMediators();
-    const index = mediators.findIndex(m => m.kd_med === params.kd_med || m.temp_id === params.kd_med);
-
-    if (index === -1) {
-      return { success: false, message: 'Data mediator tidak ditemukan!' };
+    const list = StorageService.getMediators();
+    const idx = list.findIndex(m => m.kd_med === params.kd_med);
+    if (idx === -1) {
+      return { success: false, message: `Mediator ${params.kd_med} tidak ditemukan!` };
     }
 
-    const currentMed = mediators[index];
-    const role = params.updated_by_role;
-
-    // Authorization checks
-    if (role) {
-      if (role === 'CMO') {
-        if (currentMed.status !== 'BELUM_AKTIF') {
-          return {
-            success: false,
-            message: `Role ${role} hanya berhak mengedit data mediator dengan status Pendaftaran Baru (BELUM AKTIF). Data dengan status "${currentMed.status}" terkunci.`
-          };
-        }
-      } else if (role === 'ADM' || role === 'KAPOS') {
-        if (currentMed.status !== 'BELUM_AKTIF' && currentMed.status !== 'PENDING') {
-          return {
-            success: false,
-            message: `Role ${role} hanya berhak mengedit mediator berstatus Pendaftaran Baru (BELUM AKTIF) dan Peninjauan Berkas (PENDING). Status "${currentMed.status}" terkunci.`
-          };
-        }
-      } else if (role !== 'KAOPS' && role !== 'SUPER_ADMIN') {
-        return {
-          success: false,
-          message: `Role ${role} tidak memiliki izin untuk mengedit data mediator.`
-        };
-      }
-    }
-
-    if (params.nama_mediator && params.nama_mediator.trim().length > 100) {
-      return { success: false, message: 'Nama mediator maksimal 100 karakter!' };
-    }
-
-    const updatedMed: MediatorKontrak = {
-      ...currentMed,
-      nama_mediator: params.nama_mediator ? params.nama_mediator.trim().toUpperCase() : currentMed.nama_mediator.toUpperCase(),
-      no_tlpn: params.no_tlpn ? params.no_tlpn.trim() : currentMed.no_tlpn,
-      kd_ao: params.kd_ao || currentMed.kd_ao,
-      kd_posko: params.kd_posko !== undefined ? params.kd_posko : currentMed.kd_posko,
-      kd_cabang: params.kd_cabang || currentMed.kd_cabang,
-      status: params.status || currentMed.status,
-      catatan_admin: params.catatan_admin !== undefined ? params.catatan_admin : currentMed.catatan_admin
+    list[idx] = {
+      ...list[idx],
+      nama_mediator: params.nama_mediator,
+      no_tlpn: params.no_tlpn,
+      kd_ao: params.kd_ao,
+      kd_cabang: params.kd_cabang || list[idx].kd_cabang,
+      kd_posko: params.kd_posko,
+      status: params.status,
+      catatan_admin: params.catatan_admin,
+      updated_at: new Date().toISOString()
     };
 
-    if (db) {
-      const docId = await this.resolveMediatorDocId(currentMed);
-      try {
-        const payloadToSave: any = {
-          ...currentMed,
-          ...updatedMed,
-          created_at: currentMed.created_at || updatedMed.created_at || new Date().toISOString(),
-          created_by_user: currentMed.created_by_user || updatedMed.created_by_user || 'SYSTEM',
-          created_by_role: currentMed.created_by_role || updatedMed.created_by_role || 'SUPER_ADMIN'
-        };
+    localStorage.setItem(STORAGE_KEYS.MEDIATORS, JSON.stringify(list));
+    notifySubscribers();
 
-        await setDoc(doc(db, 'mediators', docId), cleanForFirestore(payloadToSave), { merge: true });
-        logFirestoreWrite({
-          collection: 'mediators',
-          documentId: docId,
-          role,
-          result: 'SUCCESS'
-        });
+    if (db) {
+      try {
+        const docRef = doc(db, 'mediators', params.kd_med);
+        await setDoc(docRef, { ...list[idx], updated_at_timestamp: serverTimestamp() }, { merge: true });
       } catch (err: any) {
-        logFirestoreWrite({
-          collection: 'mediators',
-          documentId: docId,
-          role,
-          result: 'FAILED',
-          errorCode: err?.code,
-          errorMessage: err?.message
-        });
-        return {
-          success: false,
-          message: `Gagal memperbarui mediator di Firestore: ${err?.message || 'Permission denied'}`
-        };
+        console.warn('Firestore updateMediator note:', err?.message || err);
       }
     }
 
-    mediators[index] = updatedMed;
-    saveToStorage(STORAGE_KEYS.MEDIATORS, mediators);
-    notifyAllListeners();
-    return { success: true, message: 'Perubahan data mediator berhasil disimpan.' };
+    return { success: true, message: 'Data mediator berhasil diperbarui.' };
   },
 
-  async deleteMediator(kd_med: string): Promise<{ success: boolean; message: string }> {
-    const mediators = this.getMediators();
-    const target = mediators.find(m => m.kd_med === kd_med || m.temp_id === kd_med);
-
-    if (db && target) {
-      const docId = await this.resolveMediatorDocId(target);
+  deleteMediator(identifier: string): boolean {
+    const res = StorageService.deleteMediator(identifier);
+    if (db) {
       try {
-        await deleteDoc(doc(db, 'mediators', docId));
-        if (target.temp_id && sanitizeDocId(target.temp_id) !== docId) {
-          await deleteDoc(doc(db, 'mediators', sanitizeDocId(target.temp_id))).catch(() => {});
-        }
-        logFirestoreWrite({
-          collection: 'mediators',
-          documentId: docId,
-          result: 'SUCCESS'
-        });
-      } catch (err: any) {
-        logFirestoreWrite({
-          collection: 'mediators',
-          documentId: docId,
-          result: 'FAILED',
-          errorCode: err?.code,
-          errorMessage: err?.message
-        });
-        return { success: false, message: `Gagal menghapus mediator di Firestore: ${err?.message || 'Permission denied'}` };
-      }
+        const docRef = doc(db, 'mediators', identifier);
+        deleteDoc(docRef).catch(() => {});
+      } catch {}
     }
+    return res;
+  },
 
-    const filtered = mediators.filter(m => m.kd_med !== kd_med && m.temp_id !== kd_med);
-    saveToStorage(STORAGE_KEYS.MEDIATORS, filtered);
-    notifyAllListeners();
-    return { success: true, message: 'Data mediator berhasil dihapus.' };
+  addDraftMediator(input: Partial<MediatorKontrak>): MediatorKontrak {
+    return StorageService.addDraftMediator(input);
+  },
+
+  updateMediatorStatus(identifier: string, status: MediatorStatus, newKdMed?: string, userNama?: string): boolean {
+    return StorageService.updateMediatorStatus(identifier, status, newKdMed, userNama);
   },
 
   async importMediators(
-    importedItems: {
-      kd_med: string;
-      nama_mediator: string;
-      no_tlpn: string;
-      kd_cabang: string;
-      kd_posko: string;
-      kd_ao: string;
-      status: MediatorStatus;
-      tgl_akhir_fu?: string | null;
-      catatan_admin?: string;
-    }[],
-    options: {
-      mode: 'append' | 'replace';
-      autoCreateCabangPosko?: boolean;
-      importedBy: string;
-    }
+    rows: Partial<MediatorKontrak>[],
+    options?: { mode?: 'merge' | 'replace' | 'append'; autoCreateCabangPosko?: boolean; importedBy?: string }
   ): Promise<{ success: boolean; count: number; updatedCount: number; message: string }> {
-    let currentMediators = options.mode === 'replace' ? [] : this.getMediators();
-    const cabangList = this.getCabangList();
-    const poskoList = this.getPoskoList();
 
-    let addedCount = 0;
+    let existing = StorageService.getMediators();
+    let createdCount = 0;
     let updatedCount = 0;
 
-    const newCabangs = new Map<string, string>();
-    const newPoskos = new Map<string, { nama: string; cabang: string }>();
+    if (options?.mode === 'replace') {
+      existing = [];
+    }
 
-    for (const item of importedItems) {
-      if (!item.nama_mediator || !item.no_tlpn) continue;
+    const map = new Map<string, MediatorKontrak>();
+    existing.forEach(m => map.set(m.kd_med, m));
 
-      const cleanKdMed = (item.kd_med || `MED-${Date.now().toString().slice(-4)}`).toUpperCase();
-      const cleanCabang = (item.kd_cabang || 'CAB-01').toUpperCase();
-      const cleanPosko = (item.kd_posko || 'PSK-01').toUpperCase();
-      const cleanAo = (item.kd_ao || 'AO-01').toUpperCase();
-
-      if (options.autoCreateCabangPosko) {
-        if (!cabangList.some(c => c.kd_cabang.toUpperCase() === cleanCabang) && !newCabangs.has(cleanCabang)) {
-          newCabangs.set(cleanCabang, `Cabang ${cleanCabang}`);
-        }
-        if (!poskoList.some(p => p.kd_posko.toUpperCase() === cleanPosko) && !newPoskos.has(cleanPosko)) {
-          newPoskos.set(cleanPosko, { nama: `Posko ${cleanPosko}`, cabang: cleanCabang });
-        }
-      }
-
-      const existingIndex = currentMediators.findIndex(m => m.kd_med.toUpperCase() === cleanKdMed);
-
-      const record: MediatorKontrak = {
-        kd_med: cleanKdMed,
-        temp_id: `TMP-${Date.now().toString().slice(-4)}-${Math.floor(Math.random() * 1000)}`,
-        nama_mediator: item.nama_mediator.trim().toUpperCase(),
-        no_tlpn: item.no_tlpn.trim(),
-        kd_cabang: cleanCabang,
-        kd_posko: cleanPosko,
-        kd_ao: cleanAo,
-        status: item.status || 'AKTIF',
-        tgl_akhir_fu: item.tgl_akhir_fu || null,
-        created_at: new Date().toISOString(),
-        created_by_user: options.importedBy,
-        created_by_role: 'SUPER_ADMIN',
-        catatan_admin: item.catatan_admin || 'Imported via CSV Data Import'
-      };
-
-      if (existingIndex >= 0) {
-        currentMediators[existingIndex] = record;
+    rows.forEach(r => {
+      if (!r.kd_med) return;
+      if (map.has(r.kd_med)) {
+        const current = map.get(r.kd_med)!;
+        map.set(r.kd_med, {
+          ...current,
+          ...r,
+          updated_at: new Date().toISOString()
+        } as MediatorKontrak);
         updatedCount++;
       } else {
-        currentMediators.push(record);
-        addedCount++;
-      }
-
-      if (db) {
-        try {
-          const docId = sanitizeDocId(cleanKdMed);
-          await setDoc(doc(db, 'mediators', docId), cleanForFirestore(record));
-          logFirestoreWrite({
-            collection: 'mediators',
-            documentId: docId,
-            result: 'SUCCESS'
-          });
-        } catch (e: any) {
-          logFirestoreWrite({
-            collection: 'mediators',
-            documentId: cleanKdMed,
-            result: 'FAILED',
-            errorCode: e?.code,
-            errorMessage: e?.message
-          });
-        }
-      }
-    }
-
-    if (options.autoCreateCabangPosko) {
-      for (const [kd, nama] of newCabangs.entries()) {
-        const c: Cabang = { kd_cabang: kd, nama_cabang: nama, wilayah: 'Wilayah Operasional' };
-        cabangList.push(c);
-        if (db) {
-          await setDoc(doc(db, 'cabang', sanitizeDocId(kd)), cleanForFirestore(c)).catch(() => {});
-        }
-      }
-      if (newCabangs.size > 0) {
-        saveToStorage(STORAGE_KEYS.CABANG, cabangList);
-      }
-
-      for (const [kd, data] of newPoskos.entries()) {
-        const p: Posko = { kd_posko: kd, nama_posko: data.nama, kd_cabang: data.cabang };
-        poskoList.push(p);
-        if (db) {
-          await setDoc(doc(db, 'posko', sanitizeDocId(kd)), cleanForFirestore(p)).catch(() => {});
-        }
-      }
-      if (newPoskos.size > 0) {
-        saveToStorage(STORAGE_KEYS.POSKO, poskoList);
-      }
-    }
-
-    saveToStorage(STORAGE_KEYS.MEDIATORS, currentMediators);
-    notifyAllListeners();
-
-    return {
-      success: true,
-      count: addedCount,
-      updatedCount,
-      message: `Berhasil mengimpor ${addedCount} data mediator baru${updatedCount > 0 ? ` dan memperbarui ${updatedCount} data yang sudah ada` : ''}.`
-    };
-  },
-
-  // Follow-Up Logs
-  getFULogs(): FULog[] {
-    return getInitialOrStored<FULog[]>(STORAGE_KEYS.FU_LOGS, INITIAL_FU_LOGS);
-  },
-
-  getLast5FULogs(): FULog[] {
-    const logs = this.getFULogs();
-    return [...logs]
-      .sort((a, b) => new Date(b.tgl_fu).getTime() - new Date(a.tgl_fu).getTime())
-      .slice(0, 5);
-  },
-
-  getFULogsByMediator(kd_med: string): FULog[] {
-    const logs = this.getFULogs();
-    return logs
-      .filter(l => l.kd_med === kd_med)
-      .sort((a, b) => new Date(b.tgl_fu).getTime() - new Date(a.tgl_fu).getTime());
-  },
-
-  async submitFollowUp(params: {
-    kd_med: string;
-    hasil_fu: HasilFU;
-    catatan_fu: string;
-    user_fu: string;
-    kd_ao: string;
-    kd_posko: string;
-    kd_cabang: string;
-  }): Promise<{ success: boolean; message: string; log?: FULog }> {
-    if (params.catatan_fu.length > 100) {
-      return { success: false, message: 'Catatan FU melebihi batas maksimal 100 karakter!' };
-    }
-
-    const mediators = this.getMediators();
-    const medIndex = mediators.findIndex(m => m.kd_med === params.kd_med || m.temp_id === params.kd_med);
-
-    if (medIndex === -1) {
-      return { success: false, message: 'Mediator tidak ditemukan!' };
-    }
-
-    const mediator = mediators[medIndex];
-    const todayIsoDate = new Date().toISOString().split('T')[0];
-    const nowIsoDateTime = new Date().toISOString();
-
-    const newLog: FULog = {
-      id: `FU-${Date.now().toString().slice(-6)}`,
-      kd_med: mediator.kd_med,
-      nama_mediator: mediator.nama_mediator,
-      tgl_fu: nowIsoDateTime,
-      hasil_fu: params.hasil_fu,
-      catatan_fu: params.catatan_fu.trim(),
-      user_fu: params.user_fu,
-      kd_ao: params.kd_ao || mediator.kd_ao,
-      kd_posko: params.kd_posko || mediator.kd_posko,
-      kd_cabang: params.kd_cabang || mediator.kd_cabang,
-    };
-
-    if (db) {
-      try {
-        const logDocId = sanitizeDocId(newLog.id);
-        await setDoc(doc(db, 'fu_logs', logDocId), cleanForFirestore(newLog));
-        logFirestoreWrite({
-          collection: 'fu_logs',
-          documentId: logDocId,
-          result: 'SUCCESS'
-        });
-
-        const medDocId = await this.resolveMediatorDocId(mediator);
-        await setDoc(
-          doc(db, 'mediators', medDocId),
-          cleanForFirestore({ tgl_akhir_fu: todayIsoDate }),
-          { merge: true }
-        );
-        logFirestoreWrite({
-          collection: 'mediators',
-          documentId: medDocId,
-          result: 'SUCCESS'
-        });
-      } catch (err: any) {
-        logFirestoreWrite({
-          collection: 'fu_logs',
-          documentId: newLog.id,
-          result: 'FAILED',
-          errorCode: err?.code,
-          errorMessage: err?.message
-        });
-        return {
-          success: false,
-          message: `Gagal menyimpan Follow-Up ke Firestore: ${err?.message || 'Permission denied'}`
+        const newMed: MediatorKontrak = {
+          kd_med: r.kd_med,
+          nama_mediator: r.nama_mediator || '',
+          no_tlpn: r.no_tlpn || '',
+          kd_cabang: r.kd_cabang || 'C16',
+          kd_posko: r.kd_posko || 'QJ0',
+          kd_ao: r.kd_ao || '',
+          status: r.status || 'AKTIF',
+          tanggal_bergabung: r.tanggal_bergabung || new Date().toISOString().split('T')[0],
+          created_at: new Date().toISOString()
         };
+        map.set(r.kd_med, newMed);
+        createdCount++;
       }
-    }
-
-    const logs = this.getFULogs();
-    logs.unshift(newLog);
-    saveToStorage(STORAGE_KEYS.FU_LOGS, logs);
-
-    mediators[medIndex].tgl_akhir_fu = todayIsoDate;
-    saveToStorage(STORAGE_KEYS.MEDIATORS, mediators);
-
-    notifyAllListeners();
-
-    return {
-      success: true,
-      message: `Follow-Up untuk ${mediator.nama_mediator} (${mediator.kd_med}) berhasil disimpan!`,
-      log: newLog
-    };
-  },
-
-  getFullSystemBackup(exportedBy: string = 'SUPER_ADMIN'): SystemFullBackup {
-    return {
-      meta: {
-        appName: 'MED CONTROL KAMM - MEDIATOR MANAGEMENT SYSTEM',
-        version: '2.0.0',
-        timestamp: new Date().toISOString(),
-        exportedBy,
-        environment: 'Production Cloud'
-      },
-      data: {
-        users: this.getUsers(),
-        cabang: this.getCabangList(),
-        posko: this.getPoskoList(),
-        mediators: this.getMediators(),
-        fu_logs: this.getFULogs()
-      }
-    };
-  },
-
-  async restoreFullSystemBackup(backup: SystemFullBackup): Promise<{ success: boolean; message: string }> {
-    try {
-      if (!backup || !backup.data) {
-        return { success: false, message: 'Format file backup tidak valid!' };
-      }
-      const { users, cabang, posko, mediators, fu_logs } = backup.data;
-      if (!Array.isArray(users) || !Array.isArray(cabang) || !Array.isArray(mediators)) {
-        return { success: false, message: 'Struktur data backup tidak lengkap!' };
-      }
-
-      if (db) {
-        const batch = writeBatch(db);
-        users.forEach(u => batch.set(doc(db!, 'users', sanitizeDocId(u.id)), cleanForFirestore(u)));
-        cabang.forEach(c => batch.set(doc(db!, 'cabang', sanitizeDocId(c.kd_cabang)), cleanForFirestore(c)));
-        (posko || INITIAL_POSKO).forEach(p => batch.set(doc(db!, 'posko', sanitizeDocId(p.kd_posko)), cleanForFirestore(p)));
-        mediators.forEach(m => batch.set(doc(db!, 'mediators', sanitizeDocId(m.kd_med || m.temp_id)), cleanForFirestore(m)));
-        (fu_logs || []).forEach(f => batch.set(doc(db!, 'fu_logs', sanitizeDocId(f.id)), cleanForFirestore(f)));
-        await batch.commit();
-        logFirestoreWrite({
-          collection: 'system_backup_restore',
-          documentId: 'ALL',
-          result: 'SUCCESS'
-        });
-      }
-
-      saveToStorage(STORAGE_KEYS.USERS, users);
-      saveToStorage(STORAGE_KEYS.CABANG, cabang);
-      saveToStorage(STORAGE_KEYS.POSKO, Array.isArray(posko) ? posko : INITIAL_POSKO);
-      saveToStorage(STORAGE_KEYS.MEDIATORS, mediators);
-      saveToStorage(STORAGE_KEYS.FU_LOGS, Array.isArray(fu_logs) ? fu_logs : []);
-
-      notifyAllListeners();
-      return {
-        success: true,
-        message: `Database berhasil dipulihkan! (${users.length} User, ${cabang.length} Cabang, ${mediators.length} Mediator, ${fu_logs?.length || 0} Log FU)`
-      };
-    } catch (err: any) {
-      logFirestoreWrite({
-        collection: 'system_backup_restore',
-        documentId: 'ALL',
-        result: 'FAILED',
-        errorCode: err?.code,
-        errorMessage: err?.message
-      });
-      return { success: false, message: `Gagal restore database: ${err.message}` };
-    }
-  },
-
-  // ==========================================
-  // EX-CUSTOMER MODULE METHODS & DRIP-FEEDING
-  // ==========================================
-
-  getExCustomers(): ExCustomer[] {
-    return getInitialOrStored<ExCustomer[]>(STORAGE_KEYS.EX_CUSTOMERS, INITIAL_EX_CUSTOMERS);
-  },
-
-  getExCustomerFULogs(): ExCustomerFULog[] {
-    return getInitialOrStored<ExCustomerFULog[]>(STORAGE_KEYS.EX_CUSTOMER_FU_LOGS, INITIAL_EX_CUSTOMER_FU_LOGS);
-  },
-
-  // ADM BPKB View: Data Leakage Guard (Max 48 Hours / 2x24h) - Akses Nasional Seluruh Cabang & Posko
-  getExCustomersForAdminBpkb(currentUser: User): { data: ExCustomer[]; canEdit: (item: ExCustomer) => boolean; remainingHours: (item: ExCustomer) => number } {
-    const list = this.getExCustomers();
-    const now = Date.now();
-    const FORTY_EIGHT_HOURS = 48 * 3600 * 1000;
-
-    // Super admin sees all, ADM BPKB sees all records across all cabang & posko within 48h
-    const filtered = list.filter(item => {
-      const createdAtTime = new Date(item.created_at).getTime();
-      const isWithin48h = (now - createdAtTime) <= FORTY_EIGHT_HOURS;
-      
-      if (currentUser.role === 'SUPER_ADMIN') return true;
-      return isWithin48h;
     });
 
-    // Sort newest first
-    filtered.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+    const result = Array.from(map.values());
+    localStorage.setItem(STORAGE_KEYS.MEDIATORS, JSON.stringify(result));
+    notifySubscribers();
+
+    // Async batch save to Firestore
+    if (db) {
+      try {
+        const promises = rows.slice(0, 50).map(r => {
+          if (!r.kd_med) return Promise.resolve();
+          const docRef = doc(db, 'mediators', r.kd_med);
+          return setDoc(docRef, { ...r, updated_at_timestamp: serverTimestamp() }, { merge: true });
+        });
+        Promise.all(promises).catch(() => {});
+      } catch {}
+    }
 
     return {
-      data: filtered,
-      canEdit: (item: ExCustomer) => {
-        if (currentUser.role === 'SUPER_ADMIN') return true;
-        const diff = now - new Date(item.created_at).getTime();
-        return diff <= FORTY_EIGHT_HOURS;
-      },
-      remainingHours: (item: ExCustomer) => {
-        const diff = FORTY_EIGHT_HOURS - (now - new Date(item.created_at).getTime());
-        return Math.max(0, Math.round(diff / (3600 * 1000)));
-      }
+      success: true,
+      count: createdCount,
+      updatedCount,
+      message: `Berhasil mengimpor ${createdCount} data baru dan memperbarui ${updatedCount} data mediator.`
     };
+  },
+
+  getFULogs(): FollowUpLog[] {
+    return StorageService.getFollowUps();
+  },
+
+  addFollowUp(log: Omit<FollowUpLog, 'id' | 'created_at'>): FollowUpLog {
+    return StorageService.addFollowUp(log);
+  },
+
+  getExCustomers(): ExCustomer[] {
+    return StorageService.getExCustomers();
+  },
+
+  saveExCustomer(cust: ExCustomer): ExCustomer {
+    const res = StorageService.saveExCustomer(cust);
+    if (db && cust.no_psb) {
+      try {
+        const docRef = doc(db, 'ex_customers', cust.no_psb);
+        setDoc(docRef, { ...res, updated_at_timestamp: serverTimestamp() }, { merge: true }).catch(() => {});
+      } catch {}
+    }
+    return res;
   },
 
   async importExCustomers(
-    importedItems: {
-      no_psb: string;
-      kd_cab: string;
-      kd_pos: string;
-      nama_konsumen: string;
-      no_telepon: string;
-      tgl_bpkb_sdk: string;
-      status_kredit_lunas: StatusKreditLunas;
-    }[],
-    options: {
-      mode: 'append' | 'replace';
-      autoCreateCabangPosko?: boolean;
-      importedBy: string;
-    }
+    rows: Partial<ExCustomer>[],
+    options?: { mode?: 'merge' | 'replace' | 'append'; autoCreateCabangPosko?: boolean; importedBy?: string }
   ): Promise<{ success: boolean; count: number; updatedCount: number; message: string }> {
-    let currentList = options.mode === 'replace' ? [] : this.getExCustomers();
-    const cabangList = this.getCabangList();
-    const poskoList = this.getPoskoList();
 
-    let addedCount = 0;
+    let existing = StorageService.getExCustomers();
+    let createdCount = 0;
     let updatedCount = 0;
 
-    const newCabangs = new Map<string, string>();
-    const newPoskos = new Map<string, { nama: string; cabang: string }>();
+    if (options?.mode === 'replace') {
+      existing = [];
+    }
 
-    for (const item of importedItems) {
-      if (!item.no_psb || !item.nama_konsumen || !item.no_telepon) continue;
+    const map = new Map<string, ExCustomer>();
+    existing.forEach(c => map.set(c.no_psb, c));
 
-      const cleanNoPsb = item.no_psb.trim().toUpperCase();
-      const cleanCabang = (item.kd_cab || 'C16').trim().toUpperCase();
-      const cleanPosko = (item.kd_pos || 'QJ0').trim().toUpperCase();
-
-      if (options.autoCreateCabangPosko) {
-        if (!cabangList.some(c => c.kd_cabang.toUpperCase() === cleanCabang) && !newCabangs.has(cleanCabang)) {
-          newCabangs.set(cleanCabang, `Cabang ${cleanCabang}`);
-        }
-        if (!poskoList.some(p => p.kd_posko.toUpperCase() === cleanPosko) && !newPoskos.has(cleanPosko)) {
-          newPoskos.set(cleanPosko, { nama: `Posko ${cleanPosko}`, cabang: cleanCabang });
-        }
-      }
-
-      const existingIndex = currentList.findIndex(c => c.no_psb.toUpperCase() === cleanNoPsb);
-
-      const record: ExCustomer = {
-        no_psb: cleanNoPsb,
-        kd_cab: cleanCabang,
-        kd_pos: cleanPosko,
-        nama_konsumen: item.nama_konsumen.trim().toUpperCase(),
-        no_telepon: item.no_telepon.trim(),
-        tgl_bpkb_sdk: item.tgl_bpkb_sdk || new Date().toISOString().split('T')[0],
-        status_kredit_lunas: item.status_kredit_lunas || 'Tepat Waktu',
-        created_at: new Date().toISOString(),
-        created_by_uid: 'USR-SUPERADMIN',
-        created_by_name: options.importedBy,
-        last_fu_date: null,
-        last_fu_status: null,
-        fu_count: 0
-      };
-
-      if (existingIndex >= 0) {
-        currentList[existingIndex] = {
-          ...currentList[existingIndex],
-          ...record,
-          created_at: currentList[existingIndex].created_at || record.created_at,
-          last_fu_date: currentList[existingIndex].last_fu_date || null,
-          last_fu_status: currentList[existingIndex].last_fu_status || null,
-          fu_count: currentList[existingIndex].fu_count || 0
-        };
+    rows.forEach(r => {
+      if (!r.no_psb) return;
+      if (map.has(r.no_psb)) {
+        const current = map.get(r.no_psb)!;
+        map.set(r.no_psb, {
+          ...current,
+          ...r,
+          updated_at: new Date().toISOString()
+        } as ExCustomer);
         updatedCount++;
       } else {
-        currentList.push(record);
-        addedCount++;
+        const newCust: ExCustomer = {
+          no_psb: r.no_psb,
+          nama_konsumen: r.nama_konsumen || '',
+          no_polisi: r.no_polisi || '',
+          status_bpkb: r.status_bpkb || 'LUNAS',
+          status_prospek: r.status_prospek || 'BELUM_DIHUBUNGI',
+          status_kredit_lunas: r.status_kredit_lunas || 'Tepat Waktu',
+          no_hp: r.no_hp || '',
+          kd_cabang: r.kd_cabang || 'C16',
+          kd_posko: r.kd_posko || 'QJ0',
+          kd_ao: r.kd_ao || '',
+          tgl_bpkb_sdk: r.tgl_bpkb_sdk || new Date().toISOString().split('T')[0],
+          created_at: new Date().toISOString()
+        };
+        map.set(r.no_psb, newCust);
+        createdCount++;
       }
+    });
 
-      if (db) {
-        try {
-          const docId = sanitizeDocId(cleanNoPsb);
-          await setDoc(doc(db, 'ex_customers', docId), cleanForFirestore(record));
-          logFirestoreWrite({
-            collection: 'ex_customers',
-            documentId: docId,
-            result: 'SUCCESS'
-          });
-        } catch (e: any) {
-          logFirestoreWrite({
-            collection: 'ex_customers',
-            documentId: cleanNoPsb,
-            result: 'FAILED',
-            errorCode: e?.code,
-            errorMessage: e?.message
-          });
-        }
-      }
+    const result = Array.from(map.values());
+    localStorage.setItem(STORAGE_KEYS.EX_CUSTOMERS, JSON.stringify(result));
+    notifySubscribers();
+
+    // Async batch save to Firestore
+    if (db) {
+      try {
+        const promises = rows.slice(0, 50).map(r => {
+          if (!r.no_psb) return Promise.resolve();
+          const docRef = doc(db, 'ex_customers', r.no_psb);
+          return setDoc(docRef, { ...r, updated_at_timestamp: serverTimestamp() }, { merge: true });
+        });
+        Promise.all(promises).catch(() => {});
+      } catch {}
     }
-
-    if (options.autoCreateCabangPosko) {
-      for (const [kd, nama] of newCabangs.entries()) {
-        const c: Cabang = { kd_cabang: kd, nama_cabang: nama, wilayah: 'Wilayah Operasional' };
-        cabangList.push(c);
-        if (db) {
-          await setDoc(doc(db, 'cabang', sanitizeDocId(kd)), cleanForFirestore(c)).catch(() => {});
-        }
-      }
-      if (newCabangs.size > 0) {
-        saveToStorage(STORAGE_KEYS.CABANG, cabangList);
-      }
-
-      for (const [kd, data] of newPoskos.entries()) {
-        const p: Posko = { kd_posko: kd, nama_posko: data.nama, kd_cabang: data.cabang };
-        poskoList.push(p);
-        if (db) {
-          await setDoc(doc(db, 'posko', sanitizeDocId(kd)), cleanForFirestore(p)).catch(() => {});
-        }
-      }
-      if (newPoskos.size > 0) {
-        saveToStorage(STORAGE_KEYS.POSKO, poskoList);
-      }
-    }
-
-    saveToStorage(STORAGE_KEYS.EX_CUSTOMERS, currentList);
-    notifyAllListeners();
 
     return {
       success: true,
-      count: addedCount,
+      count: createdCount,
       updatedCount,
-      message: `Berhasil mengimpor ${addedCount} data BPKB baru${updatedCount > 0 ? ` dan memperbarui ${updatedCount} data yang sudah ada` : ''}.`
+      message: `Berhasil mengimpor ${createdCount} data baru dan memperbarui ${updatedCount} data konsumen BPKB.`
     };
   },
 
-  async saveExCustomer(
-    exCustomer: {
-      no_psb: string;
-      kd_cab: string;
-      kd_pos: string;
-      nama_konsumen: string;
-      no_telepon: string;
-      tgl_bpkb_sdk: string;
-      status_kredit_lunas: StatusKreditLunas;
-    },
-    isEdit: boolean = false,
-    oldNoPsb?: string,
-    currentUser?: User
-  ): Promise<{ success: boolean; message: string; data?: ExCustomer }> {
-    const list = this.getExCustomers();
-    const cleanNoPsb = exCustomer.no_psb.trim().toUpperCase();
-    const cleanCab = exCustomer.kd_cab.trim().toUpperCase();
-    const cleanPos = exCustomer.kd_pos.trim().toUpperCase();
-    const cleanNama = exCustomer.nama_konsumen.trim().toUpperCase();
-    const cleanTelp = exCustomer.no_telepon.trim();
-    const cleanTgl = exCustomer.tgl_bpkb_sdk.trim();
-    const cleanStatus = exCustomer.status_kredit_lunas;
-
-    if (!cleanNoPsb || !cleanCab || !cleanPos || !cleanNama || !cleanTelp || !cleanTgl || !cleanStatus) {
-      return { success: false, message: 'Semua kolom input BPKB wajib diisi dengan lengkap!' };
-    }
-
-    const duplicateIndex = list.findIndex(c => c.no_psb.toUpperCase() === cleanNoPsb);
-
-    if (!isEdit && duplicateIndex >= 0) {
-      return { success: false, message: `Nomor PSB "${cleanNoPsb}" sudah terdaftar dalam sistem!` };
-    }
-
-    const nowIso = new Date().toISOString();
-
-    if (isEdit && oldNoPsb) {
-      const editIndex = list.findIndex(c => c.no_psb.toUpperCase() === oldNoPsb.toUpperCase());
-      if (editIndex >= 0) {
-        const existing = list[editIndex];
-        
-        // 2x24h check for non-superadmin
-        if (currentUser && currentUser.role !== 'SUPER_ADMIN') {
-          const diff = Date.now() - new Date(existing.created_at).getTime();
-          if (diff > 48 * 3600 * 1000) {
-            return { success: false, message: 'Batas waktu edit (2x24 jam) untuk data ini telah berakhir!' };
-          }
-        }
-
-        if (cleanNoPsb !== oldNoPsb.toUpperCase() && duplicateIndex >= 0) {
-          return { success: false, message: `Nomor PSB baru "${cleanNoPsb}" sudah digunakan data lain!` };
-        }
-
-        const updatedRecord: ExCustomer = {
-          ...existing,
-          no_psb: cleanNoPsb,
-          kd_cab: cleanCab,
-          kd_pos: cleanPos,
-          nama_konsumen: cleanNama,
-          no_telepon: cleanTelp,
-          tgl_bpkb_sdk: cleanTgl,
-          status_kredit_lunas: cleanStatus,
-          updated_at: nowIso,
-          updated_by_name: currentUser?.nama || 'ADM BPKB'
-        };
-
-        if (db) {
-          try {
-            const docId = sanitizeDocId(cleanNoPsb);
-            await setDoc(doc(db, 'ex_customers', docId), cleanForFirestore(updatedRecord));
-            logFirestoreWrite({
-              collection: 'ex_customers',
-              documentId: docId,
-              result: 'SUCCESS'
-            });
-
-            if (cleanNoPsb !== oldNoPsb.toUpperCase()) {
-              await deleteDoc(doc(db, 'ex_customers', sanitizeDocId(oldNoPsb))).catch(() => {});
-            }
-          } catch (err: any) {
-            logFirestoreWrite({
-              collection: 'ex_customers',
-              documentId: cleanNoPsb,
-              result: 'FAILED',
-              errorCode: err?.code,
-              errorMessage: err?.message
-            });
-            return {
-              success: false,
-              message: `Gagal memperbarui data BPKB di Firestore: ${err?.message || 'Permission denied'}`
-            };
-          }
-        }
-
-        list[editIndex] = updatedRecord;
-        saveToStorage(STORAGE_KEYS.EX_CUSTOMERS, list);
-        notifyAllListeners();
-
-        return { success: true, message: `Data BPKB PSB ${cleanNoPsb} berhasil diperbarui!`, data: updatedRecord };
-      }
-    }
-
-    const newRecord: ExCustomer = {
-      no_psb: cleanNoPsb,
-      kd_cab: cleanCab,
-      kd_pos: cleanPos,
-      nama_konsumen: cleanNama,
-      no_telepon: cleanTelp,
-      tgl_bpkb_sdk: cleanTgl,
-      status_kredit_lunas: cleanStatus,
-      created_at: nowIso,
-      created_by_uid: currentUser?.id || 'USR-BPKB',
-      created_by_name: currentUser?.nama || 'ADM BPKB',
-      last_fu_date: null,
-      last_fu_status: null,
-      fu_count: 0
-    };
-
-    if (db) {
-      try {
-        const docId = sanitizeDocId(cleanNoPsb);
-        await setDoc(doc(db, 'ex_customers', docId), cleanForFirestore(newRecord));
-        logFirestoreWrite({
-          collection: 'ex_customers',
-          documentId: docId,
-          result: 'SUCCESS'
-        });
-      } catch (err: any) {
-        logFirestoreWrite({
-          collection: 'ex_customers',
-          documentId: cleanNoPsb,
-          result: 'FAILED',
-          errorCode: err?.code,
-          errorMessage: err?.message
-        });
-        return {
-          success: false,
-          message: `Gagal menyimpan data BPKB ke Firestore: ${err?.message || 'Permission denied'}`
-        };
-      }
-    }
-
-    list.unshift(newRecord);
-    saveToStorage(STORAGE_KEYS.EX_CUSTOMERS, list);
-    notifyAllListeners();
-
-    return { success: true, message: `Data penyerahan BPKB PSB ${cleanNoPsb} (${cleanNama}) berhasil disimpan!`, data: newRecord };
+  getExCustomerFULogs(): ExCustomerFollowUpLog[] {
+    return StorageService.getExCustomerFollowUps();
   },
 
-  async deleteExCustomer(no_psb: string): Promise<{ success: boolean; message: string }> {
-    const cleanNo = no_psb.toUpperCase();
-
-    if (db) {
-      try {
-        await deleteDoc(doc(db, 'ex_customers', sanitizeDocId(cleanNo)));
-        logFirestoreWrite({
-          collection: 'ex_customers',
-          documentId: cleanNo,
-          result: 'SUCCESS'
-        });
-      } catch (err: any) {
-        logFirestoreWrite({
-          collection: 'ex_customers',
-          documentId: cleanNo,
-          result: 'FAILED',
-          errorCode: err?.code,
-          errorMessage: err?.message
-        });
-        return { success: false, message: `Gagal menghapus data di Firestore: ${err?.message || 'Permission denied'}` };
-      }
-    }
-
-    const list = this.getExCustomers().filter(c => c.no_psb.toUpperCase() !== cleanNo);
-    saveToStorage(STORAGE_KEYS.EX_CUSTOMERS, list);
-
-    const logs = this.getExCustomerLogs().filter(l => l.no_psb.toUpperCase() !== cleanNo);
-    saveToStorage(STORAGE_KEYS.EX_CUSTOMER_FU_LOGS, logs);
-
-    notifyAllListeners();
-    return { success: true, message: `Data Ex-Customer PSB ${cleanNo} berhasil dihapus permanen.` };
+  addExCustomerFollowUp(log: Omit<ExCustomerFollowUpLog, 'id' | 'created_at'>): ExCustomerFollowUpLog {
+    return StorageService.addExCustomerFollowUp(log);
   },
 
-  async clearAllExCustomers(): Promise<{ success: boolean; message: string }> {
-    const currentList = this.getExCustomers();
-
-    if (db) {
-      try {
-        const batch = writeBatch(db);
-        currentList.forEach(c => {
-          batch.delete(doc(db!, 'ex_customers', sanitizeDocId(c.no_psb)));
-        });
-        await batch.commit();
-        logFirestoreWrite({
-          collection: 'ex_customers',
-          documentId: 'ALL',
-          result: 'SUCCESS'
-        });
-      } catch (err: any) {
-        logFirestoreWrite({
-          collection: 'ex_customers',
-          documentId: 'ALL',
-          result: 'FAILED',
-          errorCode: err?.code,
-          errorMessage: err?.message
-        });
-      }
-    }
-
-    saveToStorage(STORAGE_KEYS.EX_CUSTOMERS, []);
-    saveToStorage(STORAGE_KEYS.EX_CUSTOMER_FU_LOGS, []);
-
-    try {
-      localStorage.removeItem('med_control_ex_customers_v1');
-      localStorage.removeItem('med_control_ex_customer_fu_logs_v1');
-    } catch {}
-
-    notifyAllListeners();
-    return { success: true, message: 'Semua data Ex-Customer dan riwayat follow up telah berhasil dihapus / dikosongkan untuk persiapan input data real.' };
-  },
-
-  // Drip Feeding Queue (25 items per day per Cabang + Posko, Shared Pool for Admin & Kapos)
-  // ONLY for categories: Lebih Awal, Tepat Waktu, Dalam Perhatian Khusus, Kurang Lancar
-  getDailyDripForPosko(kd_cab: string, kd_pos: string): {
-    dripList: ExCustomer[];
-    totalAvailable: number;
-    completedToday: number;
-    pendingToday: number;
-  } {
-    const all = this.getExCustomers();
-    const now = Date.now();
-    const ONE_DAY_MS = 24 * 3600 * 1000;
-
-    const ALLOWED_STATUSES: StatusKreditLunas[] = [
-      'Lebih Awal',
-      'Tepat Waktu',
-      'Dalam Perhatian Khusus',
-      'Kurang Lancar'
-    ];
-
-    const poskoCustomers = all.filter(c => 
-      (!kd_cab || c.kd_cab.toUpperCase() === kd_cab.toUpperCase()) &&
-      (!kd_pos || c.kd_pos.toUpperCase() === kd_pos.toUpperCase()) &&
-      ALLOWED_STATUSES.includes(c.status_kredit_lunas)
-    );
-
-    const priorityWeight: Record<StatusKreditLunas, number> = {
-      'Lebih Awal': 100,
-      'Tepat Waktu': 90,
-      'Dalam Perhatian Khusus': 60,
-      'Kurang Lancar': 40,
-      'Diragukan': 0,
-      'AR2': 0,
-      'AR3': 0,
-      'AR4': 0
-    };
-
-    const recentlyFollowedUp = poskoCustomers.filter(c => {
-      if (!c.last_fu_date) return false;
-      const fuTime = new Date(c.last_fu_date).getTime();
-      return (now - fuTime) <= ONE_DAY_MS;
-    });
-
-    const notRecentlyFollowedUp = poskoCustomers.filter(c => {
-      if (!c.last_fu_date) return true;
-      const fuTime = new Date(c.last_fu_date).getTime();
-      return (now - fuTime) > ONE_DAY_MS;
-    });
-
-    notRecentlyFollowedUp.sort((a, b) => {
-      const weightA = priorityWeight[a.status_kredit_lunas] || 0;
-      const weightB = priorityWeight[b.status_kredit_lunas] || 0;
-      if (weightB !== weightA) return weightB - weightA;
-      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
-    });
-
-    const remainingSlots = Math.max(0, 25 - recentlyFollowedUp.length);
-    const fillFromAvailable = notRecentlyFollowedUp.slice(0, remainingSlots);
-
-    const combinedDrip = [...recentlyFollowedUp, ...fillFromAvailable];
-
-    const completedToday = combinedDrip.filter(c => {
-      if (!c.last_fu_date) return false;
-      return (now - new Date(c.last_fu_date).getTime()) <= ONE_DAY_MS;
-    }).length;
-
-    const pendingToday = combinedDrip.length - completedToday;
-
-    return {
-      dripList: combinedDrip,
-      totalAvailable: poskoCustomers.length,
-      completedToday,
-      pendingToday
-    };
-  },
-
-  // CMO Assignment (Max 5 per CMO, resets after 24 hours)
   getAssignedExCustomersForCMO(cmoId: string): ExCustomer[] {
-    const all = this.getExCustomers();
-    const now = Date.now();
-    const ONE_DAY_MS = 24 * 3600 * 1000;
-
-    const ALLOWED_STATUSES: StatusKreditLunas[] = [
-      'Lebih Awal',
-      'Tepat Waktu',
-      'Dalam Perhatian Khusus',
-      'Kurang Lancar'
-    ];
-
-    return all.filter(c => {
-      if (c.assigned_to_cmo_id !== cmoId) return false;
-      if (!c.assigned_at) return false;
-      if (!ALLOWED_STATUSES.includes(c.status_kredit_lunas)) return false;
-      const assignedTime = new Date(c.assigned_at).getTime();
-      return (now - assignedTime) <= ONE_DAY_MS;
-    });
+    const list = StorageService.getExCustomers();
+    return list.filter(c => c.assigned_to_cmo_id === cmoId);
   },
 
-  async assignExCustomerToCMO(no_psb: string, cmoId: string, cmoName: string): Promise<{ success: boolean; message: string }> {
-    const list = this.getExCustomers();
-    const cleanNo = no_psb.toUpperCase();
-    const index = list.findIndex(c => c.no_psb.toUpperCase() === cleanNo);
-
-    if (index === -1) {
-      return { success: false, message: 'Data Ex-Customer tidak ditemukan!' };
+  async assignExCustomerToCMO(no_psb: string, cmoId: string, cmoNama: string): Promise<{ success: boolean; message: string }> {
+    const list = StorageService.getExCustomers();
+    const idx = list.findIndex(c => c.no_psb === no_psb);
+    if (idx === -1) {
+      return { success: false, message: 'Konsumen tidak ditemukan.' };
     }
 
-    const ALLOWED_STATUSES: StatusKreditLunas[] = [
-      'Lebih Awal',
-      'Tepat Waktu',
-      'Dalam Perhatian Khusus',
-      'Kurang Lancar'
-    ];
-
-    if (!ALLOWED_STATUSES.includes(list[index].status_kredit_lunas)) {
-      return { 
-        success: false, 
-        message: `Hanya konsumen dengan kategori 'Lebih Awal', 'Tepat Waktu', 'Dalam Perhatian Khusus', dan 'Kurang Lancar' yang dapat ditugaskan ke CMO!` 
-      };
-    }
-
-    // Check CMO limit (Max 5 active assigned per CMO)
-    const activeAssigned = this.getAssignedExCustomersForCMO(cmoId);
-    if (activeAssigned.length >= 5 && !activeAssigned.some(c => c.no_psb.toUpperCase() === cleanNo)) {
-      return { success: false, message: `CMO ${cmoName} telah mencapai batas maksimal 5 penugasan harian!` };
-    }
-
-    const updatedItem: ExCustomer = {
-      ...list[index],
+    list[idx] = {
+      ...list[idx],
       assigned_to_cmo_id: cmoId,
-      assigned_to_cmo_name: cmoName,
-      assigned_at: new Date().toISOString()
+      assigned_cmo_nama: cmoNama,
+      assigned_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
     };
+
+    localStorage.setItem(STORAGE_KEYS.EX_CUSTOMERS, JSON.stringify(list));
+    notifySubscribers();
 
     if (db) {
       try {
-        const docId = sanitizeDocId(cleanNo);
-        await setDoc(doc(db, 'ex_customers', docId), cleanForFirestore(updatedItem), { merge: true });
-        logFirestoreWrite({
-          collection: 'ex_customers',
-          documentId: docId,
-          result: 'SUCCESS'
-        });
+        const docRef = doc(db, 'ex_customers', no_psb);
+        await setDoc(docRef, {
+          assigned_to_cmo_id: cmoId,
+          assigned_cmo_nama: cmoNama,
+          assigned_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        }, { merge: true });
       } catch (err: any) {
-        logFirestoreWrite({
-          collection: 'ex_customers',
-          documentId: cleanNo,
-          result: 'FAILED',
-          errorCode: err?.code,
-          errorMessage: err?.message
-        });
-        return { success: false, message: `Gagal assign di Firestore: ${err?.message || 'Permission denied'}` };
+        console.warn('Firestore assign note:', err?.message || err);
       }
     }
 
-    list[index] = updatedItem;
-    saveToStorage(STORAGE_KEYS.EX_CUSTOMERS, list);
-    notifyAllListeners();
-
-    return { success: true, message: `Konsumen PSB ${cleanNo} berhasil ditugaskan ke CMO ${cmoName}!` };
+    return { success: true, message: `Konsumen berhasil ditugaskan ke CMO ${cmoNama}.` };
   },
 
-  async unassignExCustomer(no_psb: string): Promise<{ success: boolean; message: string }> {
-    const list = this.getExCustomers();
-    const cleanNo = no_psb.toUpperCase();
-    const index = list.findIndex(c => c.no_psb.toUpperCase() === cleanNo);
-
-    if (index === -1) {
-      return { success: false, message: 'Data tidak ditemukan!' };
+  async unassignExCustomerCMO(no_psb: string): Promise<{ success: boolean; message: string }> {
+    const list = StorageService.getExCustomers();
+    const idx = list.findIndex(c => c.no_psb === no_psb);
+    if (idx === -1) {
+      return { success: false, message: 'Konsumen tidak ditemukan.' };
     }
 
-    const updatedItem: ExCustomer = {
-      ...list[index],
-      assigned_to_cmo_id: undefined,
-      assigned_to_cmo_name: undefined,
-      assigned_at: undefined
-    };
+    delete list[idx].assigned_to_cmo_id;
+    delete list[idx].assigned_cmo_nama;
+    delete list[idx].assigned_at;
+    list[idx].updated_at = new Date().toISOString();
+
+    localStorage.setItem(STORAGE_KEYS.EX_CUSTOMERS, JSON.stringify(list));
+    notifySubscribers();
 
     if (db) {
       try {
-        const docId = sanitizeDocId(cleanNo);
-        await setDoc(doc(db, 'ex_customers', docId), cleanForFirestore(updatedItem));
-        logFirestoreWrite({
-          collection: 'ex_customers',
-          documentId: docId,
-          result: 'SUCCESS'
-        });
+        const docRef = doc(db, 'ex_customers', no_psb);
+        await setDoc(docRef, {
+          assigned_to_cmo_id: null,
+          assigned_cmo_nama: null,
+          assigned_at: null,
+          updated_at: new Date().toISOString()
+        }, { merge: true });
       } catch (err: any) {
-        logFirestoreWrite({
-          collection: 'ex_customers',
-          documentId: cleanNo,
-          result: 'FAILED',
-          errorCode: err?.code,
-          errorMessage: err?.message
-        });
-        return { success: false, message: `Gagal unassign di Firestore: ${err?.message || 'Permission denied'}` };
+        console.warn('Firestore unassign note:', err?.message || err);
       }
     }
 
-    list[index] = updatedItem;
-    saveToStorage(STORAGE_KEYS.EX_CUSTOMERS, list);
-    notifyAllListeners();
-
-    return { success: true, message: `Penugasan konsumen PSB ${cleanNo} berhasil dibatalkan.` };
+    return { success: true, message: 'Penugasan CMO berhasil dibatalkan.' };
   },
 
-  // Submit Follow Up for Ex-Customer
-  async submitExCustomerFU(params: {
-    no_psb: string;
-    hasil_fu: HasilFUExCustomer;
-    catatan_fu: string;
-    currentUser: User;
-  }): Promise<{ success: boolean; message: string; log?: ExCustomerFULog }> {
-    if (!params.hasil_fu) {
-      return { success: false, message: 'Hasil FU wajib dipilih!' };
-    }
-    if (params.catatan_fu && params.catatan_fu.length > 100) {
-      return { success: false, message: 'Catatan FU melebihi batas maksimal 100 karakter!' };
-    }
-
-    const list = this.getExCustomers();
-    const cleanNo = params.no_psb.toUpperCase();
-    const index = list.findIndex(c => c.no_psb.toUpperCase() === cleanNo);
-
-    if (index === -1) {
-      return { success: false, message: 'Data Ex-Customer tidak ditemukan!' };
-    }
-
-    const item = list[index];
-    const nowIso = new Date().toISOString();
-
-    const newLog: ExCustomerFULog = {
-      id: `LOG-EX-${Date.now().toString().slice(-6)}`,
-      no_psb: item.no_psb,
-      nama_konsumen: item.nama_konsumen,
-      kd_cab: item.kd_cab,
-      kd_pos: item.kd_pos,
-      tgl_fu: nowIso,
-      hasil_fu: params.hasil_fu,
-      catatan_fu: (params.catatan_fu || '').trim(),
-      user_fu: params.currentUser.nama,
-      user_id: params.currentUser.id,
-      user_role: params.currentUser.role,
-      kd_ao: params.currentUser.kd_ao
+  subscribe(callback: () => void): () => void {
+    subscribers.add(callback);
+    return () => {
+      subscribers.delete(callback);
     };
-
-    // Update Ex-Customer State
-    const updatedItem: ExCustomer = {
-      ...item,
-      last_fu_date: nowIso,
-      last_fu_status: params.hasil_fu,
-      last_fu_by_user: params.currentUser.nama,
-      last_fu_by_role: params.currentUser.role,
-      last_fu_notes: (params.catatan_fu || '').trim(),
-      fu_count: (item.fu_count || 0) + 1
-    };
-
-    if (db) {
-      try {
-        const itemDocId = sanitizeDocId(cleanNo);
-        const logDocId = sanitizeDocId(newLog.id);
-        await setDoc(doc(db, 'ex_customers', itemDocId), cleanForFirestore(updatedItem));
-        await setDoc(doc(db, 'ex_customer_fu_logs', logDocId), cleanForFirestore(newLog));
-        logFirestoreWrite({
-          collection: 'ex_customers',
-          documentId: itemDocId,
-          result: 'SUCCESS'
-        });
-        logFirestoreWrite({
-          collection: 'ex_customer_fu_logs',
-          documentId: logDocId,
-          result: 'SUCCESS'
-        });
-      } catch (err: any) {
-        logFirestoreWrite({
-          collection: 'ex_customers',
-          documentId: cleanNo,
-          result: 'FAILED',
-          errorCode: err?.code,
-          errorMessage: err?.message
-        });
-        return {
-          success: false,
-          message: `Gagal menyimpan Follow-Up Ex-Customer di Firestore: ${err?.message || 'Permission denied'}`
-        };
-      }
-    }
-
-    list[index] = updatedItem;
-    saveToStorage(STORAGE_KEYS.EX_CUSTOMERS, list);
-
-    const logs = this.getExCustomerFULogs();
-    logs.unshift(newLog);
-    saveToStorage(STORAGE_KEYS.EX_CUSTOMER_FU_LOGS, logs);
-
-    notifyAllListeners();
-
-    return {
-      success: true,
-      message: `Hasil Follow-Up untuk ${item.nama_konsumen} (${item.no_psb}) berhasil disimpan!`,
-      log: newLog
-    };
-  },
-
-  getStoredAuthUser(): User | null {
-    return getInitialOrStored<User | null>(STORAGE_KEYS.CURRENT_USER, null);
-  },
-
-  setStoredAuthUser(user: User | null): void {
-    if (user) {
-      saveToStorage(STORAGE_KEYS.CURRENT_USER, user);
-    } else {
-      localStorage.removeItem(STORAGE_KEYS.CURRENT_USER);
-    }
-  },
-
-  resetToDefault(): void {
-    localStorage.setItem(STORAGE_KEYS.CABANG, JSON.stringify(INITIAL_CABANG));
-    localStorage.setItem(STORAGE_KEYS.POSKO, JSON.stringify(INITIAL_POSKO));
-    localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(INITIAL_USERS));
-    localStorage.setItem(STORAGE_KEYS.MEDIATORS, JSON.stringify(INITIAL_MEDIATORS));
-    localStorage.setItem(STORAGE_KEYS.FU_LOGS, JSON.stringify(INITIAL_FU_LOGS));
-    localStorage.setItem(STORAGE_KEYS.EX_CUSTOMERS, JSON.stringify(INITIAL_EX_CUSTOMERS));
-    localStorage.setItem(STORAGE_KEYS.EX_CUSTOMER_FU_LOGS, JSON.stringify(INITIAL_EX_CUSTOMER_FU_LOGS));
-    localStorage.removeItem(STORAGE_KEYS.CURRENT_USER);
-    notifyAllListeners();
   }
 };
+
+// -------------------------------------------------------------
+// Real-time Firestore Sync Management
+// -------------------------------------------------------------
+let activeUnsubscribers: (() => void)[] = [];
+
+export function startFirebaseSync(currentUser?: User | null, authUid?: string | null): void {
+  stopFirebaseSync();
+  if (!db || !currentUser || currentUser.status !== 'AKTIF') return;
+
+  try {
+    // 1. Sync Users collection
+    const usersCol = collection(db, 'users');
+    const unsubUsers = onSnapshot(usersCol, (snapshot) => {
+      if (!snapshot.empty) {
+        const users: User[] = [];
+        snapshot.forEach(docSnap => {
+          users.push(docSnap.data() as User);
+        });
+        if (users.length > 0) {
+          const localUsers = StorageService.getUsers();
+          const userMap = new Map<string, User>();
+          localUsers.forEach(u => userMap.set(u.id, u));
+          users.forEach(u => userMap.set(u.id, { ...userMap.get(u.id), ...u }));
+          localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(Array.from(userMap.values())));
+          notifySubscribers();
+        }
+      }
+    }, (err) => {
+      console.debug('[FIREBASE-SYNC] Users collection sync note:', err.message);
+    });
+    activeUnsubscribers.push(unsubUsers);
+
+    // 2. Sync Mediators collection
+    const medCol = query(collection(db, 'mediators'), limit(500));
+    const unsubMeds = onSnapshot(medCol, (snapshot) => {
+      if (!snapshot.empty) {
+        const meds: MediatorKontrak[] = [];
+        snapshot.forEach(docSnap => {
+          meds.push(docSnap.data() as MediatorKontrak);
+        });
+        if (meds.length > 0) {
+          const localMeds = StorageService.getMediators();
+          const medMap = new Map<string, MediatorKontrak>();
+          localMeds.forEach(m => medMap.set(m.kd_med, m));
+          meds.forEach(m => medMap.set(m.kd_med, { ...medMap.get(m.kd_med), ...m }));
+          localStorage.setItem(STORAGE_KEYS.MEDIATORS, JSON.stringify(Array.from(medMap.values())));
+          notifySubscribers();
+        }
+      }
+    }, (err) => {
+      console.debug('[FIREBASE-SYNC] Mediators collection sync note:', err.message);
+    });
+    activeUnsubscribers.push(unsubMeds);
+
+    // 3. Sync Ex Customers collection
+    const exCol = query(collection(db, 'ex_customers'), limit(500));
+    const unsubEx = onSnapshot(exCol, (snapshot) => {
+      if (!snapshot.empty) {
+        const exList: ExCustomer[] = [];
+        snapshot.forEach(docSnap => {
+          exList.push(docSnap.data() as ExCustomer);
+        });
+        if (exList.length > 0) {
+          const localEx = StorageService.getExCustomers();
+          const exMap = new Map<string, ExCustomer>();
+          localEx.forEach(c => exMap.set(c.no_psb, c));
+          exList.forEach(c => exMap.set(c.no_psb, { ...exMap.get(c.no_psb), ...c }));
+          localStorage.setItem(STORAGE_KEYS.EX_CUSTOMERS, JSON.stringify(Array.from(exMap.values())));
+          notifySubscribers();
+        }
+      }
+    }, (err) => {
+      console.debug('[FIREBASE-SYNC] Ex-customers collection sync note:', err.message);
+    });
+    activeUnsubscribers.push(unsubEx);
+  } catch (e) {
+    console.debug('[FIREBASE-SYNC] Sync initialization note:', e);
+  }
+}
+
+export function stopFirebaseSync(): void {
+  activeUnsubscribers.forEach(unsub => {
+    try {
+      unsub();
+    } catch {}
+  });
+  activeUnsubscribers = [];
+}

@@ -310,7 +310,7 @@ export const RegistrasiMediator: React.FC<RegistrasiMediatorProps> = ({ onSucces
                   maxLength={100}
                   placeholder="Masukkan nama lengkap mediator (maksimal 100 karakter)"
                   value={namaMediator}
-                  onChange={(e) => setNamaMediator(e.target.value.toUpperCase())}
+                  onChange={(e) => setNamaMediator(e.target.value)}
                   className="w-full p-2.5 bg-[#0d0e12] border border-[#272d3e] text-[#e0e4eb] placeholder-[#6b7280] rounded-xl text-xs uppercase focus:outline-none focus:ring-2 focus:ring-blue-500/50"
                 />
                 <span className="text-[11px] text-[#6b7280] mt-1 block">

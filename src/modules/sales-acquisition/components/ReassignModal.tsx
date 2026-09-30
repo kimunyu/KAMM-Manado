@@ -1,189 +1,159 @@
 import React, { useState, useMemo } from 'react';
-import { 
-  X, 
-  ArrowRightLeft, 
-  UserCheck, 
-  Building2, 
-  AlertTriangle 
-} from 'lucide-react';
 import { SalesAcquisition } from '../types';
-import { User, Cabang, Posko } from '../../../types';
-import { SalesAcquisitionService } from '../services/salesAcquisitionService';
+import { User } from '../../../types';
+import { ArrowRightLeft, X, UserCheck, AlertTriangle } from 'lucide-react';
 
 interface ReassignModalProps {
   isOpen: boolean;
   onClose: () => void;
   record: SalesAcquisition;
-  currentUser: User;
   allUsers: User[];
-  allCabang: Cabang[];
-  allPosko: Posko[];
-  onSuccess: () => void;
+  currentUser: User;
+  onReassign: (targetUserId: string, targetUserNama: string, newKdAo: string, notes?: string) => Promise<boolean>;
 }
 
 export const ReassignModal: React.FC<ReassignModalProps> = ({
   isOpen,
   onClose,
   record,
-  currentUser,
   allUsers,
-  allCabang,
-  allPosko,
-  onSuccess
+  currentUser,
+  onReassign
 }) => {
-  const [targetUserId, setTargetUserId] = useState('');
+  const [selectedUserId, setSelectedUserId] = useState('');
+  const [notes, setNotes] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  // Available AO users based on current user scope
   const availableAOs = useMemo(() => {
     return allUsers.filter(u => {
       if (u.status !== 'AKTIF') return false;
       if (u.role !== 'CMO' && u.role !== 'KAPOS') return false;
-      if (u.id === record.assigned_user_id) return false; // don't show current assignee
-
-      // Role Scope check
-      if (currentUser.role === 'KAPOS' && currentUser.kd_posko) {
-        return u.kd_posko === currentUser.kd_posko;
-      }
-      if (currentUser.role === 'KAOPS' || currentUser.role === 'KACAB') {
-        return u.kd_cabang === currentUser.kd_cabang;
-      }
+      if (u.id === record.assigned_user_id) return false;
       return true;
     });
-  }, [allUsers, currentUser, record.assigned_user_id]);
+  }, [allUsers, record.assigned_user_id]);
 
   if (!isOpen) return null;
-
-  const targetUser = allUsers.find(u => u.id === targetUserId);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage(null);
 
-    if (!targetUserId || !targetUser) {
-      setErrorMessage('Pilih petugas AO baru untuk mutasi prospek!');
+    if (!selectedUserId) {
+      setErrorMessage('Pilih petugas AO baru penerima tugas!');
       return;
     }
 
+    const target = allUsers.find(u => u.id === selectedUserId);
+    if (!target) return;
+
     setIsSubmitting(true);
-
-    const res = await SalesAcquisitionService.reassignLead(
-      record.id,
-      {
-        new_assigned_user_id: targetUser.id,
-        new_kd_ao: targetUser.kd_ao || '',
-        new_kd_cabang: targetUser.kd_cabang || record.kd_cabang,
-        new_kd_posko: targetUser.kd_posko || record.kd_posko
-      },
-      currentUser
+    const success = await onReassign(
+      target.id,
+      target.nama,
+      target.kd_ao || record.kd_ao,
+      notes.trim()
     );
-
     setIsSubmitting(false);
 
-    if (res.success) {
-      onSuccess();
+    if (success) {
       onClose();
     } else {
-      setErrorMessage(res.message);
+      setErrorMessage('Gagal mengalihkan penugasan!');
     }
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
-      <div className="bg-[#12151f] border border-[#272d3e] rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden my-auto animate-in fade-in zoom-in-95 duration-200">
-        {/* Header */}
+    <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+      <div className="bg-[#12151f] border border-[#272d3e] rounded-2xl w-full max-w-md shadow-2xl overflow-hidden animate-in fade-in zoom-in-95">
         <div className="px-6 py-4 border-b border-[#232734] bg-indigo-950/40 flex items-center justify-between">
           <div className="flex items-center space-x-3">
-            <div className="p-2 rounded-xl bg-indigo-600 text-white shadow-md shadow-indigo-900/40">
+            <div className="p-2 rounded-xl bg-indigo-600 text-white shadow-md">
               <ArrowRightLeft className="h-5 w-5" />
             </div>
             <div>
-              <h2 className="text-base font-bold text-white tracking-tight flex items-center space-x-2">
-                <span>Penugasan / Alihkan Petugas Survei (AO)</span>
+              <h2 className="text-base font-bold text-white tracking-tight">
+                Penugasan / Alihkan Petugas Survei (AO)
               </h2>
               <p className="text-xs text-indigo-300/80">
                 Tentukan atau alihkan penugasan survei prospek (Wewenang KAPOS, KACAB, RM, Super Admin)
               </p>
             </div>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="p-1.5 rounded-lg text-[#8e96a8] hover:text-white hover:bg-[#232734] transition-colors"
-          >
+          <button onClick={onClose} className="p-1 rounded-lg text-[#8e96a8] hover:text-white">
             <X className="h-5 w-5" />
           </button>
         </div>
 
-        {/* Body */}
-        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+        <form onSubmit={handleSubmit} className="p-6 space-y-4 text-xs">
           {errorMessage && (
-            <div className="p-3 bg-rose-950/70 border border-rose-800/80 rounded-xl text-xs text-rose-200 flex items-center space-x-2">
-              <AlertTriangle className="h-4 w-4 text-rose-400 shrink-0" />
+            <div className="p-3 bg-rose-950/70 border border-rose-800 rounded-xl text-rose-300 flex items-center space-x-2">
+              <AlertTriangle className="h-4 w-4 shrink-0" />
               <span>{errorMessage}</span>
             </div>
           )}
 
-          {/* Current Prospek Info */}
-          <div className="p-3.5 bg-[#181c28] border border-[#2c3345] rounded-xl space-y-2 text-xs">
+          <div className="p-3.5 bg-[#181c28] border border-[#2c3345] rounded-xl space-y-1.5">
             <div className="flex justify-between items-center text-[#8e96a8]">
-              <span>Nama Calon Konsumen:</span>
+              <span>Calon Konsumen:</span>
               <strong className="text-white font-medium text-sm">{record.nama_calon_konsumen}</strong>
             </div>
             <div className="flex justify-between items-center text-[#8e96a8]">
-              <span>Status Saat Ini:</span>
+              <span>Status:</span>
               <span className="font-mono text-blue-400 font-semibold">{record.status}</span>
             </div>
             <div className="flex justify-between items-center text-[#8e96a8]">
               <span>AO Saat Ini:</span>
-              <span className="text-amber-300 font-bold">{record.kd_ao || '-'} (ID: {record.assigned_user_id})</span>
+              <span className="text-amber-300 font-bold">{record.kd_ao || '-'} ({record.assigned_user_nama || record.assigned_user_id})</span>
             </div>
           </div>
 
-          {/* Select New AO */}
           <div className="space-y-1.5">
-            <label className="text-xs font-bold text-[#e0e4eb] flex items-center space-x-1.5">
-              <UserCheck className="h-3.5 w-3.5 text-indigo-400" />
-              <span>Pilih Petugas AO Penerima Baru <strong className="text-rose-400">*</strong></span>
+            <label className="font-bold text-white flex items-center space-x-1.5">
+              <UserCheck className="h-4 w-4 text-indigo-400" />
+              <span>Pilih Petugas Survei / AO Baru <strong className="text-rose-400">*</strong></span>
             </label>
             <select
               required
-              value={targetUserId}
-              onChange={(e) => setTargetUserId(e.target.value)}
-              className="w-full bg-[#181c28] border border-[#2c3345] rounded-xl px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-indigo-500 transition-colors"
+              value={selectedUserId}
+              onChange={(e) => setSelectedUserId(e.target.value)}
+              className="w-full bg-[#181c28] border border-[#2c3345] rounded-xl px-3 py-2.5 text-white focus:outline-none focus:border-indigo-500"
             >
-              <option value="">-- Pilih Petugas AO / CMO --</option>
-              {availableAOs.map((ao) => (
+              <option value="">-- Pilih Petugas Lapangan --</option>
+              {availableAOs.map(ao => (
                 <option key={ao.id} value={ao.id}>
-                  {ao.nama} (KD AO: {ao.kd_ao || '-'} • Posko: {ao.kd_posko || '-'} • {ao.role})
+                  {ao.nama} (KD AO: {ao.kd_ao || '-'} • Posko: {ao.kd_posko})
                 </option>
               ))}
             </select>
-            {availableAOs.length === 0 && (
-              <p className="text-xs text-amber-400">
-                Tidak ada petugas AO lain yang memenuhi lingkup wilayah kerja Anda.
-              </p>
-            )}
           </div>
 
-          {/* Actions */}
-          <div className="pt-3 border-t border-[#232734] flex items-center justify-end space-x-3">
+          <div className="space-y-1.5">
+            <label className="font-semibold text-white">Alasan / Instruksi Pengalihan</label>
+            <textarea
+              rows={2}
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              placeholder="Contoh: Domisili konsumen lebih dekat dengan posko Tuminting..."
+              className="w-full bg-[#181c28] border border-[#2c3345] rounded-xl p-3 text-white focus:outline-none focus:border-indigo-500 resize-none"
+            />
+          </div>
+
+          <div className="pt-2 flex justify-end space-x-2">
             <button
               type="button"
               onClick={onClose}
-              disabled={isSubmitting}
-              className="px-4 py-2.5 rounded-xl border border-[#2c3345] text-xs font-bold text-[#8e96a8] hover:text-white hover:bg-[#181c28] transition-colors"
+              className="px-4 py-2 rounded-xl border border-[#2c3345] text-[#8e96a8] hover:text-white"
             >
               Batal
             </button>
             <button
               type="submit"
-              disabled={isSubmitting || !targetUserId}
-              className="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-xs font-bold text-white shadow-lg shadow-indigo-950/50 transition-all flex items-center space-x-2"
+              disabled={isSubmitting}
+              className="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold"
             >
-              <ArrowRightLeft className="h-4 w-4" />
-              <span>{isSubmitting ? 'Memproses...' : 'Simpan Mutasi'}</span>
+              {isSubmitting ? 'Mengalihkan...' : 'Alihkan Penugasan'}
             </button>
           </div>
         </form>

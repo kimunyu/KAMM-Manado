@@ -117,7 +117,7 @@ export const ImportMediatorModal: React.FC<ImportMediatorModalProps> = ({
   };
 
   // Execute Import
-  const handleExecuteImport = () => {
+  const handleExecuteImport = async () => {
     if (currentUser?.role !== 'SUPER_ADMIN') {
       setParseErrors(['Akses Ditolak: Hanya Super Admin yang diizinkan melakukan import data.']);
       return;
@@ -128,7 +128,7 @@ export const ImportMediatorModal: React.FC<ImportMediatorModalProps> = ({
       return;
     }
 
-    const res = DatabaseService.importMediators(
+    const res = await DatabaseService.importMediators(
       validRows.map(r => ({
         kd_med: r.kd_med,
         nama_mediator: r.nama_mediator.trim().toUpperCase(),

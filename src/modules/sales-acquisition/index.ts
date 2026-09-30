@@ -5,6 +5,6 @@ export * from './components/PipelineBoard';
 export * from './components/TableProspek';
 export * from './components/QuickEntryModal';
 export * from './components/ProspekDetailModal';
-export * from './components/ConvertCairModal';
 export * from './components/ReassignModal';
+export * from './components/ConvertCairModal';
 export * from './components/TolakBatalModal';

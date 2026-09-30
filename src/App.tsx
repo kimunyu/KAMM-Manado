@@ -136,7 +136,14 @@ function MainApp() {
   // Safeguard tab switching when role changes and user loses access to current tab
   useEffect(() => {
     if (currentUser?.role === 'CMO') {
-      if (activeTab !== 'sales-acquisition' && activeTab !== 'daftar-mediator' && activeTab !== 'registrasi' && activeTab !== 'follow-up') {
+      if (
+        activeTab !== 'sales-acquisition' &&
+        activeTab !== 'dashboard' &&
+        activeTab !== 'daftar-mediator' &&
+        activeTab !== 'registrasi' &&
+        activeTab !== 'follow-up' &&
+        activeTab !== 'ex-customer'
+      ) {
         setActiveTab('sales-acquisition');
       }
       return;

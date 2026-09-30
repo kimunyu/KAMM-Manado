@@ -51,7 +51,14 @@ interface AuthContextType {
   canAccessKontrolSales: boolean;
   canInputSalesRecord: boolean;
   canValidateSalesRecord: boolean;
+  switchUser: (user: User) => void;
+  canAccessKontrolMediator: boolean;
+  canAccessExCustomer: boolean;
+  canAccessSalesAcquisition: boolean;
+  canAccessUserManagement: boolean;
+  canAccessAudit: boolean;
 }
+
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
@@ -501,9 +508,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // Kontrol Sales & ADM_DE RBAC
   const isAdmDe = role === 'ADM_DE';
-  const canAccessKontrolSales = role === 'ADM_DE' || role === 'ADM' || role === 'KAOPS' || role === 'KACAB' || role === 'RM' || role === 'SUPER_ADMIN';
+  const canAccessKontrolSales = role === 'ADM_DE' || role === 'ADM' || role === 'KAOPS' || role === 'KACAB' || role === 'RM' || role === 'KAPOS' || role === 'SUPER_ADMIN';
   const canInputSalesRecord = role === 'ADM' || role === 'KAOPS' || role === 'SUPER_ADMIN';
   const canValidateSalesRecord = role === 'ADM_DE' || role === 'SUPER_ADMIN';
+
+  const canAccessKontrolMediator = true;
+  const canAccessExCustomer = role !== 'ADM_DE';
+  const canAccessSalesAcquisition = role !== 'ADM_BPKB' && role !== 'ADMIN_BPKB';
+  const canAccessUserManagement = role === 'SUPER_ADMIN';
+  const canAccessAudit = role === 'SUPER_ADMIN' || role === 'RM' || role === 'KACAB';
+
+  const switchUser = (user: User) => {
+    setCurrentUser(user);
+    saveToStorage('med_control_auth_user_v2', user);
+    saveToStorage('med_control_is_super_admin_session_v2', user.role === 'SUPER_ADMIN');
+  };
 
   return (
     <AuthContext.Provider
@@ -539,8 +558,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         isAdmDe,
         canAccessKontrolSales,
         canInputSalesRecord,
-        canValidateSalesRecord
+        canValidateSalesRecord,
+        switchUser,
+        canAccessKontrolMediator,
+        canAccessExCustomer,
+        canAccessSalesAcquisition,
+        canAccessUserManagement,
+        canAccessAudit
       }}
+
     >
       {children}
     </AuthContext.Provider>

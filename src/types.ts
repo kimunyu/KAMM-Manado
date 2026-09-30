@@ -1,103 +1,44 @@
+// Core Application Types - Super App KAMM Manado
+
 export type UserRole = 
-  | 'CMO' 
-  | 'KAPOS' 
-  | 'ADM' 
-  | 'ADM_BPKB'
-  | 'ADMIN_BPKB' // Backward compatibility alias
-  | 'ADM_DE'
-  | 'KAOPS' 
+  | 'SUPER_ADMIN' 
   | 'KACAB' 
   | 'RM' 
-  | 'SUPER_ADMIN';
+  | 'KAOPS' 
+  | 'KAPOS' 
+  | 'ADM' 
+  | 'ADM_BPKB' 
+  | 'ADMIN_BPKB'
+  | 'ADM_DE' 
+  | 'CMO';
 
-export const isAdmBpkbRole = (role?: string | null): boolean => {
-  return role === 'ADM_BPKB' || role === 'ADMIN_BPKB';
-};
+export type UserStatus = 'AKTIF' | 'NONAKTIF';
 
-export const isAdmDeRole = (role?: string | null): boolean => {
-  return role === 'ADM_DE';
-};
-
-export type StatusKreditLunas = 
-  | 'Lebih Awal'
-  | 'Tepat Waktu'
-  | 'Dalam Perhatian Khusus'
-  | 'Kurang Lancar'
-  | 'Diragukan'
-  | 'AR2'
-  | 'AR3'
-  | 'AR4';
-
-export type HasilFU = 
-  | 'WA/Tlpn Aktif, ada respon'
-  | 'WA/Tlpn Aktif, tidak ada respon'
-  | 'WA/Tlpn Tidak Aktif';
-
-export type HasilFUExCustomer = HasilFU;
-
-export interface ExCustomer {
-  no_psb: string;              // Unique/Primary Key
-  kd_cab: string;              // Kode Cabang
-  kd_pos: string;              // Kode Posko
-  nama_konsumen: string;
-  no_telepon: string;
-  tgl_bpkb_sdk: string;        // Tanggal BPKB diserahkan/diambil (YYYY-MM-DD)
-  status_kredit_lunas: StatusKreditLunas;
-  
-  // Keamanan & Pencatatan Input (ADM BPKB)
-  created_at: string;          // ISO Timestamp saat diinput
-  created_by_uid: string;      // ID User Penginput
-  created_by_name: string;
-  updated_at?: string;         // ISO Timestamp saat diedit
-  updated_by_name?: string;
-
-  // Drip Feeding Engine & Penugasan CMO
-  assigned_to_cmo_id?: string; // ID CMO jika ditugaskan oleh KAPOS
-  assigned_to_cmo_name?: string;
-  assigned_at?: string;        // Timestamp penugasan CMO (reset 24 jam)
-  
-  // Follow Up Terakhir
-  last_fu_date?: string | null;// ISO DateTime
-  last_fu_status?: HasilFUExCustomer | null;
-  last_fu_by_user?: string | null;
-  last_fu_by_role?: UserRole | null;
-  last_fu_notes?: string | null; // Maks 100 Karakter
-  fu_count: number;
-}
-
-export interface ExCustomerFULog {
+export interface User {
   id: string;
-  no_psb: string;
-  nama_konsumen: string;
-  kd_cab: string;
-  kd_pos: string;
-  tgl_fu: string;             // ISO DateTime
-  hasil_fu: HasilFUExCustomer;
-  catatan_fu: string;         // Max 100 chars
-  user_fu: string;            // Nama Pengguna
-  user_id: string;
-  user_role: UserRole;
+  username: string;
+  password?: string;
+  nama: string;
+  role: UserRole;
   kd_ao?: string;
-}
-
-export interface ExCustomerMetrics {
-  totalExCustomer: number;
-  totalDripToday: number;
-  totalSudahFuHariIni: number;
-  totalBelumFuHariIni: number;
-  totalAssignedCmo: number;
-  responseRates: {
-    respon: number;
-    tidakRespon: number;
-    tidakAktif: number;
-  };
+  kd_cabang?: string;
+  kd_posko?: string;
+  status: UserStatus;
+  email?: string;
+  firebase_uid?: string;
+  must_change_password?: boolean;
+  created_at?: string;
+  last_login?: string;
+  updated_at?: string;
 }
 
 export interface Cabang {
   kd_cabang: string;
   nama_cabang: string;
-  wilayah: string;
+  alamat?: string;
+  wilayah?: string;
 }
+
 
 export interface Posko {
   kd_posko: string;
@@ -105,57 +46,135 @@ export interface Posko {
   kd_cabang: string;
 }
 
-export interface User {
-  id: string;
-  username: string;
-  nama: string;
-  role: UserRole;
-  kd_ao?: string;
-  kd_posko?: string;
+export type MediatorStatus = 'BELUM_AKTIF' | 'PENDING' | 'AKTIF' | 'DITOLAK' | 'NONAKTIF' | 'INAKTIF';
+
+export interface MediatorKontrak {
+  firestore_id?: string;
+  id?: string;
+  temp_id?: string;
+  kd_med: string;
+  nama_mediator: string;
+  no_tlpn: string;
   kd_cabang?: string;
-  status: 'AKTIF' | 'NONAKTIF';
-  email?: string;
-  /**
-   * @deprecated LEGACY FIELD: Kept solely for schema backwards compatibility.
-   * NEVER used for credential validation or authentication runtime.
-   * Authentication is enforced exclusively by Firebase Authentication.
-   */
-  password?: string;
-  must_change_password?: boolean;
-  last_password_change?: string;
-  firebase_uid?: string;
-  foto_profil?: string; // Lightweight base64 image (< 30KB)
+  kd_posko: string;
+  kd_ao: string;
+  status: MediatorStatus;
+  tanggal_bergabung?: string;
+  tgl_akhir_fu?: string | null;
+  no_ktp?: string;
+  alamat?: string;
+  tempat_lahir?: string;
+  tgl_lahir?: string;
+  nama_bank?: string;
+  no_rekening?: string;
+  atas_nama_rekening?: string;
+  catatan?: string;
+  catatan_admin?: string;
+  created_by?: string;
+  created_by_user?: string;
+  created_by_role?: string;
+  reviewed_by?: string;
+  activated_by?: string;
+  created_at?: string;
+  updated_at?: string;
 }
 
+export type StatusKreditLunas = 
+  | 'Lebih Awal' 
+  | 'Tepat Waktu' 
+  | 'Dalam Perhatian Khusus' 
+  | 'Kurang Lancar' 
+  | 'Diragukan' 
+  | 'Macet' 
+  | 'AR2' 
+  | 'AR3' 
+  | 'AR4';
+
+export type ExCustomerBpkbStatus = 'LUNAS' | 'PROSES_AMBIL' | 'SUDAH_DIAMBIL';
+export type ExCustomerProspekStatus = 'BELUM_DIHUBUNGI' | 'TERHUBUNGI' | 'MINAT' | 'TIDAK_MINAT' | 'PROSES_PENCAIRAN' | 'CAIR';
+
+export interface ExCustomer {
+  no_psb: string;
+  nama_konsumen: string;
+  no_polisi: string;
+  no_rangka?: string;
+  no_mesin?: string;
+  tahun?: string | number;
+  merk?: string;
+  type?: string;
+  warna?: string;
+  tgl_cair?: string;
+  tgl_lunas?: string;
+  tgl_bpkb_sdk?: string;
+  status_bpkb: ExCustomerBpkbStatus;
+  status_prospek: ExCustomerProspekStatus;
+  status_kredit_lunas?: StatusKreditLunas | string;
+  no_hp?: string;
+  kd_cabang: string;
+  kd_posko: string;
+  kd_ao?: string;
+  assigned_to_cmo_id?: string;
+  assigned_cmo_nama?: string;
+  assigned_at?: string;
+  catatan_terakhir?: string;
+  tgl_follow_up_terakhir?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface ExCustomerFollowUpLog {
+  id: string;
+  no_psb: string;
+  tanggal: string;
+  user_id: string;
+  user_nama: string;
+  kd_ao?: string;
+  hasil_kontak: string;
+  status_sebelumnya: ExCustomerProspekStatus;
+  status_baru: ExCustomerProspekStatus;
+  catatan: string;
+  created_at: string;
+}
+
+export interface FollowUpLog {
+  id: string;
+  kd_med: string;
+  tanggal: string;
+  user_id: string;
+  user_nama: string;
+  hasil_kontak: string;
+  komitmen_lead: number;
+  catatan: string;
+  created_at: string;
+}
+
+export type ExCustomerFULog = ExCustomerFollowUpLog;
+export type FULog = FollowUpLog;
+
+export type FUCategory = 'BELUM_FU' | 'SUDAH_FU' | 'LEBIH_15_HARI' | 'LEBIH_30_HARI';
+
 export type AuditActionCategory = 
-  | 'USER_MANAGEMENT'      // Create/Edit/Delete User, Reset Password
-  | 'AUTH'                 // Login, Logout, Change Password
-  | 'MEDIATOR'             // Register, Review Berkas, Input KD MED, Edit, Delete
-  | 'FOLLOW_UP'            // Input FU Mediator
-  | 'EX_CUSTOMER'          // Input BPKB, Penugasan CMO, FU Ex-Customer, Import/Export
-  | 'MASTER_DATA'          // Cabang, Posko
-  | 'KONTROL_SALES'        // Pencairan Konsumen, Validasi ADM_DE, Update Status
-  | 'SALES_ACQUISITION'    // Prospek Baru, Status Update, Reassignment, CAIR
-  | 'SYSTEM';              // Backup, Restore, Health Check
+  | 'AUTH' 
+  | 'MEDIATOR' 
+  | 'EX_CUSTOMER' 
+  | 'SALES_CONTROL' 
+  | 'KONTROL_SALES' 
+  | 'USER_MANAGEMENT' 
+  | 'SYSTEM';
+
 
 export interface AuditLog {
   id: string;
-  timestamp: string;       // ISO DateTime string
+  timestamp: string;
   actor_id: string;
   actor_name: string;
   actor_role: UserRole;
   actor_kd_ao?: string;
   category: AuditActionCategory;
-  action: string;          // Action identifier (e.g. 'TAMBAH_USER', 'VALIDASI_KD_MED')
-  description: string;     // Indonesian human-readable detail
-  target_id?: string;      // ID of the modified entity
+  action: string;
+  description: string;
+  target_id?: string;
   metadata?: Record<string, any>;
-}
-
-export interface CollectionHealthStat {
-  name: string;
-  count: number;
-  lastUpdated?: string;
 }
 
 export interface SystemHealthStatus {
@@ -175,97 +194,6 @@ export interface SystemHealthStatus {
   };
 }
 
-export type MediatorStatus = 
-  | 'BELUM_AKTIF' // Baru didaftarkan (Menunggu Peninjauan Admin)
-  | 'PENDING'     // Telah ditinjau Admin (Menunggu Input KD MED oleh KAOPS / Super Admin)
-  | 'AKTIF'       // Telah diinput KD MED resmi (Aktif Beroperasi)
-  | 'INAKTIF'     // Nonaktif / Vakum
-  | 'DITOLAK';    // Ditolak saat peninjauan/validasi
-
-export interface MediatorKontrak {
-  kd_med: string; // Manually inputted by KAOPS or SUPER_ADMIN, temporary pending code if PENDING
-  temp_id?: string; // Internal unique ID
-  firestore_id?: string; // Real Firestore Document ID if synced
-  nama_mediator: string; // Max 100 chars
-  no_tlpn: string;
-  status: MediatorStatus; // 'PENDING' -> 'AKTIF'
-  kd_ao: string; // Registered by AO/User
-  kd_posko: string;
-  kd_cabang: string;
-  tgl_akhir_fu: string | null; // ISO Date YYYY-MM-DD
-  created_at: string; // ISO DateTime
-  created_by_user?: string;
-  created_by_role?: UserRole;
-  reviewed_at?: string | null;
-  reviewed_by?: string | null;
-  validated_at?: string | null;
-  validated_by?: string | null;
-  catatan_admin?: string;
-}
-
-export interface FULog {
-  id: string;
-  kd_med: string;
-  nama_mediator: string;
-  tgl_fu: string; // ISO DateTime
-  hasil_fu: HasilFU;
-  catatan_fu: string; // Max 100 chars
-  user_fu: string; // Nama user
-  kd_ao: string;
-  kd_posko: string;
-  kd_cabang: string;
-}
-
-export type FUCategory = 
-  | 'BELUM_FU'       // Belum di FU (Never followed up)
-  | 'LEBIH_30_HARI'  // FU terakhir lebih dari 30 hari (> 30 days)
-  | 'LEBIH_15_HARI'  // FU terakhir lebih dari 15 hari (> 15 days and <= 30 days)
-  | 'SUDAH_FU';      // Sudah di FU (<= 15 days)
-
-export interface DashboardMetrics {
-  totalMediator: number;
-  totalAktif: number;
-  totalPending: number;
-  totalInaktif: number;
-  fuCategories: {
-    belumFu: number;
-    lebih30Hari: number;
-    lebih15Hari: number;
-    sudahFu: number;
-  };
-}
-
-// =========================================================================
-// MASTER WILAYAH INDONESIA (Administrative Territory Types)
-// =========================================================================
-
-export interface WilayahProvinsi {
-  id: string; // Kode provinsi canonical (misal "71" untuk Sulut)
-  nama: string; // Nama provinsi canonical
-}
-
-export interface WilayahKabupaten {
-  id: string; // Kode kabupaten canonical (misal "7171" untuk Kota Manado)
-  provinsi_id: string; // Kode provinsi referensi
-  nama: string; // Nama kabupaten / kota
-  tipe: 'KOTA' | 'KABUPATEN'; // Klasifikasi tipe wilayah
-}
-
-export interface WilayahKecamatan {
-  id: string; // Kode kecamatan canonical (misal "7171010")
-  kabupaten_id: string; // Kode kabupaten/kota referensi
-  provinsi_id: string; // Kode provinsi referensi
-  nama: string; // Nama kecamatan
-}
-
-export interface WilayahDesa {
-  id: string; // Kode desa/kelurahan canonical (misal "7171010001")
-  kecamatan_id: string; // Kode kecamatan referensi
-  kabupaten_id: string; // Kode kabupaten referensi
-  provinsi_id: string; // Kode provinsi referensi
-  nama: string; // Nama desa / kelurahan
-}
-
 export interface SelectedWilayahState {
   provinsiId: string;
   kabupatenId: string;
@@ -277,82 +205,41 @@ export interface SelectedWilayahState {
   desaNama?: string;
 }
 
-// =========================================================================
-// SALES ACQUISITION SYSTEM (LOCKED CONTRACT V14.2.3 / V13 SSOT)
-// =========================================================================
-
-export type SalesAcquisitionSourceLead = 
-  | 'CANVASSING'
-  | 'SOSMED'
-  | 'MEDIATOR'
-  | 'EX_CUSTOMER'
-  | 'WALK_IN';
-
-export type SalesAcquisitionStatus = 
-  | 'PROSPEK_BARU'
-  | 'PROSES_SURVEI'
-  | 'PENGAJUAN_BERKAS'
-  | 'DISETUJUI'
-  | 'CAIR'
-  | 'DITOLAK'
-  | 'BATAL';
-
-export type JenisJaminan = 'R2' | 'R4' | 'SERTIFIKAT';
-
-export interface SalesAcquisition {
-  // 1-5 System / Audit
-  id: string;                         // 1. Unique Doc ID
-  created_at: any;                    // 2. Server Timestamp
-  created_by_user_id: string;         // 3. User ID Creator
-  updated_at: any;                    // 4. Server Timestamp
-  updated_by_user_id: string;         // 5. User ID Updater
-
-  // 6-9 Assignment / Organization
-  assigned_user_id: string;           // 6. User ID of assigned CMO / AO
-  kd_ao: string;                      // 7. Kode AO of assigned CMO
-  kd_cabang: string;                  // 8. Kode Cabang
-  kd_posko: string;                   // 9. Kode Posko
-
-  // 10-12 Customer Identity
-  nama_calon_konsumen: string;        // 10. Nama Konsumen (Min 3, Max 100)
-  no_telepon: string;                 // 11. Raw Phone Input
-  no_telepon_clean: string;           // 12. Sanitized Numeric Phone
-
-  // 13-17 Lead & State
-  sumber_lead: SalesAcquisitionSourceLead; // 13. Canonical 5 Enum Values
-  status: SalesAcquisitionStatus;     // 14. 7 Status Pipeline
-  status_updated_at: any;             // 15. Server Timestamp
-  status_updated_by_user_id: string;  // 16. User ID who changed status
-  alasan_tolak_batal: string;         // 17. Reason if DITOLAK or BATAL (else '')
-
-  // 18-19 References
-  kd_med: string;                     // 18. Kode Mediator if MEDIATOR (else '')
-  ref_no_psb_lama: string;            // 19. No PSB Lama if EX_CUSTOMER (else '')
-
-  // 20-24 Master Wilayah & Address
-  wilayah_provinsi_id: string;        // 20. ID Provinsi
-  wilayah_kabupaten_id: string;       // 21. ID Kabupaten/Kota
-  wilayah_kecamatan_id: string;       // 22. ID Kecamatan
-  wilayah_desa_id: string;            // 23. ID Desa/Kelurahan
-  alamat_detail: string;              // 24. Alamat Domisili Detail (Max 255)
-
-  // 25-27 Conversion / CAIR
-  no_psb: string;                     // 25. No PSB KAMM baru saat CAIR (else '')
-  tgl_cair: any;                      // 26. Firestore Timestamp saat CAIR (null before)
-  sales_control_id: string;           // 27. SC_{id} saat CAIR (else '')
-
-  // 28. Jenis Jaminan Pinjaman: R2 (Motor), R4 (Mobil), Sertifikat
-  jenis_jaminan?: JenisJaminan;
+export interface WilayahProvinsi {
+  id: string;
+  nama: string;
 }
 
-export interface DuplicateCheckResult {
-  hasDuplicate: boolean;
-  duplicateInfo?: {
-    nama_calon_konsumen: string;
-    kd_ao: string;
-    kd_cabang: string;
-    kd_posko: string;
-    status: SalesAcquisitionStatus;
-  } | null;
+export interface WilayahKabupaten {
+  id: string;
+  nama: string;
+  provinsi_id?: string;
 }
 
+export interface WilayahKecamatan {
+  id: string;
+  nama: string;
+  kabupaten_id?: string;
+}
+
+export interface WilayahDesa {
+  id: string;
+  nama: string;
+  kecamatan_id?: string;
+}
+
+export interface ActivityLog {
+  id: string;
+  timestamp: string;
+  user_id: string;
+  username: string;
+  action: string;
+  module: string;
+  details: string;
+}
+
+export interface WilayahItem {
+  id: string;
+  nama: string;
+  parent_id?: string;
+}

@@ -326,7 +326,7 @@ export const FormInputPencairan: React.FC<FormInputPencairanProps> = ({
                 <input
                   type="text"
                   value={namaKonsumen}
-                  onChange={(e) => setNamaKonsumen(e.target.value.toUpperCase())}
+                  onChange={(e) => setNamaKonsumen(e.target.value)}
                   placeholder="Nama lengkap konsumen"
                   maxLength={100}
                   required

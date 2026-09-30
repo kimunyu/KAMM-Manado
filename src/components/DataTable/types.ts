@@ -1,68 +1,70 @@
-import React from 'react';
+import { ReactNode } from 'react';
 
-export type TableDensity = 'compact' | 'normal';
+export type TableDensity = 'compact' | 'normal' | 'relaxed';
 
-export interface ColumnDef<T> {
+export interface Column<T> {
   key: string;
-  header: string | React.ReactNode;
-  accessorKey?: keyof T;
-  sticky?: 'left' | 'right';
+  header: string | ReactNode;
+  accessorKey?: string;
+  render?: (item: T, index: number) => ReactNode;
   sortable?: boolean;
-  hideable?: boolean; // Default: true
-  width?: string;     // Tailwind width class or css min-width, e.g. "w-40" or "min-w-[150px]"
+  hideable?: boolean;
+  sticky?: 'left' | 'right' | boolean;
   align?: 'left' | 'center' | 'right';
-  truncate?: boolean; // If true, truncates text with tooltip
-  render?: (row: T, index: number) => React.ReactNode;
+  width?: string | number;
+  truncate?: boolean;
+  className?: string;
+  headerClassName?: string;
 }
+
+
+export type ColumnDef<T> = Column<T>;
 
 export interface PaginationState {
   currentPage: number;
   pageSize: number;
   totalCount?: number;
-  hasNextPage?: boolean;
-  hasPrevPage?: boolean;
-  onPageChange?: (newPage: number) => void;
-  onPageSizeChange?: (newSize: number) => void;
+  hasNextPage: boolean;
+  hasPrevPage: boolean;
+  onPageChange?: (page: number) => void;
+  onPageSizeChange?: (pageSize: number) => void;
   onNextPage?: () => void;
   onPrevPage?: () => void;
 }
 
+
+
 export interface DataTableProps<T> {
-  tableKey: string;                          // Unique key for localStorage persistence (e.g., 'mediators-table')
+  tableKey?: string;
   columns: ColumnDef<T>[];
   data: T[];
   keyExtractor?: (item: T, index: number) => string | number;
-  
-  // Loading & Empty States
   loading?: boolean;
-  emptyIcon?: React.ReactNode;
+  emptyIcon?: ReactNode;
   emptyTitle?: string;
   emptyDescription?: string;
-  emptyAction?: React.ReactNode;
-
-  // Sorting
+  emptyAction?: ReactNode;
   defaultSortKey?: string;
   defaultSortOrder?: 'asc' | 'desc';
   onSortChange?: (key: string, order: 'asc' | 'desc') => void;
-
-  // Pagination
-  // If provided, table operates in controlled/server-side pagination mode.
-  // If omitted or clientPagination is true, table paginates the passed `data` array automatically.
   pagination?: PaginationState;
   clientPagination?: boolean;
   initialPageSize?: number;
-
-  // Toolbar & Customization
-  title?: React.ReactNode;
-  subtitle?: React.ReactNode;
-  showToolbar?: boolean;                     // Default: true
-  toolbarActions?: React.ReactNode;          // Right slot for export, search, or custom buttons
-  showColumnVisibility?: boolean;            // Default: true
-  showDensityToggle?: boolean;               // Default: true
-  
-  // Styling
+  title?: string | ReactNode;
+  subtitle?: string | ReactNode;
+  showToolbar?: boolean;
+  toolbarActions?: ReactNode;
+  showColumnVisibility?: boolean;
+  showDensityToggle?: boolean;
   containerClassName?: string;
   tableClassName?: string;
   headerClassName?: string;
-  rowClassName?: (row: T, index: number) => string;
+  rowClassName?: (item: T, index: number) => string;
+  searchPlaceholder?: string;
+  searchFilter?: (item: T, term: string) => boolean;
+  pageSize?: number;
+  initialSortKey?: string;
+  initialSortDirection?: 'asc' | 'desc';
+  headerActions?: ReactNode;
 }
+

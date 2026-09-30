@@ -1,9 +1,6 @@
 {
   "entities": {
-    "users": {
-      "title": "Users",
-      "description": "User accounts and roles for authentication and RBAC",
-      "type": "object",
+    "User": {
       "properties": {
         "id": { "type": "string" },
         "username": { "type": "string" },
@@ -12,319 +9,43 @@
         "kd_ao": { "type": "string" },
         "kd_cabang": { "type": "string" },
         "kd_posko": { "type": "string" },
-        "status": { "type": "string" },
-        "email": { "type": "string" },
-        "password": { "type": "string" },
-        "must_change_password": { "type": "boolean" },
-        "last_password_change": { "type": "string" }
-      },
-      "required": ["id", "username", "nama", "role", "status"]
+        "status": { "type": "string" }
+      }
     },
-    "cabang": {
-      "title": "Cabang",
-      "description": "Branch offices",
-      "type": "object",
-      "properties": {
-        "kd_cabang": { "type": "string" },
-        "nama_cabang": { "type": "string" },
-        "wilayah": { "type": "string" }
-      },
-      "required": ["kd_cabang", "nama_cabang"]
-    },
-    "posko": {
-      "title": "Posko",
-      "description": "Operational sub-branches / poskos",
-      "type": "object",
-      "properties": {
-        "kd_posko": { "type": "string" },
-        "nama_posko": { "type": "string" },
-        "kd_cabang": { "type": "string" }
-      },
-      "required": ["kd_posko", "nama_posko", "kd_cabang"]
-    },
-    "mediators": {
-      "title": "Mediators",
-      "description": "Mediator contract profiles and statuses",
-      "type": "object",
+    "MediatorKontrak": {
       "properties": {
         "kd_med": { "type": "string" },
-        "temp_id": { "type": "string" },
         "nama_mediator": { "type": "string" },
         "no_tlpn": { "type": "string" },
-        "kd_cabang": { "type": "string" },
         "kd_posko": { "type": "string" },
         "kd_ao": { "type": "string" },
         "status": { "type": "string" },
-        "tgl_akhir_fu": { "type": "string" },
-        "created_at": { "type": "string" },
-        "created_by_user": { "type": "string" },
-        "created_by_role": { "type": "string" },
-        "catatan_admin": { "type": "string" },
-        "validated_at": { "type": "string" },
-        "validated_by": { "type": "string" }
-      },
-      "required": ["kd_med", "nama_mediator", "no_tlpn", "status", "kd_cabang"]
+        "tanggal_bergabung": { "type": "string" }
+      }
     },
-    "fu_logs": {
-      "title": "FollowUpLogs",
-      "description": "Logs of follow up interactions with mediators",
-      "type": "object",
-      "properties": {
-        "id": { "type": "string" },
-        "kd_med": { "type": "string" },
-        "nama_mediator": { "type": "string" },
-        "tgl_fu": { "type": "string" },
-        "hasil_fu": { "type": "string" },
-        "catatan_fu": { "type": "string" },
-        "user_fu": { "type": "string" },
-        "kd_ao": { "type": "string" },
-        "kd_posko": { "type": "string" },
-        "kd_cabang": { "type": "string" }
-      },
-      "required": ["id", "kd_med", "tgl_fu", "hasil_fu", "user_fu"]
-    },
-    "user_auth": {
-      "title": "UserAuth",
-      "description": "Firebase UID to user document ID mapping",
-      "type": "object",
-      "properties": {
-        "user_id": { "type": "string" },
-        "linked_at": { "type": "string" },
-        "email": { "type": "string" },
-        "status": { "type": "string" },
-        "linked_by": { "type": "string" }
-      },
-      "required": ["user_id", "linked_at"]
-    },
-    "ex_customers": {
-      "title": "ExCustomers",
-      "description": "Ex-Customer retention and BPKB guarantee data",
-      "type": "object",
+    "ExCustomer": {
       "properties": {
         "no_psb": { "type": "string" },
-        "kd_cab": { "type": "string" },
-        "kd_pos": { "type": "string" },
         "nama_konsumen": { "type": "string" },
+        "no_polisi": { "type": "string" },
+        "status_bpkb": { "type": "string" },
+        "status_prospek": { "type": "string" }
+      }
+    },
+    "SalesAcquisition": {
+      "properties": {
+        "id": { "type": "string" },
+        "nama_calon_konsumen": { "type": "string" },
         "no_telepon": { "type": "string" },
-        "tgl_bpkb_sdk": { "type": "string" },
-        "status_kredit_lunas": { "type": "string" },
-        "created_at": { "type": "string" },
-        "created_by_uid": { "type": "string" },
-        "created_by_name": { "type": "string" }
-      },
-      "required": ["no_psb", "kd_cab", "kd_pos", "nama_konsumen", "no_telepon", "tgl_bpkb_sdk", "status_kredit_lunas", "created_at"]
-    },
-    "ex_customer_fu_logs": {
-      "title": "ExCustomerFollowUpLogs",
-      "description": "Follow up logs for ex-customers retention",
-      "type": "object",
-      "properties": {
-        "id": { "type": "string" },
-        "no_psb": { "type": "string" },
-        "nama_konsumen": { "type": "string" },
-        "kd_cab": { "type": "string" },
-        "kd_pos": { "type": "string" },
-        "tgl_fu": { "type": "string" },
-        "hasil_fu": { "type": "string" },
-        "catatan_fu": { "type": "string" },
-        "user_fu": { "type": "string" }
-      },
-      "required": ["id", "no_psb", "tgl_fu", "hasil_fu", "user_fu"]
-    },
-    "audit_logs": {
-      "title": "AuditLogs",
-      "description": "System activity logs and audit trail",
-      "type": "object",
-      "properties": {
-        "id": { "type": "string" },
-        "timestamp": { "type": "string" },
-        "actor_id": { "type": "string" },
-        "actor_name": { "type": "string" },
-        "actor_role": { "type": "string" },
-        "actor_kd_ao": { "type": "string" },
-        "category": { "type": "string" },
-        "action": { "type": "string" },
-        "description": { "type": "string" },
-        "target_id": { "type": "string" }
-      },
-      "required": ["id", "timestamp", "actor_id", "actor_name", "actor_role", "category", "action", "description"]
-    },
-    "sales_control_records": {
-      "title": "SalesControlRecords",
-      "description": "Customer disbursement records and ADM_DE validation status in sales control module",
-      "type": "object",
-      "properties": {
-        "id": { "type": "string" },
-        "no_psb": { "type": "string" },
-        "tgl_cair": { "type": "string" },
-        "tgl_jt": { "type": "string" },
-        "nama_konsumen": { "type": "string" },
-        "no_wa": { "type": "string" },
+        "clean_phone": { "type": "string" },
+        "sumber_lead": { "type": "string" },
+        "jenis_jaminan": { "type": "string" },
         "status": { "type": "string" },
-        "keterangan": { "type": "string" },
-        "cabang_id": { "type": "string" },
-        "posko_id": { "type": "string" },
-        "kd_cabang": { "type": "string" },
-        "kd_posko": { "type": "string" },
-        "created_by": { "type": "string" },
-        "created_by_uid": { "type": "string" },
-        "created_by_name": { "type": "string" },
-        "created_at": { "type": "string" },
-        "updated_at": { "type": "string" },
-        "updated_by": { "type": "string" },
-        "updated_by_uid": { "type": "string" }
-      },
-      "required": ["id", "no_psb", "tgl_cair", "nama_konsumen", "no_wa", "status", "cabang_id", "posko_id", "created_by", "created_at"]
-    },
-    "wilayah_provinsi": {
-      "title": "WilayahProvinsi",
-      "description": "Master Wilayah: Provinsi level",
-      "type": "object",
-      "properties": {
-        "id": { "type": "string" },
-        "nama": { "type": "string" }
-      },
-      "required": ["id", "nama"]
-    },
-    "wilayah_kabupaten": {
-      "title": "WilayahKabupaten",
-      "description": "Master Wilayah: Kabupaten/Kota level",
-      "type": "object",
-      "properties": {
-        "id": { "type": "string" },
-        "provinsi_id": { "type": "string" },
-        "nama": { "type": "string" },
-        "tipe": { "type": "string", "enum": ["KOTA", "KABUPATEN"] }
-      },
-      "required": ["id", "provinsi_id", "nama", "tipe"]
-    },
-    "wilayah_kecamatan": {
-      "title": "WilayahKecamatan",
-      "description": "Master Wilayah: Kecamatan level",
-      "type": "object",
-      "properties": {
-        "id": { "type": "string" },
-        "kabupaten_id": { "type": "string" },
-        "provinsi_id": { "type": "string" },
-        "nama": { "type": "string" }
-      },
-      "required": ["id", "kabupaten_id", "provinsi_id", "nama"]
-    },
-    "wilayah_desa": {
-      "title": "WilayahDesa",
-      "description": "Master Wilayah: Desa/Kelurahan level",
-      "type": "object",
-      "properties": {
-        "id": { "type": "string" },
-        "kecamatan_id": { "type": "string" },
-        "kabupaten_id": { "type": "string" },
-        "provinsi_id": { "type": "string" },
-        "nama": { "type": "string" }
-      },
-      "required": ["id", "kecamatan_id", "kabupaten_id", "provinsi_id", "nama"]
-    },
-    "sales_acquisitions": {
-      "title": "SalesAcquisitions",
-      "description": "Sales acquisition prospek pipeline records",
-      "type": "object",
-      "properties": {
-        "id": { "type": "string" },
-        "created_at": { "type": "string", "format": "date-time" },
-        "created_by_user_id": { "type": "string" },
-        "updated_at": { "type": "string", "format": "date-time" },
-        "updated_by_user_id": { "type": "string" },
-        "assigned_user_id": { "type": "string" },
-        "kd_ao": { "type": "string" },
-        "kd_cabang": { "type": "string" },
-        "kd_posko": { "type": "string" },
-        "nama_calon_konsumen": { "type": "string", "minLength": 3, "maxLength": 100 },
-        "no_telepon": { "type": "string", "minLength": 9, "maxLength": 20 },
-        "no_telepon_clean": { "type": "string", "minLength": 9, "maxLength": 20 },
-        "sumber_lead": { "type": "string", "enum": ["CANVASSING", "SOSMED", "MEDIATOR", "EX_CUSTOMER", "WALK_IN"] },
-        "status": { "type": "string", "enum": ["PROSPEK_BARU", "PROSES_SURVEI", "PENGAJUAN_BERKAS", "DISETUJUI", "CAIR", "DITOLAK", "BATAL"] },
-        "status_updated_at": { "type": "string", "format": "date-time" },
-        "status_updated_by_user_id": { "type": "string" },
-        "alasan_tolak_batal": { "type": "string" },
-        "kd_med": { "type": "string" },
-        "ref_no_psb_lama": { "type": "string" },
-        "wilayah_provinsi_id": { "type": "string" },
-        "wilayah_kabupaten_id": { "type": "string" },
-        "wilayah_kecamatan_id": { "type": "string" },
-        "wilayah_desa_id": { "type": "string" },
-        "alamat_detail": { "type": "string", "maxLength": 255 },
-        "no_psb": { "type": "string" },
-        "tgl_cair": { "type": "string", "format": "date-time" },
-        "sales_control_id": { "type": "string" },
-        "jenis_jaminan": { "type": "string", "enum": ["R2", "R4", "SERTIFIKAT"] }
-      },
-      "required": [
-        "id", "created_at", "created_by_user_id", "updated_at", "updated_by_user_id",
-        "assigned_user_id", "kd_ao", "kd_cabang", "kd_posko",
-        "nama_calon_konsumen", "no_telepon", "no_telepon_clean", "sumber_lead",
-        "status", "status_updated_at", "status_updated_by_user_id", "alasan_tolak_batal"
-      ]
+        "kd_ao": { "type": "string" }
+      }
     }
   },
   "firestore": {
-    "sales_acquisitions": {
-      "entity": "sales_acquisitions",
-      "description": "Sales acquisitions collection"
-    },
-    "users": {
-      "entity": "users",
-      "description": "User accounts collection"
-    },
-    "user_auth": {
-      "entity": "user_auth",
-      "description": "Firebase UID mapping collection"
-    },
-    "cabang": {
-      "entity": "cabang",
-      "description": "Cabang collection"
-    },
-    "posko": {
-      "entity": "posko",
-      "description": "Posko collection"
-    },
-    "mediators": {
-      "entity": "mediators",
-      "description": "Mediators collection"
-    },
-    "fu_logs": {
-      "entity": "fu_logs",
-      "description": "Follow up logs collection"
-    },
-    "ex_customers": {
-      "entity": "ex_customers",
-      "description": "Ex-customers retention collection"
-    },
-    "ex_customer_fu_logs": {
-      "entity": "ex_customer_fu_logs",
-      "description": "Ex-customer follow up logs collection"
-    },
-    "audit_logs": {
-      "entity": "audit_logs",
-      "description": "System audit trail collection"
-    },
-    "sales_control_records": {
-      "entity": "sales_control_records",
-      "description": "Sales control customer disbursement collection"
-    },
-    "wilayah_provinsi": {
-      "entity": "wilayah_provinsi",
-      "description": "Master Wilayah Provinsi"
-    },
-    "wilayah_kabupaten": {
-      "entity": "wilayah_kabupaten",
-      "description": "Master Wilayah Kabupaten / Kota"
-    },
-    "wilayah_kecamatan": {
-      "entity": "wilayah_kecamatan",
-      "description": "Master Wilayah Kecamatan"
-    },
-    "wilayah_desa": {
-      "entity": "wilayah_desa",
-      "description": "Master Wilayah Desa / Kelurahan"
-    }
+    "defaultRules": true
   }
 }

@@ -1,12 +1,5 @@
 {
-  "projectId": "kamm-manado",
-  "appId": "1:103600318295:web:9c38d3fd45fa3d7df10012",
-  "apiKey": "AIzaSyCMbgi0XqR2UKr09-YSycTkp8IQUDnjCZ4",
-  "authDomain": "kamm-manado.firebaseapp.com",
-  "firestoreDatabaseId": "ai-studio-mediatorkontrakm-919304e3-4fb7-4025-a4e8-2c90f5b0fe3e",
-  "storageBucket": "kamm-manado.firebasestorage.app",
-  "messagingSenderId": "103600318295",
-  "measurementId": "",
-  "oAuthClientId": "103600318295-2k6tif22as3a2ep5gh6ali77pgj1blme.apps.googleusercontent.com",
-  "recaptchaSiteKey": ""
+  "projectId": "ai-studio-mediatorkontrakm-919304e3-4fb7-4025-a4e8-2c90f5b0fe3e",
+  "appId": "919304e3-4fb7-4025-a4e8-2c90f5b0fe3e",
+  "firestoreRegion": "asia-east1"
 }

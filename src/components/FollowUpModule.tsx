@@ -1,639 +1,268 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { MediatorKontrak, FULog, HasilFU } from '../types';
+import React, { useState, useMemo, useEffect } from 'react';
+import { MediatorKontrak, User, FollowUpLog } from '../types';
 import { useAuth } from '../context/AuthContext';
-import { DatabaseService } from '../services/storage';
-import { formatDateTimeIndo, formatDateIndo } from '../utils/dateUtils';
-import { DataTable } from './DataTable';
-import { ColumnDef } from './DataTable/types';
-import { 
-  PhoneCall, 
-  Search, 
-  Send, 
-  CheckCircle2, 
-  AlertCircle, 
-  Clock, 
-  MessageSquare, 
-  Eye, 
-  Building2, 
-  ExternalLink,
-  Phone,
-  User,
-  History,
-  X
-} from 'lucide-react';
+import { StorageService } from '../services/storage';
+import { DataTable, Column } from './DataTable';
+import { PhoneCall, Plus, Search, Calendar, MessageSquare, CheckCircle2, User as UserIcon } from 'lucide-react';
 
 interface FollowUpModuleProps {
   mediators: MediatorKontrak[];
-  preSelectedKdMed?: string | null;
-  onFollowUpSuccess: () => void;
+  currentUser?: User;
+  preSelectedKdMed?: string;
+  onFollowUpSuccess?: () => void;
 }
 
 export const FollowUpModule: React.FC<FollowUpModuleProps> = ({
   mediators,
+  currentUser: propUser,
   preSelectedKdMed,
-  onFollowUpSuccess,
+  onFollowUpSuccess
 }) => {
-  const { currentUser } = useAuth();
+  const { currentUser: authUser } = useAuth();
+  const currentUser = propUser || authUser || ({ id: 'USR_UNKNOWN', nama: 'Pengguna', kd_ao: '' } as User);
 
-  const isNational = currentUser?.role === 'SUPER_ADMIN' || currentUser?.role === 'RM';
-  const isCMO = currentUser?.role === 'CMO';
-  const userAo = currentUser?.kd_ao;
-  const userPosko = currentUser?.kd_posko;
-  const userCabang = currentUser?.kd_cabang;
-
-  const accessibleMediators = React.useMemo(() => {
-    if (isNational) {
-      return mediators;
-    }
-    return mediators.filter(m => {
-      // CMO restriction
-      if (isCMO) {
-        const matchAo = userAo ? (m.kd_ao || '').trim().toUpperCase() === userAo.trim().toUpperCase() : false;
-        const matchCreated = !!(currentUser?.nama && m.created_by_user === currentUser.nama);
-        if (!matchAo && !matchCreated) {
-          return false;
-        }
-      }
-
-      // Posko restriction (for KAPOS, ADM Posko, or any role assigned to Posko)
-      if (userPosko) {
-        if (!m.kd_posko || m.kd_posko.trim().toUpperCase() !== userPosko.trim().toUpperCase()) {
-          return false;
-        }
-      }
-
-      // Cabang restriction
-      if (userCabang) {
-        if (!m.kd_cabang || m.kd_cabang.trim().toUpperCase() !== userCabang.trim().toUpperCase()) {
-          return false;
-        }
-      }
-
-      return true;
-    });
-  }, [mediators, isNational, isCMO, userAo, userPosko, userCabang, currentUser?.nama]);
-
-  // Search / Selection state
+  const [logs, setLogs] = useState<FollowUpLog[]>(StorageService.getFollowUps());
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedMediator, setSelectedMediator] = useState<MediatorKontrak | null>(null);
+  const [selectedMed, setSelectedMed] = useState<MediatorKontrak | null>(null);
 
-  // Form State
-  const [hasilFu, setHasilFu] = useState<HasilFU>('WA/Tlpn Aktif, ada respon');
-  const [catatanFu, setCatatanFu] = useState('');
+  // Form input
+  const [hasilKontak, setHasilKontak] = useState('AKTIF_KIRIM_LEAD');
+  const [komitmenLead, setKomitmenLead] = useState<number>(1);
+  const [catatan, setCatatan] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const [success, setSuccess] = useState(false);
 
-  // Logs state
-  const [last5Logs, setLast5Logs] = useState<FULog[]>([]);
-  const [selectedLogDetail, setSelectedLogDetail] = useState<FULog | null>(null);
-  const [activeLogTab, setActiveLogTab] = useState<'last5' | 'mediatorHistory'>('last5');
-
-  // Load last 5 logs on mount or after submit
-  const refreshLogs = () => {
-    setLast5Logs(DatabaseService.getLast5FULogs());
-  };
-
-  useEffect(() => {
-    refreshLogs();
-  }, []);
-
-  // Handle preselection if navigated from another screen
-  useEffect(() => {
-    if (preSelectedKdMed) {
-      const found = accessibleMediators.find(m => m.kd_med === preSelectedKdMed || m.temp_id === preSelectedKdMed);
-      if (found) {
-        setSelectedMediator(found);
-        setSearchQuery(found.nama_mediator);
-      }
-    } else if (!selectedMediator && accessibleMediators.length > 0) {
-      // Default to first active mediator
-      const firstActive = accessibleMediators.find(m => m.status === 'AKTIF') || accessibleMediators[0];
-      setSelectedMediator(firstActive);
-      setSearchQuery(firstActive.nama_mediator);
-    }
-  }, [preSelectedKdMed, accessibleMediators]);
-
-  // Autocomplete matching mediators
-  const matchedMediators = searchQuery.trim()
-    ? accessibleMediators.filter(m => 
-        m.nama_mediator.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        m.kd_med.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        m.no_tlpn.includes(searchQuery)
-      ).slice(0, 8)
-    : [];
+  const matchedMediators = useMemo(() => {
+    if (!searchQuery.trim()) return [];
+    const q = searchQuery.toLowerCase();
+    return mediators.filter(m => 
+      m.status === 'AKTIF' && (
+        m.kd_med.toLowerCase().includes(q) ||
+        m.nama_mediator.toLowerCase().includes(q) ||
+        m.no_tlpn.includes(q)
+      )
+    ).slice(0, 10);
+  }, [mediators, searchQuery]);
 
   const handleSelectMediator = (med: MediatorKontrak) => {
-    setSelectedMediator(med);
-    setSearchQuery(med.nama_mediator);
-    setFeedback(null);
+    setSelectedMed(med);
+    setSearchQuery('');
   };
 
-  const handleSubmitFU = async (e: React.FormEvent) => {
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedMediator) {
-      setFeedback({ type: 'error', message: 'Silakan pilih mediator terlebih dahulu!' });
-      return;
-    }
-
-    if (!catatanFu.trim()) {
-      setFeedback({ type: 'error', message: 'Catatan FU wajib diisi!' });
-      return;
-    }
-
-    if (catatanFu.length > 100) {
-      setFeedback({ type: 'error', message: 'Catatan FU melebihi batas maksimal 100 karakter!' });
-      return;
-    }
+    if (!selectedMed) return;
 
     setIsSubmitting(true);
-    setFeedback(null);
-
-    const result = await DatabaseService.submitFollowUp({
-      kd_med: selectedMediator.kd_med,
-      hasil_fu: hasilFu,
-      catatan_fu: catatanFu.trim(),
-      user_fu: currentUser?.nama || 'Petugas FU',
-      kd_ao: currentUser?.kd_ao || selectedMediator.kd_ao,
-      kd_posko: selectedMediator.kd_posko,
-      kd_cabang: selectedMediator.kd_cabang
+    const newEntry = StorageService.addFollowUp({
+      kd_med: selectedMed.kd_med,
+      tanggal: new Date().toISOString().split('T')[0],
+      user_id: currentUser.id,
+      user_nama: currentUser.nama,
+      hasil_kontak: hasilKontak,
+      komitmen_lead: Number(komitmenLead),
+      catatan: catatan.trim()
     });
 
+    setLogs(StorageService.getFollowUps());
     setIsSubmitting(false);
+    setSuccess(true);
+    setCatatan('');
+    setSelectedMed(null);
 
-    if (result.success) {
-      setFeedback({ type: 'success', message: result.message });
-      setCatatanFu('');
-      refreshLogs();
-      onFollowUpSuccess();
-    } else {
-      setFeedback({ type: 'error', message: result.message });
-    }
+    setTimeout(() => setSuccess(false), 2500);
   };
 
-  // WhatsApp Link Helper
-  const getCleanWaPhone = (phone?: string) => {
-    if (!phone) return '';
-    let clean = phone.replace(/[^0-9]/g, '');
-    if (clean.startsWith('0')) {
-      clean = '62' + clean.slice(1);
-    }
-    return clean;
-  };
-
-  const mediatorLogs = selectedMediator 
-    ? DatabaseService.getFULogsByMediator(selectedMediator.kd_med)
-    : [];
-
-  const fuTableColumns: ColumnDef<FULog>[] = useMemo(() => [
+  const columns: Column<FollowUpLog>[] = [
     {
-      key: 'tgl_fu',
-      header: 'WAKTU FU',
-      sticky: 'left',
-      sortable: true,
-      width: 'min-w-[170px]',
-      render: (log) => (
-        <span className="whitespace-nowrap font-mono text-[#8e96a8]">
-          {formatDateTimeIndo(log.tgl_fu)}
-        </span>
-      )
+      key: 'tanggal',
+      header: 'Tanggal',
+      sortable: true
     },
     {
       key: 'kd_med',
       header: 'KD MED',
       sortable: true,
-      hideable: false,
-      width: 'min-w-[130px]',
+      render: (log) => <span className="font-mono text-white font-bold">{log.kd_med}</span>
+    },
+    {
+      key: 'user_nama',
+      header: 'Petugas Follow Up',
+      render: (log) => <span className="text-blue-300">{log.user_nama}</span>
+    },
+    {
+      key: 'hasil_kontak',
+      header: 'Hasil Interaksi',
+      render: (log) => {
+        const badgeColors: Record<string, string> = {
+          AKTIF_KIRIM_LEAD: 'bg-emerald-950 text-emerald-300 border-emerald-800',
+          JANJI_KIRIM: 'bg-blue-950 text-blue-300 border-blue-800',
+          TIDAK_AKTIF: 'bg-rose-950 text-rose-300 border-rose-800',
+          BELUM_DIHUBUNGI: 'bg-zinc-800 text-zinc-300 border-zinc-700'
+        };
+        return (
+          <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${badgeColors[log.hasil_kontak] || 'bg-zinc-800 text-zinc-300'}`}>
+            {log.hasil_kontak.replace(/_/g, ' ')}
+          </span>
+        );
+      }
+    },
+    {
+      key: 'komitmen_lead',
+      header: 'Komitmen Lead',
       render: (log) => (
-        <span className="font-mono font-bold text-blue-400">
-          {log.kd_med}
+        <span className="font-bold text-white font-mono">
+          {log.komitmen_lead} Aplikasi
         </span>
       )
     },
     {
-      key: 'nama_mediator',
-      header: 'NAMA MEDIATOR',
-      sortable: true,
-      width: 'min-w-[180px]',
-      render: (log) => (
-        <span className="font-semibold text-[#f1f3f7]">
-          {log.nama_mediator}
-        </span>
-      )
-    },
-    {
-      key: 'hasil_fu',
-      header: 'HASIL FU',
-      sortable: true,
-      width: 'min-w-[180px]',
-      render: (log) => (
-        <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-semibold border ${
-          log.hasil_fu.includes('ada respon') && !log.hasil_fu.includes('tidak ada respon')
-            ? 'bg-emerald-950/70 text-emerald-300 border-emerald-800/60'
-            : log.hasil_fu.includes('tidak ada respon')
-            ? 'bg-amber-950/70 text-amber-300 border-amber-800/60'
-            : 'bg-rose-950/70 text-rose-300 border-rose-800/60'
-        }`}>
-          {log.hasil_fu}
-        </span>
-      )
-    },
-    {
-      key: 'catatan_fu',
-      header: 'CATATAN FU',
-      width: 'min-w-[220px]',
-      render: (log) => (
-        <span className="text-[#c2c7d0] italic truncate block max-w-xs" title={log.catatan_fu}>
-          "{log.catatan_fu}"
-        </span>
-      )
-    },
-    {
-      key: 'user_fu',
-      header: 'PETUGAS / AO',
-      width: 'min-w-[150px]',
-      render: (log) => (
-        <div className="text-[#c2c7d0]">
-          <span className="font-medium block">{log.user_fu}</span>
-          <span className="text-[10px] text-[#6b7280] block">{log.kd_cabang} / {log.kd_ao}</span>
-        </div>
-      )
-    },
-    {
-      key: 'actions',
-      header: 'AKSI',
-      sticky: 'right',
-      align: 'right',
-      hideable: false,
-      width: 'min-w-[120px]',
-      render: (log) => (
-        <button
-          id={`btn-detail-fu-${log.id}`}
-          onClick={() => setSelectedLogDetail(log)}
-          className="px-2.5 py-1 rounded-xl bg-blue-950/60 text-blue-300 hover:bg-blue-900/60 border border-blue-800/60 text-xs font-semibold transition-colors inline-flex items-center space-x-1 cursor-pointer"
-        >
-          <Eye className="h-3 w-3" />
-          <span>Lihat Detail</span>
-        </button>
-      )
+      key: 'catatan',
+      header: 'Catatan Lapangan',
+      render: (log) => <span className="text-[#a3adc2] truncate max-w-[200px] inline-block">{log.catatan || '-'}</span>
     }
-  ], []);
+  ];
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="pb-2 border-b border-[#232734]">
-        <h1 className="text-xl font-bold text-[#f1f3f7] tracking-tight flex items-center space-x-2">
-          <PhoneCall className="h-5 w-5 text-blue-400" />
-          <span>Modul Follow-Up (FU) Mediator</span>
-        </h1>
-        <p className="text-xs text-[#8e96a8] mt-0.5">
-          Pencarian mediator, input hasil kontak berkala, dan rekam riwayat 5 log follow-up terakhir
-        </p>
-      </div>
-
-      {/* Main 2-Column Grid: Left Search & Details, Right Form */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* Left Column: Search & Mediator Details (5 cols) */}
-        <div className="lg:col-span-5 space-y-4">
-          {/* Mediator Search Card */}
-          <div className="bg-[#13151c] p-4 rounded-2xl border border-[#232734] shadow-md">
-            <label className="block text-xs font-bold text-[#c2c7d0] uppercase tracking-wide mb-1.5">
-              Cari & Pilih Mediator
-            </label>
-            <div className="relative">
-              <Search className="h-4 w-4 absolute left-3 top-2.5 text-[#6b7280]" />
-              <input
-                id="input-search-fu-mediator"
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Ketik Nama atau KD MED..."
-                className="w-full pl-9 pr-3 py-2 text-xs bg-[#0d0e12] border border-[#272d3e] text-[#e0e4eb] placeholder-[#6b7280] rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500"
-              />
+      {/* Input Follow Up Box */}
+      <div className="p-5 rounded-2xl bg-[#12151f] border border-[#232734] shadow-xl space-y-4">
+        <div className="flex items-center justify-between pb-3 border-b border-[#232734]">
+          <div className="flex items-center space-x-2.5">
+            <div className="p-2 rounded-xl bg-blue-600/20 text-blue-400 border border-blue-500/30">
+              <PhoneCall className="h-5 w-5" />
             </div>
-
-            {/* Suggestions list */}
-            {searchQuery && matchedMediators.length > 0 && (
-              <div className="mt-2 max-h-48 overflow-y-auto border border-[#232734] rounded-xl divide-y divide-[#1f2330] bg-[#0d0e12] shadow-lg">
-                {matchedMediators.map((med) => (
-                  <button
-                    key={med.kd_med || med.temp_id}
-                    onClick={() => handleSelectMediator(med)}
-                    className="w-full p-2.5 text-left text-xs hover:bg-[#181b24] transition-colors flex items-center justify-between cursor-pointer"
-                  >
-                    <div>
-                      <div className="font-semibold text-[#f1f3f7]">{med.nama_mediator}</div>
-                      <div className="text-[11px] text-[#8e96a8]">
-                        {med.kd_med} | {med.kd_cabang}
-                      </div>
-                    </div>
-                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md border ${
-                      med.status === 'AKTIF' 
-                        ? 'bg-emerald-950/70 text-emerald-300 border-emerald-800/60' 
-                        : 'bg-amber-950/70 text-amber-300 border-amber-800/60'
-                    }`}>
-                      {med.status}
-                    </span>
-                  </button>
-                ))}
-              </div>
-            )}
+            <div>
+              <h3 className="text-sm font-bold text-white">Catat Aktivitas Follow Up Mediator</h3>
+              <p className="text-[11px] text-[#8e96a8]">Laporkan hasil pembinaan dan komitmen prospek mediator</p>
+            </div>
           </div>
+        </div>
 
-          {/* SPECIFICATION COMPLIANT DETAILS DISPLAY: 
-              [KD MED | NAMA MEDIATOR | NO TLPN/WA | KD AO | KD POSKO | KD CABANG] */}
-          {selectedMediator ? (
-            <div className="bg-[#13151c] rounded-2xl border border-[#232734] p-5 shadow-md space-y-4">
-              <div className="flex items-center justify-between pb-3 border-b border-[#232734]">
-                <span className="text-xs font-bold text-[#8e96a8] uppercase tracking-wider">
-                  Informasi Detail Mediator
-                </span>
-                <span className={`text-xs font-bold px-2.5 py-0.5 rounded-full border ${
-                  selectedMediator.status === 'AKTIF'
-                    ? 'bg-emerald-950/70 text-emerald-300 border-emerald-800/60'
-                    : 'bg-amber-950/70 text-amber-300 border-amber-800/60'
-                }`}>
-                  {selectedMediator.status}
-                </span>
-              </div>
+        {success && (
+          <div className="p-3 bg-emerald-950/70 border border-emerald-800 rounded-xl text-xs text-emerald-300 flex items-center space-x-2">
+            <CheckCircle2 className="h-4 w-4" />
+            <span>Aktivitas follow-up berhasil disimpan!</span>
+          </div>
+        )}
 
-              {/* Grid of the 6 required spec columns */}
-              <div className="space-y-3 text-xs">
-                {/* 1. KD MED */}
-                <div className="flex items-center justify-between py-1 border-b border-[#1f2330]">
-                  <span className="text-[#8e96a8] font-medium">KD MED:</span>
-                  <span className="font-mono font-bold text-blue-300 bg-blue-950/70 px-2.5 py-0.5 rounded-lg border border-blue-800/60">
-                    {selectedMediator.kd_med}
-                  </span>
-                </div>
-
-                {/* 2. NAMA MEDIATOR */}
-                <div className="flex items-center justify-between py-1 border-b border-[#1f2330]">
-                  <span className="text-[#8e96a8] font-medium">NAMA MEDIATOR:</span>
-                  <span className="font-bold text-[#f1f3f7] text-sm">
-                    {selectedMediator.nama_mediator}
-                  </span>
-                </div>
-
-                {/* 3. NO TLPN / WA */}
-                <div className="flex items-center justify-between py-1 border-b border-[#1f2330]">
-                  <span className="text-[#8e96a8] font-medium">NO TLPN / WA:</span>
+        <form onSubmit={handleSubmit} className="space-y-4 text-xs">
+          {/* Mediator Search & Selection */}
+          <div className="space-y-1.5">
+            <label className="font-semibold text-white">Pilih Mediator <strong className="text-rose-400">*</strong></label>
+            {selectedMed ? (
+              <div className="p-3 bg-[#181c28] border border-blue-500/50 rounded-xl flex items-center justify-between">
+                <div>
                   <div className="flex items-center space-x-2">
-                    <span className="font-semibold text-[#c2c7d0]">{selectedMediator.no_tlpn}</span>
-                    {selectedMediator.no_tlpn && (
-                      <a
-                        href={`https://wa.me/${getCleanWaPhone(selectedMediator.no_tlpn)}`}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="p-1 rounded-lg bg-emerald-950/70 text-emerald-400 border border-emerald-800/60 hover:bg-emerald-900/60 transition-colors"
-                        title="Buka WhatsApp Langsung"
-                      >
-                        <MessageSquare className="h-3.5 w-3.5" />
-                      </a>
-                    )}
+                    <span className="font-mono font-bold text-white">{selectedMed.kd_med}</span>
+                    <span className="font-semibold text-blue-300">{selectedMed.nama_mediator}</span>
+                  </div>
+                  <div className="text-[11px] text-[#8e96a8] font-mono mt-0.5">
+                    {selectedMed.no_tlpn} • Posko {selectedMed.kd_posko}
                   </div>
                 </div>
-
-                {/* 4. KD AO */}
-                <div className="flex items-center justify-between py-1 border-b border-[#1f2330]">
-                  <span className="text-[#8e96a8] font-medium">KD AO:</span>
-                  <span className="font-semibold text-[#c2c7d0] bg-[#0d0e12] px-2.5 py-0.5 rounded-lg border border-[#272d3e]">
-                    {selectedMediator.kd_ao || '-'}
-                  </span>
-                </div>
-
-                {/* 5. KD POSKO */}
-                <div className="flex items-center justify-between py-1 border-b border-[#1f2330]">
-                  <span className="text-[#8e96a8] font-medium">KD POSKO:</span>
-                  <span className="font-semibold text-[#c2c7d0]">
-                    {selectedMediator.kd_posko || '-'}
-                  </span>
-                </div>
-
-                {/* 6. KD CABANG */}
-                <div className="flex items-center justify-between py-1">
-                  <span className="text-[#8e96a8] font-medium">KD CABANG:</span>
-                  <span className="font-semibold text-[#c2c7d0]">
-                    {selectedMediator.kd_cabang || '-'}
-                  </span>
-                </div>
-
-                {/* Last FU info */}
-                <div className="pt-2 mt-2 border-t border-[#1f2330] flex items-center justify-between text-[#8e96a8]">
-                  <span>Tgl Terakhir FU:</span>
-                  <span className="font-medium text-[#f1f3f7]">
-                    {formatDateIndo(selectedMediator.tgl_akhir_fu)}
-                  </span>
-                </div>
-              </div>
-            </div>
-          ) : (
-            <div className="p-8 text-center bg-[#13151c] rounded-2xl border border-dashed border-[#232734] text-[#8e96a8] text-xs">
-              <User className="h-8 w-8 mx-auto mb-2 text-[#6b7280]" />
-              <span>Pilih mediator dari pencarian di atas untuk melihat detail lengkap.</span>
-            </div>
-          )}
-        </div>
-
-        {/* Right Column: FU Input Form (7 cols) */}
-        <div className="lg:col-span-7">
-          <div className="bg-[#13151c] rounded-2xl border border-[#232734] p-5 shadow-md">
-            <div className="flex items-center justify-between pb-3 mb-4 border-b border-[#232734]">
-              <h2 className="text-sm font-bold text-[#f1f3f7] uppercase tracking-wide flex items-center space-x-2">
-                <Send className="h-4 w-4 text-blue-400" />
-                <span>Form Input Follow-Up (FU)</span>
-              </h2>
-              <span className="text-xs text-[#8e96a8]">
-                Petugas: <strong className="text-[#f1f3f7]">{currentUser?.nama}</strong> ({currentUser?.role})
-              </span>
-            </div>
-
-            {feedback && (
-              <div
-                className={`p-3 rounded-xl text-xs font-medium mb-4 flex items-center space-x-2 border ${
-                  feedback.type === 'success'
-                    ? 'bg-emerald-950/60 text-emerald-200 border-emerald-800/70'
-                    : 'bg-rose-950/60 text-rose-200 border-rose-800/70'
-                }`}
-              >
-                {feedback.type === 'success' ? (
-                  <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0" />
-                ) : (
-                  <AlertCircle className="h-4 w-4 text-rose-400 shrink-0" />
-                )}
-                <span>{feedback.message}</span>
-              </div>
-            )}
-
-            <form onSubmit={handleSubmitFU} className="space-y-4">
-              {/* Mediator target indicator */}
-              <div className="p-3 bg-[#0d0e12] rounded-xl border border-[#232734] flex items-center justify-between text-xs">
-                <span className="text-[#8e96a8]">Target Mediator FU:</span>
-                <span className="font-bold text-[#f1f3f7]">
-                  {selectedMediator ? `${selectedMediator.nama_mediator} (${selectedMediator.kd_med})` : 'Belum dipilih'}
-                </span>
-              </div>
-
-              {/* SPEC REQUIREMENT: Dropdown for hasil_fu (3 precise options) */}
-              <div>
-                <label className="block text-xs font-bold text-[#c2c7d0] uppercase tracking-wide mb-1.5">
-                  1. Hasil Follow-Up (Hasil FU) <span className="text-rose-400">*</span>
-                </label>
-                <select
-                  id="select-hasil-fu"
-                  value={hasilFu}
-                  onChange={(e) => setHasilFu(e.target.value as HasilFU)}
-                  className="w-full py-2 px-3 text-xs bg-[#0d0e12] border border-[#272d3e] text-[#e0e4eb] rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/50 font-medium"
-                  required
-                >
-                  <option value="WA/Tlpn Aktif, ada respon">
-                    1. WA/Tlpn Aktif, ada respon
-                  </option>
-                  <option value="WA/Tlpn Aktif, tidak ada respon">
-                    2. WA/Tlpn Aktif, tidak ada respon
-                  </option>
-                  <option value="WA/Tlpn Tidak Aktif">
-                    3. WA/Tlpn Tidak Aktif
-                  </option>
-                </select>
-                <p className="text-[11px] text-[#6b7280] mt-1">
-                  Pilih kondisi komunikasi saat petugas menghubungi mediator.
-                </p>
-              </div>
-
-              {/* SPEC REQUIREMENT: Text input for catatan_fu (strictly max 100 characters) */}
-              <div>
-                <div className="flex items-center justify-between mb-1.5">
-                  <label className="block text-xs font-bold text-[#c2c7d0] uppercase tracking-wide">
-                    2. Catatan Follow-Up (Catatan FU) <span className="text-rose-400">*</span>
-                  </label>
-                  <span
-                    className={`text-[11px] font-mono font-semibold ${
-                      catatanFu.length > 90 ? 'text-amber-400' : 'text-[#6b7280]'
-                    } ${catatanFu.length >= 100 ? 'text-rose-400 font-bold' : ''}`}
-                  >
-                    {catatanFu.length} / 100 Karakter
-                  </span>
-                </div>
-                <textarea
-                  id="textarea-catatan-fu"
-                  rows={3}
-                  maxLength={100}
-                  value={catatanFu}
-                  onChange={(e) => setCatatanFu(e.target.value)}
-                  placeholder="Masukkan ringkasan komunikasi singkat (strictly max 100 karakter)..."
-                  className="w-full p-2.5 text-xs bg-[#0d0e12] border border-[#272d3e] text-[#e0e4eb] placeholder-[#6b7280] rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 resize-none"
-                  required
-                />
-                <div className="flex items-center justify-between text-[11px] text-[#6b7280] mt-1">
-                  <span>Maksimal 100 karakter sesuai spesifikasi teknis sistem.</span>
-                  {catatanFu.length === 100 && (
-                    <span className="text-rose-400 font-bold">Maksimal karakter tercapai</span>
-                  )}
-                </div>
-              </div>
-
-              {/* Submit button */}
-              <div className="pt-2">
                 <button
-                  id="btn-submit-fu"
-                  type="submit"
-                  disabled={isSubmitting || !selectedMediator}
-                  className="w-full py-2.5 px-4 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded-xl shadow-md shadow-blue-950/40 transition-all flex items-center justify-center space-x-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                  type="button"
+                  onClick={() => setSelectedMed(null)}
+                  className="px-2.5 py-1 text-[11px] rounded-lg bg-[#222838] hover:bg-[#2c3345] text-white"
                 >
-                  <Send className="h-4 w-4" />
-                  <span>Simpan Log Follow-Up & Perbarui TGL Akhir FU</span>
+                  Ganti
                 </button>
               </div>
-            </form>
+            ) : (
+              <div className="relative">
+                <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-[#5c6479]" />
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Ketik KD MED atau Nama Mediator..."
+                  className="w-full bg-[#181c28] border border-[#2c3345] rounded-xl pl-9 pr-3.5 py-2 text-white focus:outline-none focus:border-blue-500"
+                />
+
+                {searchQuery && matchedMediators.length > 0 && (
+                  <div className="mt-2 max-h-48 overflow-y-auto border border-[#232734] rounded-xl divide-y divide-[#1f2330] bg-[#0d0e12] shadow-lg">
+                    {matchedMediators.map((med, idx) => (
+                      <button
+                        key={med.firestore_id || med.temp_id || `${med.kd_med}_${idx}`}
+                        type="button"
+                        onClick={() => handleSelectMediator(med)}
+                        className="w-full p-2.5 text-left text-xs hover:bg-[#181b24] transition-colors flex items-center justify-between cursor-pointer"
+                      >
+                        <div>
+                          <span className="font-mono font-bold text-blue-400 mr-2">{med.kd_med}</span>
+                          <span className="text-white">{med.nama_mediator}</span>
+                        </div>
+                        <span className="text-[11px] text-[#717b94] font-mono">{med.no_tlpn}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
-        </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="space-y-1">
+              <label className="font-semibold text-white">Hasil Interaksi</label>
+              <select
+                value={hasilKontak}
+                onChange={(e) => setHasilKontak(e.target.value)}
+                className="w-full bg-[#181c28] border border-[#2c3345] rounded-xl px-3 py-2 text-white focus:outline-none focus:border-blue-500"
+              >
+                <option value="AKTIF_KIRIM_LEAD">AKTIF KIRIM LEAD</option>
+                <option value="JANJI_KIRIM">JANJI KIRIM MINGGU INI</option>
+                <option value="TIDAK_AKTIF">TIDAK AKTIF SEMENTARA</option>
+                <option value="NOMOR_TIDAK_AKTIF">NOMOR TIDAK DAPAT DIHUBUNGI</option>
+              </select>
+            </div>
+
+            <div className="space-y-1">
+              <label className="font-semibold text-white">Target Komitmen Prospek (Unit)</label>
+              <input
+                type="number"
+                min={0}
+                max={20}
+                value={komitmenLead}
+                onChange={(e) => setKomitmenLead(Number(e.target.value))}
+                className="w-full bg-[#181c28] border border-[#2c3345] rounded-xl px-3 py-2 text-white focus:outline-none focus:border-blue-500 font-mono"
+              />
+            </div>
+          </div>
+
+          <div className="space-y-1">
+            <label className="font-semibold text-white">Catatan Pembinaan</label>
+            <textarea
+              rows={2}
+              required
+              value={catatan}
+              onChange={(e) => setCatatan(e.target.value)}
+              placeholder="Contoh: Mediator sedang memprospek 2 calon nasabah motor di Malalayang."
+              className="w-full bg-[#181c28] border border-[#2c3345] rounded-xl p-3 text-white focus:outline-none focus:border-blue-500 resize-none"
+            />
+          </div>
+
+          <div className="flex justify-end">
+            <button
+              type="submit"
+              disabled={isSubmitting || !selectedMed}
+              className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white font-bold transition-all shadow-md flex items-center space-x-1.5 cursor-pointer"
+            >
+              <Plus className="h-4 w-4" />
+              <span>Simpan Catatan Follow Up</span>
+            </button>
+          </div>
+        </form>
       </div>
 
-      {/* SPEC REQUIREMENT: BOTTOM TABLE SHOWING LAST FU LOGS WITH UNIVERSAL PAGINATED DATATABLE */}
-      <DataTable<FULog>
-        tableKey="followup-logs-table"
-        columns={fuTableColumns}
-        data={last5Logs}
+      {/* History Table */}
+      <DataTable
+        data={logs}
+        columns={columns}
         keyExtractor={(log) => log.id}
-        emptyTitle="Belum Ada Riwayat Log FU"
-        emptyDescription="Belum ada aktivitas follow-up yang tercatat pada sistem."
-        title="Riwayat Log Follow-Up (FU)"
-        subtitle={`Menampilkan ${last5Logs.length} aktivitas terbaru`}
-        initialPageSize={10}
+        title="Riwayat Follow Up Mediator"
+        subtitle="Log komunikasi dan pemeliharaan hubungan mitra mediator"
       />
-
-      {/* DETAIL MODAL: LIHAT DETAIL LOG FU */}
-      {selectedLogDetail && (
-        <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-[#13151c] rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-[#232734] space-y-4 animate-in fade-in zoom-in duration-150">
-            <div className="flex items-center justify-between pb-3 border-b border-[#232734]">
-              <h3 className="text-base font-bold text-[#f1f3f7] flex items-center space-x-2">
-                <PhoneCall className="h-4 w-4 text-blue-400" />
-                <span>Detail Catatan Follow-Up</span>
-              </h3>
-              <button
-                onClick={() => setSelectedLogDetail(null)}
-                className="p-1.5 rounded-lg text-[#8e96a8] hover:text-[#f1f3f7] hover:bg-[#1f2330] cursor-pointer"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-
-            <div className="space-y-3 text-xs">
-              <div className="grid grid-cols-2 gap-2 p-3.5 bg-[#0d0e12] rounded-xl border border-[#232734]">
-                <div>
-                  <span className="text-[#6b7280] block">ID Log FU:</span>
-                  <span className="font-mono font-bold text-[#e0e4eb]">{selectedLogDetail.id}</span>
-                </div>
-                <div>
-                  <span className="text-[#6b7280] block">Waktu Tercatat:</span>
-                  <span className="font-medium text-[#e0e4eb]">{formatDateTimeIndo(selectedLogDetail.tgl_fu)}</span>
-                </div>
-                <div>
-                  <span className="text-[#6b7280] block">KD MED:</span>
-                  <span className="font-mono font-bold text-blue-400">{selectedLogDetail.kd_med}</span>
-                </div>
-                <div>
-                  <span className="text-[#6b7280] block">Nama Mediator:</span>
-                  <span className="font-bold text-[#f1f3f7]">{selectedLogDetail.nama_mediator}</span>
-                </div>
-                <div>
-                  <span className="text-[#6b7280] block">Cabang / Posko:</span>
-                  <span className="font-medium text-[#c2c7d0]">{selectedLogDetail.kd_cabang} / {selectedLogDetail.kd_posko}</span>
-                </div>
-                <div>
-                  <span className="text-[#6b7280] block">Petugas FU (AO):</span>
-                  <span className="font-medium text-[#c2c7d0]">{selectedLogDetail.user_fu} ({selectedLogDetail.kd_ao})</span>
-                </div>
-              </div>
-
-              <div>
-                <span className="text-[#8e96a8] font-bold uppercase tracking-wider block mb-1">Hasil Follow-Up:</span>
-                <span className="inline-block px-3 py-1 rounded-lg text-xs font-bold bg-blue-950/70 text-blue-300 border border-blue-800/60">
-                  {selectedLogDetail.hasil_fu}
-                </span>
-              </div>
-
-              <div>
-                <span className="text-[#8e96a8] font-bold uppercase tracking-wider block mb-1">Catatan Komunikasi:</span>
-                <div className="p-3 bg-[#0d0e12] rounded-xl border border-[#232734] text-[#e0e4eb] text-xs italic leading-relaxed">
-                  "{selectedLogDetail.catatan_fu}"
-                </div>
-              </div>
-            </div>
-
-            <div className="pt-2 flex justify-end">
-              <button
-                onClick={() => setSelectedLogDetail(null)}
-                className="px-4 py-2 bg-[#181a24] hover:bg-[#202534] text-[#c2c7d0] hover:text-[#f1f3f7] border border-[#272d3e] text-xs font-semibold rounded-xl transition-colors cursor-pointer"
-              >
-                Tutup
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

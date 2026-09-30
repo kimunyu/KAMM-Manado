@@ -1,306 +1,147 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState } from 'react';
+import { User } from '../types';
 import { useAuth } from '../context/AuthContext';
-import { 
-  Lock, 
-  ShieldCheck, 
-  AlertCircle, 
-  CheckCircle2, 
-  Eye, 
-  EyeOff, 
-  KeyRound, 
-  LogOut, 
-  X, 
-  Sparkles,
-  ShieldAlert
-} from 'lucide-react';
+import { StorageService } from '../services/storage';
+import { X, KeyRound, Check, AlertTriangle } from 'lucide-react';
 
 interface ChangePasswordModalProps {
   isOpen: boolean;
-  isForced?: boolean;
   onClose: () => void;
+  user?: User;
+  isForced?: boolean;
   onSuccess?: () => void;
 }
 
-export const ChangePasswordModal: React.FC<ChangePasswordModalProps> = ({
-  isOpen,
+export const ChangePasswordModal: React.FC<ChangePasswordModalProps> = ({ 
+  isOpen, 
+  onClose, 
+  user: propUser,
   isForced = false,
-  onClose,
   onSuccess
 }) => {
-  const { currentUser, changePassword, logout } = useAuth();
+  const { currentUser: authUser } = useAuth();
+  const user = propUser || authUser;
 
+  const [oldPassword, setOldPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  const [showNewPassword, setShowNewPassword] = useState(false);
-  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [successMessage, setSuccessMessage] = useState<string | null>(null);
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState(false);
 
-  // Criteria checks
-  const criteria = useMemo(() => {
-    const len = newPassword.length >= 6;
-    const hasUpper = /[A-Z]/.test(newPassword);
-    const hasLower = /[a-z]/.test(newPassword);
-    const hasNumberOrSymbol = /[0-9!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?]/.test(newPassword);
-    const notDefault = newPassword !== '1234' && newPassword !== 'test1234' && newPassword.toLowerCase() !== 'password' && newPassword !== currentUser?.username;
-    const matches = newPassword.length > 0 && newPassword === confirmPassword;
+  if (!isOpen || !user) return null;
 
-    let score = 0;
-    if (newPassword.length >= 6) score += 1;
-    if (newPassword.length >= 10) score += 1;
-    if (hasUpper || hasLower) score += 1;
-    if (hasNumberOrSymbol) score += 1;
-    if (notDefault) score += 1;
-
-    return {
-      length: len,
-      length10: newPassword.length >= 10,
-      hasUpperLower: hasUpper || hasLower,
-      hasNumberOrSymbol,
-      notDefault,
-      matches,
-      score,
-      allValid: len && notDefault && matches
-    };
-  }, [newPassword, confirmPassword, currentUser?.username]);
-
-  if (!isOpen) return null;
-
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    setErrorMessage(null);
-    setSuccessMessage(null);
+    setError(null);
 
     if (newPassword.length < 6) {
-      setErrorMessage('Password harus memiliki panjang minimal 6 karakter!');
-      return;
-    }
-
-    const trimmed = newPassword.trim();
-    if (trimmed === '1234' || trimmed === 'test1234' || trimmed.toLowerCase() === 'password') {
-      setErrorMessage('Password baru tidak boleh menggunakan password default ("1234", "test1234", atau "password")!');
-      return;
-    }
-
-    if (trimmed.toLowerCase() === currentUser?.username.toLowerCase()) {
-      setErrorMessage('Password baru tidak boleh sama dengan username Anda!');
+      setError('Password baru minimal 6 karakter!');
       return;
     }
 
     if (newPassword !== confirmPassword) {
-      setErrorMessage('Konfirmasi password tidak cocok dengan password baru!');
+      setError('Konfirmasi password tidak cocok!');
       return;
     }
 
-    setIsSubmitting(true);
-    const res = await changePassword(trimmed);
-    setIsSubmitting(false);
+    StorageService.saveUser({
+      ...user,
+      password: newPassword
+    });
 
-    if (res.success) {
-      setSuccessMessage('Password berhasil diubah! Akun Anda kini aman.');
-      setTimeout(() => {
-        if (onSuccess) onSuccess();
-        onClose();
-      }, 1200);
-    } else {
-      setErrorMessage(res.message);
-    }
+    StorageService.logActivity(user.id, user.username, 'CHANGE_PASSWORD', 'Auth', 'User berhasil mengubah password');
+    setSuccess(true);
+    if (onSuccess) onSuccess();
+    setTimeout(() => {
+
+      onClose();
+      setSuccess(false);
+    }, 1500);
   };
-
-  const getStrengthLabel = (score: number) => {
-    if (newPassword.length === 0) return { label: 'Belum Diisi', color: 'bg-gray-700', text: 'text-gray-400' };
-    if (score <= 2) return { label: 'Lemah (Kurang Unik)', color: 'bg-rose-500', text: 'text-rose-400' };
-    if (score <= 4) return { label: 'Sedang (Cukup)', color: 'bg-amber-500', text: 'text-amber-400' };
-    return { label: 'Sangat Kuat & Unik', color: 'bg-emerald-500', text: 'text-emerald-400' };
-  };
-
-  const strength = getStrengthLabel(criteria.score);
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4 overflow-y-auto animate-in fade-in duration-150">
-      <div className="bg-[#13151c] rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-blue-900/40 space-y-5 my-auto">
-        {/* Header */}
-        <div className="flex items-start justify-between">
-          <div className="flex items-center space-x-3">
-            <div className={`p-3 rounded-2xl ${isForced ? 'bg-amber-950/80 text-amber-400 border border-amber-800/80' : 'bg-blue-950/80 text-blue-400 border border-blue-800/80'}`}>
-              {isForced ? <ShieldAlert className="h-6 w-6" /> : <KeyRound className="h-6 w-6" />}
+    <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+      <div className="bg-[#12151f] border border-[#272d3e] rounded-2xl w-full max-w-md shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+        <div className="px-6 py-4 border-b border-[#232734] bg-[#161a26] flex items-center justify-between">
+          <div className="flex items-center space-x-2.5">
+            <div className="p-2 rounded-xl bg-indigo-600/20 text-indigo-400 border border-indigo-500/30">
+              <KeyRound className="h-5 w-5" />
             </div>
             <div>
-              <h3 className="text-base font-bold text-[#f1f3f7] flex items-center space-x-2">
-                <span>{isForced ? 'Wajib Ganti Password Pertama Kali' : 'Perbarui Password Akun'}</span>
-              </h3>
-              <p className="text-xs text-[#8e96a8] mt-0.5">
-                {isForced 
-                  ? 'Akun Anda terdeteksi masih menggunakan password default/bawaan. Demi keamanan data, Anda wajib membuat password baru pribadi Anda.'
-                  : `Pengguna: ${currentUser?.nama} (@${currentUser?.username})`}
-              </p>
+              <h3 className="text-sm font-bold text-white">Ganti Password</h3>
+              <p className="text-[11px] text-[#8e96a8]">Perbarui kredensial login Anda</p>
             </div>
           </div>
-          {!isForced && (
-            <button
-              onClick={onClose}
-              className="p-1.5 rounded-lg text-[#8e96a8] hover:text-[#f1f3f7] hover:bg-[#1f2330] cursor-pointer"
-            >
-              <X className="h-5 w-5" />
-            </button>
-          )}
+          <button
+            onClick={onClose}
+            className="p-1 rounded-lg text-[#8e96a8] hover:text-white hover:bg-[#202534] transition-colors cursor-pointer"
+          >
+            <X className="h-4 w-4" />
+          </button>
         </div>
 
-        {/* Security Requirement Banner */}
-        <div className="p-3.5 bg-[#0d0e12] rounded-xl border border-[#272d3e] space-y-2">
-          <div className="flex items-center justify-between text-xs font-bold text-[#c2c7d0]">
-            <span className="flex items-center space-x-1.5">
-              <Sparkles className="h-3.5 w-3.5 text-blue-400" />
-              <span>Standar Keamanan Password:</span>
-            </span>
-            <span className={`text-[11px] font-bold ${strength.text}`}>
-              {strength.label}
-            </span>
-          </div>
+        <form onSubmit={handleSubmit} className="p-6 space-y-4 text-xs">
+          {error && (
+            <div className="p-3 rounded-xl bg-rose-950/60 border border-rose-800 text-rose-300 flex items-center space-x-2">
+              <AlertTriangle className="h-4 w-4 shrink-0" />
+              <span>{error}</span>
+            </div>
+          )}
 
-          {/* Strength Bar */}
-          <div className="w-full bg-[#181b24] h-1.5 rounded-full overflow-hidden flex">
-            <div 
-              className={`h-full transition-all duration-300 ${strength.color}`} 
-              style={{ width: `${Math.min(100, (criteria.score / 5) * 100)}%` }}
+          {success && (
+            <div className="p-3 rounded-xl bg-emerald-950/60 border border-emerald-800 text-emerald-300 flex items-center space-x-2">
+              <Check className="h-4 w-4 shrink-0" />
+              <span>Password berhasil diperbarui!</span>
+            </div>
+          )}
+
+          <div className="space-y-1">
+            <label className="font-semibold text-white">Password Lama</label>
+            <input
+              type="password"
+              required
+              value={oldPassword}
+              onChange={(e) => setOldPassword(e.target.value)}
+              className="w-full bg-[#181c28] border border-[#2c3345] rounded-xl px-3 py-2 text-white focus:outline-none focus:border-indigo-500"
             />
           </div>
 
-          {/* Checklist */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 text-[11px] pt-1">
-            <div className={`flex items-center space-x-1.5 ${criteria.length ? 'text-emerald-400 font-medium' : 'text-[#8e96a8]'}`}>
-              {criteria.length ? <CheckCircle2 className="h-3.5 w-3.5 shrink-0" /> : <div className="h-3.5 w-3.5 rounded-full border border-[#3b4255] shrink-0" />}
-              <span>Minimal 6 karakter ({newPassword.length}/6)</span>
-            </div>
-
-            <div className={`flex items-center space-x-1.5 ${criteria.matches ? 'text-emerald-400 font-medium' : 'text-[#8e96a8]'}`}>
-              {criteria.matches ? <CheckCircle2 className="h-3.5 w-3.5 shrink-0" /> : <div className="h-3.5 w-3.5 rounded-full border border-[#3b4255] shrink-0" />}
-              <span>Konfirmasi password sesuai</span>
-            </div>
-
-            <div className={`flex items-center space-x-1.5 ${criteria.hasUpperLower ? 'text-emerald-400 font-medium' : 'text-[#8e96a8]'}`}>
-              {criteria.hasUpperLower ? <CheckCircle2 className="h-3.5 w-3.5 shrink-0" /> : <div className="h-3.5 w-3.5 rounded-full border border-[#3b4255] shrink-0" />}
-              <span>Kombinasi huruf / angka</span>
-            </div>
-
-            <div className={`flex items-center space-x-1.5 ${criteria.notDefault ? 'text-emerald-400 font-medium' : 'text-[#8e96a8]'}`}>
-              {criteria.notDefault ? <CheckCircle2 className="h-3.5 w-3.5 shrink-0" /> : <div className="h-3.5 w-3.5 rounded-full border border-[#3b4255] shrink-0" />}
-              <span>Unik & bukan sandi default</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Feedback Messages */}
-        {errorMessage && (
-          <div className="p-3 bg-rose-950/70 border border-rose-800/80 text-rose-200 text-xs rounded-xl flex items-center space-x-2">
-            <AlertCircle className="h-4 w-4 text-rose-400 shrink-0" />
-            <span>{errorMessage}</span>
-          </div>
-        )}
-
-        {successMessage && (
-          <div className="p-3 bg-emerald-950/70 border border-emerald-800/80 text-emerald-200 text-xs rounded-xl flex items-center space-x-2">
-            <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0" />
-            <span>{successMessage}</span>
-          </div>
-        )}
-
-        <form onSubmit={handleSubmit} className="space-y-3.5 text-xs">
-          {/* New Password Input */}
-          <div>
-            <label className="block font-bold text-[#c2c7d0] mb-1">
-              Password Baru (Minimal 6 Karakter) <span className="text-rose-400">*</span>
-            </label>
-            <div className="relative">
-              <Lock className="h-4 w-4 absolute left-3 top-3 text-[#6b7280]" />
-              <input
-                id="input-new-password"
-                type={showNewPassword ? 'text' : 'password'}
-                required
-                value={newPassword}
-                onChange={(e) => setNewPassword(e.target.value)}
-                placeholder="Masukkan minimal 6 karakter..."
-                className="w-full pl-9 pr-10 py-2.5 bg-[#0d0e12] border border-[#272d3e] text-[#e0e4eb] placeholder-[#6b7280] rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 font-mono"
-              />
-              <button
-                type="button"
-                onClick={() => setShowNewPassword(!showNewPassword)}
-                className="absolute right-3 top-3 text-[#8e96a8] hover:text-[#f1f3f7] cursor-pointer"
-              >
-                {showNewPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-              </button>
-            </div>
+          <div className="space-y-1">
+            <label className="font-semibold text-white">Password Baru</label>
+            <input
+              type="password"
+              required
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+              placeholder="Minimal 6 karakter"
+              className="w-full bg-[#181c28] border border-[#2c3345] rounded-xl px-3 py-2 text-white focus:outline-none focus:border-indigo-500"
+            />
           </div>
 
-          {/* Confirm Password Input */}
-          <div>
-            <label className="block font-bold text-[#c2c7d0] mb-1">
-              Konfirmasi Password Baru <span className="text-rose-400">*</span>
-            </label>
-            <div className="relative">
-              <ShieldCheck className="h-4 w-4 absolute left-3 top-3 text-[#6b7280]" />
-              <input
-                id="input-confirm-password"
-                type={showConfirmPassword ? 'text' : 'password'}
-                required
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
-                placeholder="Ketik ulang password baru Anda..."
-                className={`w-full pl-9 pr-10 py-2.5 bg-[#0d0e12] border ${confirmPassword && newPassword !== confirmPassword ? 'border-rose-700/80 focus:ring-rose-500/50' : 'border-[#272d3e] focus:ring-blue-500/50'} text-[#e0e4eb] placeholder-[#6b7280] rounded-xl focus:outline-none focus:ring-2 font-mono`}
-              />
-              <button
-                type="button"
-                onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                className="absolute right-3 top-3 text-[#8e96a8] hover:text-[#f1f3f7] cursor-pointer"
-              >
-                {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-              </button>
-            </div>
-            {confirmPassword && newPassword !== confirmPassword && (
-              <p className="text-[11px] text-rose-400 mt-1">Konfirmasi password belum sesuai.</p>
-            )}
-            {confirmPassword && newPassword === confirmPassword && (
-              <p className="text-[11px] text-emerald-400 mt-1 flex items-center space-x-1">
-                <CheckCircle2 className="h-3 w-3" />
-                <span>Password cocok!</span>
-              </p>
-            )}
+          <div className="space-y-1">
+            <label className="font-semibold text-white">Konfirmasi Password Baru</label>
+            <input
+              type="password"
+              required
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              className="w-full bg-[#181c28] border border-[#2c3345] rounded-xl px-3 py-2 text-white focus:outline-none focus:border-indigo-500"
+            />
           </div>
 
-          {/* Actions */}
-          <div className="pt-3 border-t border-[#232734] flex items-center justify-between">
-            {isForced ? (
-              <button
-                type="button"
-                onClick={() => logout()}
-                className="px-3 py-2 text-rose-400 hover:text-rose-300 hover:bg-rose-950/40 rounded-xl font-semibold flex items-center space-x-1.5 cursor-pointer text-xs"
-              >
-                <LogOut className="h-4 w-4" />
-                <span>Keluar / Logout</span>
-              </button>
-            ) : (
-              <button
-                type="button"
-                onClick={onClose}
-                className="px-4 py-2 bg-[#181a24] hover:bg-[#202534] text-[#c2c7d0] hover:text-[#f1f3f7] border border-[#272d3e] rounded-xl font-semibold cursor-pointer text-xs"
-              >
-                Batal
-              </button>
-            )}
-
+          <div className="pt-2 flex justify-end space-x-2">
             <button
-              id="btn-submit-change-password"
-              type="submit"
-              disabled={isSubmitting || !criteria.allValid}
-              className={`px-5 py-2.5 rounded-xl font-bold shadow-lg text-xs flex items-center space-x-2 transition-all cursor-pointer ${
-                criteria.allValid && !isSubmitting
-                  ? 'bg-blue-600 hover:bg-blue-500 text-white shadow-blue-950/50'
-                  : 'bg-[#1c202d] text-[#6b7280] border border-[#2d3448] cursor-not-allowed'
-              }`}
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 rounded-xl border border-[#2c3345] hover:bg-[#181c28] text-[#8e96a8] hover:text-white transition-colors cursor-pointer"
             >
-              <KeyRound className="h-4 w-4" />
-              <span>{isSubmitting ? 'Menyimpan...' : 'Simpan & Aktifkan Password'}</span>
+              Batal
+            </button>
+            <button
+              type="submit"
+              className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold transition-colors cursor-pointer"
+            >
+              Simpan Password
             </button>
           </div>
         </form>

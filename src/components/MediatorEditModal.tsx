@@ -18,7 +18,7 @@ export const MediatorEditModal: React.FC<MediatorEditModalProps> = ({ mediator, 
   const [kdAo, setKdAo] = useState(mediator?.kd_ao || '');
   const [kdCabang, setKdCabang] = useState(mediator?.kd_cabang || '');
   const [kdPosko, setKdPosko] = useState(mediator?.kd_posko || '');
-  const [status, setStatus] = useState<MediatorStatus>(mediator?.status || 'BELUM AKTIF');
+  const [status, setStatus] = useState<MediatorStatus>(mediator?.status || 'BELUM_AKTIF');
   const [catatanAdmin, setCatatanAdmin] = useState(mediator?.catatan_admin || '');
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -177,7 +177,7 @@ export const MediatorEditModal: React.FC<MediatorEditModalProps> = ({ mediator, 
               disabled={!isEditable}
               maxLength={100}
               value={namaMediator}
-              onChange={(e) => setNamaMediator(e.target.value.toUpperCase())}
+              onChange={(e) => setNamaMediator(e.target.value)}
               className="w-full p-2.5 bg-[#0d0e12] border border-[#272d3e] text-[#e0e4eb] placeholder-[#6b7280] rounded-xl uppercase focus:outline-none focus:ring-2 focus:ring-amber-500/50 focus:border-amber-500 disabled:opacity-60"
             />
           </div>

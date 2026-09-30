@@ -283,7 +283,7 @@ export const ModalValidasiAdmDe: React.FC<ModalValidasiAdmDeProps> = ({
                 <input
                   type="text"
                   value={namaKonsumen}
-                  onChange={(e) => setNamaKonsumen(e.target.value.toUpperCase())}
+                  onChange={(e) => setNamaKonsumen(e.target.value)}
                   disabled={isAlreadyAccept}
                   maxLength={100}
                   className="w-full bg-[#181a24] border border-[#272d3e] rounded-xl px-3.5 py-2.5 text-sm text-white uppercase focus:outline-none focus:border-purple-500 disabled:opacity-60"

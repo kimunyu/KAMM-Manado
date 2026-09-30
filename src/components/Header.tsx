@@ -1,357 +1,233 @@
 import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { UserRole } from '../types';
-import { 
-  Building2, 
-  LogOut, 
-  MapPin, 
-  KeyRound,
-  Download,
-  Upload,
-  TrendingUp,
-  Users,
-  Flame,
-  UserCog,
-  UserPlus
-} from 'lucide-react';
-import { DatabaseService, SystemFullBackup } from '../services/storage';
 import { KammLogo } from './KammLogo';
-import { ModuleId } from './Sidebar';
+import { 
+  Users, 
+  UserCheck, 
+  TrendingUp, 
+  FileSpreadsheet, 
+  ShieldAlert, 
+  LogOut, 
+  ChevronDown,
+  User as UserIcon,
+  KeyRound,
+  ShieldCheck
+} from 'lucide-react';
+
+export type MainModule = 'sales-acquisition' | 'kontrol-sales' | 'kontrol-mediator' | 'ex-customer';
 
 interface HeaderProps {
-  onRefresh: () => void;
-  onOpenChangePassword?: () => void;
+  activeModule: MainModule;
+  onSelectModule: (mod: MainModule) => void;
   onOpenProfile?: () => void;
-  activeModule?: ModuleId;
-  onSelectModule?: (mod: ModuleId) => void;
-  pendingCount?: number;
-  holdSalesCount?: number;
+  onOpenPassword?: () => void;
 }
 
-export const Header: React.FC<HeaderProps> = ({ 
-  onRefresh, 
-  onOpenChangePassword, 
-  onOpenProfile,
+export const Header: React.FC<HeaderProps> = ({
   activeModule,
   onSelectModule,
-  pendingCount = 0,
-  holdSalesCount = 0
+  onOpenProfile,
+  onOpenPassword
 }) => {
-  const { currentUser, logout, refreshData, isSuperAdminSession, canManageUsers } = useAuth();
-  const [snapshotMsg, setSnapshotMsg] = useState<string | null>(null);
+  const { 
+    currentUser, 
+    allUsers, 
+    switchUser, 
+    logout,
+    canAccessKontrolMediator,
+    canAccessExCustomer,
+    canAccessSalesAcquisition,
+    canAccessKontrolSales
+  } = useAuth();
 
-  const role = currentUser?.role;
-  const isBpkbAdmin = role === 'ADM_BPKB' || role === 'ADMIN_BPKB';
-  const isAdmDe = role === 'ADM_DE';
-
-  // Prospek Sales dapat diakses oleh semua user
-  const canAccessAcquisition = !!currentUser;
-
-  const canAccessSales = 
-    role === 'ADM_DE' || 
-    role === 'ADM' || 
-    role === 'KAOPS' || 
-    role === 'KACAB' || 
-    role === 'RM' || 
-    role === 'KAPOS' || 
-    role === 'SUPER_ADMIN';
-
-  const canAccessMediator = !isBpkbAdmin && !isAdmDe;
-  const canAccessExCustomer = !isAdmDe;
-  const canAccessMasterData = role === 'SUPER_ADMIN' || canManageUsers;
-
-  const headerModules = [
-    {
-      id: 'sales-acquisition' as ModuleId,
-      label: 'Prospek Sales',
-      icon: UserPlus,
-      visible: canAccessAcquisition,
-      activeStyle: 'bg-blue-600 text-white border-blue-500 shadow-md shadow-blue-950/50',
-      hoverStyle: 'text-[#9ea6b8] hover:text-blue-300 hover:bg-[#1c202d] border-transparent',
-    },
-    {
-      id: 'sales' as ModuleId,
-      label: 'Kontrol Sales',
-      icon: TrendingUp,
-      counter: holdSalesCount > 0 ? holdSalesCount : undefined,
-      counterActiveStyle: 'bg-white text-purple-700',
-      visible: canAccessSales,
-      activeStyle: 'bg-purple-600 text-white border-purple-500 shadow-md shadow-purple-950/50',
-      hoverStyle: 'text-[#9ea6b8] hover:text-purple-300 hover:bg-[#1c202d] border-transparent',
-    },
-    {
-      id: 'mediator' as ModuleId,
-      label: 'Kontrol Mediator',
-      icon: Users,
-      counter: pendingCount > 0 ? pendingCount : undefined,
-      counterActiveStyle: 'bg-white text-blue-700',
-      visible: canAccessMediator,
-      activeStyle: 'bg-blue-600 text-white border-blue-500 shadow-md shadow-blue-950/50',
-      hoverStyle: 'text-[#9ea6b8] hover:text-blue-300 hover:bg-[#1c202d] border-transparent',
-    },
-    {
-      id: 'ex-customer' as ModuleId,
-      label: 'Ex-Customer',
-      icon: Flame,
-      visible: canAccessExCustomer,
-      activeStyle: 'bg-amber-600 text-white border-amber-500 shadow-md shadow-amber-950/50',
-      hoverStyle: 'text-[#9ea6b8] hover:text-amber-300 hover:bg-[#1c202d] border-transparent',
-    },
-    {
-      id: 'master-data' as ModuleId,
-      label: 'Master Data',
-      icon: UserCog,
-      visible: canAccessMasterData,
-      activeStyle: 'bg-emerald-600 text-white border-emerald-500 shadow-md shadow-emerald-950/50',
-      hoverStyle: 'text-[#9ea6b8] hover:text-emerald-300 hover:bg-[#1c202d] border-transparent',
-    },
-  ].filter(m => m.visible);
-
-  // Download Full System JSON Backup
-  const handleDownloadBackup = () => {
-    try {
-      const backup = DatabaseService.getFullSystemBackup(currentUser?.nama || 'SUPER_ADMIN');
-      const jsonStr = JSON.stringify(backup, null, 2);
-      const blob = new Blob([jsonStr], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const dateStr = new Date().toISOString().slice(0, 10);
-      const timeStr = new Date().toTimeString().slice(0, 8).replace(/:/g, '-');
-      const filename = `MED_CONTROL_BACKUP_${dateStr}_${timeStr}.json`;
-
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = filename;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-
-      setSnapshotMsg('Backup database .JSON berhasil diunduh!');
-      setTimeout(() => setSnapshotMsg(null), 4000);
-    } catch (err: any) {
-      alert(`Gagal membuat backup: ${err.message}`);
-    }
-  };
-
-  // Restore Full System JSON Backup
-  const handleRestoreBackup = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = async (event) => {
-      try {
-        const content = event.target?.result as string;
-        const parsed = JSON.parse(content) as SystemFullBackup;
-
-        if (window.confirm('Pulihkan seluruh database dari file .JSON ini? Semua akun, mediator, dan log FU akan disinkronkan.')) {
-          const res = await DatabaseService.restoreFullSystemBackup(parsed);
-          if (res.success) {
-            refreshData();
-            onRefresh();
-            setSnapshotMsg(res.message);
-            setTimeout(() => setSnapshotMsg(null), 5000);
-          } else {
-            alert(res.message);
-          }
-        }
-      } catch (err: any) {
-        alert('Format file JSON backup tidak valid!');
-      }
-    };
-    reader.readAsText(file);
-    e.target.value = '';
-  };
-
-  const getRoleBadgeColor = (role?: UserRole) => {
-    switch (role) {
-      case 'SUPER_ADMIN':
-        return 'bg-purple-950/60 text-purple-300 border-purple-800/60';
-      case 'RM':
-        return 'bg-indigo-950/60 text-indigo-300 border-indigo-800/60';
-      case 'KACAB':
-        return 'bg-blue-950/60 text-blue-300 border-blue-800/60';
-      case 'KAOPS':
-        return 'bg-emerald-950/60 text-emerald-300 border-emerald-800/60';
-      case 'ADM':
-        return 'bg-amber-950/60 text-amber-300 border-amber-800/60';
-      case 'KAPOS':
-        return 'bg-cyan-950/60 text-cyan-300 border-cyan-800/60';
-      case 'CMO':
-        return 'bg-teal-950/60 text-teal-300 border-teal-800/60';
-      default:
-        return 'bg-slate-800 text-slate-300 border-slate-700';
-    }
-  };
+  const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
+  const [isSwitchMenuOpen, setIsSwitchMenuOpen] = useState(false);
 
   return (
-    <header className="bg-[#13151c] border-b border-[#232734] sticky top-0 z-30 shadow-lg">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        {/* Main top bar */}
-        <div className="flex items-center justify-between h-16">
-          {/* Brand */}
-          <div className="flex items-center space-x-3">
-            <div className="h-10 w-10 rounded-xl bg-[#0d0f17] border border-[#2e3446] flex items-center justify-center p-1 shadow-md shadow-blue-950/40">
-              <KammLogo variant="icon" className="h-full w-full" />
+    <header className="sticky top-0 z-40 bg-[#0d1017]/90 backdrop-blur-md border-b border-[#202636] px-4 lg:px-6 py-2.5 flex items-center justify-between">
+      {/* Brand Logo */}
+      <div className="flex items-center space-x-6">
+        <KammLogo size="sm" />
+
+        {/* Top Module Tabs */}
+        <nav className="hidden md:flex items-center space-x-1 bg-[#131722] p-1 rounded-xl border border-[#202738]">
+          {/* 1. Prospek Sales */}
+          {canAccessSalesAcquisition && (
+            <button
+              type="button"
+              onClick={() => onSelectModule('sales-acquisition')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center space-x-2 transition-all cursor-pointer ${
+                activeModule === 'sales-acquisition'
+                  ? 'bg-blue-600 text-white shadow-md shadow-blue-900/30'
+                  : 'text-[#8e96a8] hover:text-white hover:bg-[#1a2030]'
+              }`}
+            >
+              <TrendingUp className="h-3.5 w-3.5" />
+              <span>Prospek Sales</span>
+            </button>
+          )}
+
+          {/* 2. Kontrol Sales */}
+          {canAccessKontrolSales && (
+            <button
+              type="button"
+              onClick={() => onSelectModule('kontrol-sales')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center space-x-2 transition-all cursor-pointer ${
+                activeModule === 'kontrol-sales'
+                  ? 'bg-blue-600 text-white shadow-md shadow-blue-900/30'
+                  : 'text-[#8e96a8] hover:text-white hover:bg-[#1a2030]'
+              }`}
+            >
+              <FileSpreadsheet className="h-3.5 w-3.5" />
+              <span>Kontrol Sales</span>
+            </button>
+          )}
+
+          {/* 3. Kontrol Mediator (Accessible by CMO!) */}
+          {canAccessKontrolMediator && (
+            <button
+              type="button"
+              onClick={() => onSelectModule('kontrol-mediator')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center space-x-2 transition-all cursor-pointer ${
+                activeModule === 'kontrol-mediator'
+                  ? 'bg-blue-600 text-white shadow-md shadow-blue-900/30'
+                  : 'text-[#8e96a8] hover:text-white hover:bg-[#1a2030]'
+              }`}
+            >
+              <Users className="h-3.5 w-3.5" />
+              <span>Kontrol Mediator</span>
+            </button>
+          )}
+
+          {/* 4. Ex-Customer (Accessible by CMO!) */}
+          {canAccessExCustomer && (
+            <button
+              type="button"
+              onClick={() => onSelectModule('ex-customer')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center space-x-2 transition-all cursor-pointer ${
+                activeModule === 'ex-customer'
+                  ? 'bg-blue-600 text-white shadow-md shadow-blue-900/30'
+                  : 'text-[#8e96a8] hover:text-white hover:bg-[#1a2030]'
+              }`}
+            >
+              <UserCheck className="h-3.5 w-3.5" />
+              <span>Ex-Customer</span>
+            </button>
+          )}
+        </nav>
+      </div>
+
+      {/* Right Controls: Role Switcher & User Profile */}
+      <div className="flex items-center space-x-3">
+        {/* Switch Account Quick Dropdown */}
+        <div className="relative">
+          <button
+            type="button"
+            onClick={() => setIsSwitchMenuOpen(!isSwitchMenuOpen)}
+            className="flex items-center space-x-2 px-2.5 py-1.5 rounded-xl bg-[#141926] border border-[#232c40] text-xs hover:border-blue-500 transition-colors cursor-pointer"
+          >
+            <ShieldCheck className="h-3.5 w-3.5 text-blue-400" />
+            <span className="hidden sm:inline text-[#8e96a8]">Simulasi Role:</span>
+            <span className="font-bold text-white font-mono">{currentUser?.role || '-'}</span>
+            <ChevronDown className="h-3.5 w-3.5 text-[#5c6479]" />
+          </button>
+
+          {isSwitchMenuOpen && (
+            <div className="absolute right-0 mt-2 w-64 bg-[#141824] border border-[#273044] rounded-2xl shadow-2xl p-2 z-50 animate-in fade-in zoom-in-95">
+              <div className="px-2.5 py-1.5 text-[10px] font-bold text-[#717b94] uppercase tracking-wider">
+                Ganti Akun Demo
+              </div>
+              <div className="max-h-56 overflow-y-auto space-y-1">
+                {allUsers.map((u) => (
+                  <button
+                    key={u.id}
+                    onClick={() => {
+                      switchUser(u.id);
+                      setIsSwitchMenuOpen(false);
+                    }}
+                    className={`w-full text-left px-2.5 py-2 rounded-xl text-xs flex items-center justify-between cursor-pointer transition-colors ${
+                      currentUser?.id === u.id
+                        ? 'bg-blue-600 text-white font-bold'
+                        : 'hover:bg-[#1d2334] text-[#c2c9d6]'
+                    }`}
+                  >
+                    <div>
+                      <div className="font-medium">{u.nama}</div>
+                      <div className="text-[10px] opacity-75 font-mono">
+                        {u.role} • {u.kd_posko} {u.kd_ao ? `• AO: ${u.kd_ao}` : ''}
+                      </div>
+                    </div>
+                  </button>
+                ))}
+              </div>
             </div>
-            <div>
-              <div className="flex items-center space-x-2">
-                <span className="font-bold text-[#f1f3f7] text-lg tracking-tight">Super App KAMM Manado</span>
-              </div>
-              <p className="text-xs text-[#8e96a8] hidden sm:block">Sistem Pengendalian & Monitoring</p>
-            </div>
-          </div>
-
-          {/* Right info & profile */}
-          <div className="flex items-center space-x-3">
-            {/* Cabang info */}
-            {currentUser?.kd_cabang && (
-              <div className="hidden md:flex items-center text-xs text-[#c2c7d0] bg-[#1a1d27] px-3 py-1.5 rounded-lg border border-[#2e3446]">
-                <MapPin className="h-3.5 w-3.5 mr-1.5 text-blue-400" />
-                <span className="font-medium text-[#e0e4eb]">{currentUser.kd_cabang}</span>
-                {currentUser.kd_posko && (
-                  <span className="text-[#8e96a8] ml-1">/ {currentUser.kd_posko}</span>
-                )}
-              </div>
-            )}
-
-            {/* Current user badge & actions */}
-            {currentUser ? (
-              <div className="flex items-center space-x-2 pl-2 border-l border-[#282d3d]">
-                <button
-                  id="btn-open-user-profile-header"
-                  onClick={onOpenProfile || onOpenChangePassword}
-                  className="flex items-center space-x-2 text-left hover:opacity-90 transition-opacity cursor-pointer p-1 rounded-xl hover:bg-[#1c202d]"
-                  title="Klik untuk membuka Profil & Ganti Password"
-                >
-                  <div className="text-right hidden sm:block">
-                    <div className="text-sm font-semibold text-[#f1f3f7] flex items-center justify-end space-x-1">
-                      <span>{currentUser.nama}</span>
-                    </div>
-                    <div className="flex items-center justify-end space-x-1 mt-0.5">
-                      <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full border ${getRoleBadgeColor(currentUser.role)}`}>
-                        {currentUser.role}
-                      </span>
-                      {currentUser.kd_ao && (
-                        <span className="text-[11px] text-[#8e96a8]">({currentUser.kd_ao})</span>
-                      )}
-                    </div>
-                  </div>
-
-                  {currentUser.foto_profil ? (
-                    <img
-                      src={currentUser.foto_profil}
-                      alt={currentUser.nama}
-                      referrerPolicy="no-referrer"
-                      className="h-9 w-9 rounded-full object-cover border border-blue-400/50 shadow-xs"
-                    />
-                  ) : (
-                    <div className="h-9 w-9 rounded-full bg-blue-600 text-white flex items-center justify-center font-bold text-sm shadow-xs border border-blue-400/30">
-                      {currentUser.nama.charAt(0)}
-                    </div>
-                  )}
-                </button>
-
-                {/* Open Profile/Password Button */}
-                <button
-                  id="btn-open-profile-icon"
-                  onClick={onOpenProfile || onOpenChangePassword}
-                  title="Profil & Ganti Password"
-                  className="p-2 text-[#8e96a8] hover:text-blue-400 hover:bg-blue-950/40 rounded-lg transition-colors cursor-pointer"
-                >
-                  <KeyRound className="h-4 w-4" />
-                </button>
-
-                {/* Logout Button */}
-                <button
-                  id="btn-logout"
-                  onClick={logout}
-                  title="Keluar / Logout"
-                  className="p-2 text-[#8e96a8] hover:text-rose-400 hover:bg-rose-950/40 rounded-lg transition-colors cursor-pointer"
-                >
-                  <LogOut className="h-4 w-4" />
-                </button>
-              </div>
-            ) : null}
-          </div>
+          )}
         </div>
 
-        {/* Sub Bar: Module Navigation (Left) & Backup/Restore Actions (Right) sebaris */}
-        {(headerModules.length > 1 || isSuperAdminSession) && (
-          <div className="py-2 border-t border-[#1f2330] flex flex-wrap items-center justify-between gap-3 text-xs">
-            {/* Kiri: Menu Modul Ruang Kerja (Kontrol Sales, Kontrol Mediator, dll.) */}
-            {headerModules.length > 1 && onSelectModule ? (
-              <nav 
-                id="header-module-nav" 
-                aria-label="Pilih Modul Ruang Kerja"
-                className="flex items-center space-x-1.5 bg-[#0e1017] p-1 rounded-xl border border-[#232738] shadow-inner overflow-x-auto max-w-full"
-              >
-                {headerModules.map((m) => {
-                  const Icon = m.icon;
-                  const isActive = activeModule === m.id;
-                  return (
-                    <button
-                      key={m.id}
-                      id={`header-switch-${m.id}`}
-                      onClick={() => onSelectModule(m.id)}
-                      className={`flex items-center space-x-2 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all cursor-pointer whitespace-nowrap ${
-                        isActive ? m.activeStyle : m.hoverStyle
-                      }`}
-                    >
-                      <Icon className="h-3.5 w-3.5 shrink-0" />
-                      <span>{m.label}</span>
-                      {m.counter !== undefined && m.counter > 0 && (
-                        <span className={`px-1.5 py-0.2 text-[10px] font-bold rounded-full ${
-                          isActive ? (m.counterActiveStyle || 'bg-white text-blue-700') : 'bg-rose-500 text-white animate-pulse'
-                        }`}>
-                          {m.counter}
-                        </span>
-                      )}
-                    </button>
-                  );
-                })}
-              </nav>
-            ) : <div />}
+        {/* User Profile Button */}
+        <div className="relative">
+          <button
+            type="button"
+            onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
+            className="flex items-center space-x-2 p-1.5 rounded-xl bg-[#141926] border border-[#232c40] hover:border-[#384460] transition-colors cursor-pointer"
+          >
+            <div className="h-7 w-7 rounded-lg bg-gradient-to-tr from-blue-600 to-indigo-600 flex items-center justify-center text-white text-xs font-bold">
+              {currentUser?.nama?.charAt(0) || 'U'}
+            </div>
+            <div className="hidden md:block text-left text-xs leading-none pr-1">
+              <div className="font-semibold text-white max-w-[120px] truncate">{currentUser?.nama}</div>
+              <div className="text-[10px] text-[#717b94] font-mono mt-0.5">{currentUser?.username}</div>
+            </div>
+          </button>
 
-            {/* Kanan: Anti-Reset Backup / Restore JSON buttons - sebaris di sebelah kanan */}
-            {isSuperAdminSession && (
-              <div className="flex items-center space-x-2 min-w-max ml-auto">
-                {snapshotMsg && (
-                  <span className="text-[11px] font-semibold text-emerald-400 bg-emerald-950/60 px-2.5 py-1 rounded-md border border-emerald-800/60 animate-fade-in">
-                    {snapshotMsg}
-                  </span>
-                )}
-
-                {/* 1. Download Backup JSON */}
-                <button
-                  id="btn-download-json-backup-header"
-                  onClick={handleDownloadBackup}
-                  className="flex items-center space-x-1 px-3 py-1.5 rounded-lg bg-indigo-900/60 hover:bg-indigo-800/80 text-indigo-200 hover:text-white border border-indigo-700/60 transition-colors cursor-pointer text-[11px] font-bold shadow-xs"
-                  title="Download seluruh database ke file .JSON (Anti-Reset)"
-                >
-                  <Download className="h-3.5 w-3.5 text-indigo-300" />
-                  <span>Backup JSON (Anti-Reset)</span>
-                </button>
-
-                {/* 2. Restore Backup JSON */}
-                <label
-                  id="label-restore-json-backup-header"
-                  className="flex items-center space-x-1 px-3 py-1.5 rounded-lg bg-emerald-950/60 hover:bg-emerald-900/80 text-emerald-200 hover:text-white border border-emerald-800/60 transition-colors cursor-pointer text-[11px] font-bold shadow-xs"
-                  title="Pulihkan database dari file .JSON yang pernah di-download"
-                >
-                  <Upload className="h-3.5 w-3.5 text-emerald-300" />
-                  <span>Restore JSON</span>
-                  <input
-                    type="file"
-                    accept=".json"
-                    onChange={handleRestoreBackup}
-                    className="hidden"
-                  />
-                </label>
+          {isUserMenuOpen && (
+            <div className="absolute right-0 mt-2 w-52 bg-[#141824] border border-[#273044] rounded-2xl shadow-2xl p-1.5 z-50">
+              <div className="px-3 py-2 border-b border-[#232b3d] mb-1">
+                <div className="text-xs font-bold text-white truncate">{currentUser?.nama}</div>
+                <div className="text-[11px] text-blue-400 font-mono mt-0.5">
+                  {currentUser?.role} ({currentUser?.kd_posko})
+                </div>
               </div>
-            )}
-          </div>
-        )}
+
+              {onOpenProfile && (
+                <button
+                  onClick={() => {
+                    setIsUserMenuOpen(false);
+                    onOpenProfile();
+                  }}
+                  className="w-full text-left px-3 py-2 rounded-xl text-xs text-[#c2c9d6] hover:bg-[#1d2334] hover:text-white flex items-center space-x-2 transition-colors cursor-pointer"
+                >
+                  <UserIcon className="h-3.5 w-3.5" />
+                  <span>Profil Pengguna</span>
+                </button>
+              )}
+
+              {onOpenPassword && (
+                <button
+                  onClick={() => {
+                    setIsUserMenuOpen(false);
+                    onOpenPassword();
+                  }}
+                  className="w-full text-left px-3 py-2 rounded-xl text-xs text-[#c2c9d6] hover:bg-[#1d2334] hover:text-white flex items-center space-x-2 transition-colors cursor-pointer"
+                >
+                  <KeyRound className="h-3.5 w-3.5" />
+                  <span>Ganti Password</span>
+                </button>
+              )}
+
+              <button
+                onClick={() => {
+                  setIsUserMenuOpen(false);
+                  logout();
+                }}
+                className="w-full text-left px-3 py-2 rounded-xl text-xs text-rose-400 hover:bg-rose-950/40 flex items-center space-x-2 transition-colors cursor-pointer mt-1"
+              >
+                <LogOut className="h-3.5 w-3.5" />
+                <span>Logout</span>
+              </button>
+            </div>
+          )}
+        </div>
       </div>
     </header>
   );

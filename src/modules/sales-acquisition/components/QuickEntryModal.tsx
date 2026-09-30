@@ -87,7 +87,6 @@ export const QuickEntryModal: React.FC<QuickEntryModalProps> = ({
   const filteredMediators = useMemo(() => {
     const term = mediatorSearch.trim().toLowerCase();
     if (!term) {
-      // Prioritaskan mediator aktif
       return [...allMediators].sort((a, b) => {
         if (a.status === 'AKTIF' && b.status !== 'AKTIF') return -1;
         if (a.status !== 'AKTIF' && b.status === 'AKTIF') return 1;
@@ -176,8 +175,6 @@ export const QuickEntryModal: React.FC<QuickEntryModalProps> = ({
 
     setIsSubmitting(true);
 
-    // AO Ref dikunci sesuai user yang menginput data:
-    // Jika CMO yang menginput, otomatis menjadi petugas survei awalnya
     const aoCode = currentUser.kd_ao || '';
     const userCabang = currentUser.kd_cabang || 'C16';
     const userPosko = currentUser.kd_posko || 'QJ0';
@@ -472,11 +469,11 @@ export const QuickEntryModal: React.FC<QuickEntryModalProps> = ({
                         Tidak ada mediator ditemukan dengan kata kunci &quot;{mediatorSearch}&quot;
                       </div>
                     ) : (
-                      filteredMediators.map((med) => {
+                      filteredMediators.map((med, idx) => {
                         const isSelected = kdMed.trim().toUpperCase() === med.kd_med?.trim().toUpperCase();
                         return (
                           <div
-                            key={med.kd_med || med.temp_id || Math.random()}
+                            key={med.firestore_id || med.temp_id ? `${med.firestore_id || med.temp_id}` : `${med.kd_med || 'med'}_${idx}`}
                             onClick={() => handleSelectMediator(med)}
                             className={`p-2 rounded-lg border transition-all cursor-pointer flex items-center justify-between text-xs ${
                               isSelected
@@ -613,7 +610,7 @@ export const QuickEntryModal: React.FC<QuickEntryModalProps> = ({
             </p>
           </div>
 
-          {/* Wilayah Domisili (MANDATORI - Alamat Lengkap / Patokan Jalan Dihapus Sesuai Instruksi) */}
+          {/* Wilayah Domisili (MANDATORI) */}
           <div className="border border-emerald-900/60 rounded-2xl overflow-hidden bg-[#0c0f16] p-4 space-y-3.5">
             <div className="flex items-center justify-between pb-2 border-b border-[#232734]">
               <div className="flex items-center space-x-2">

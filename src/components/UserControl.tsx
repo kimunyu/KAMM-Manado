@@ -1000,7 +1000,7 @@ export const UserControl: React.FC<UserControlProps> = ({ onRefresh }) => {
                   type="text"
                   required
                   value={nama}
-                  onChange={(e) => setNama(e.target.value.toUpperCase())}
+                  onChange={(e) => setNama(e.target.value)}
                   placeholder="Contoh: Rian Firmansyah"
                   className="w-full p-2.5 bg-[#0d0e12] border border-[#272d3e] text-[#e0e4eb] placeholder-[#6b7280] rounded-xl uppercase focus:outline-none focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500"
                 />
