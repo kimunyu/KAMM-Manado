@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Columns, SlidersHorizontal, RotateCcw, Check, ChevronDown } from 'lucide-react';
-import { ColumnDef, TableDensity } from './types';
+import { Columns, SlidersHorizontal, RotateCcw, Check, ChevronDown, LayoutGrid, Table2 } from 'lucide-react';
+import { ColumnDef, TableDensity, TableViewMode } from './types';
 
 interface DataTableToolbarProps<T> {
   tableKey: string;
@@ -10,6 +10,9 @@ interface DataTableToolbarProps<T> {
   onResetColumns: () => void;
   density: TableDensity;
   onChangeDensity: (density: TableDensity) => void;
+  viewMode?: TableViewMode;
+  onChangeViewMode?: (mode: TableViewMode) => void;
+  showViewModeToggle?: boolean;
   title?: React.ReactNode;
   subtitle?: React.ReactNode;
   toolbarActions?: React.ReactNode;
@@ -24,6 +27,9 @@ export function DataTableToolbar<T>({
   onResetColumns,
   density,
   onChangeDensity,
+  viewMode = 'table',
+  onChangeViewMode,
+  showViewModeToggle = true,
   title,
   subtitle,
   toolbarActions,
@@ -54,7 +60,7 @@ export function DataTableToolbar<T>({
         {subtitle && <div className="text-xs text-[#8e96a8] mt-0.5">{subtitle}</div>}
       </div>
 
-      {/* Right Controls: Density, Column Visibility & Custom Actions */}
+      {/* Right Controls: View Mode, Density, Column Visibility & Custom Actions */}
       <div className="flex flex-wrap items-center gap-2 self-end md:self-auto">
         {/* Custom Actions (e.g. Export, Import, Filter buttons) */}
         {toolbarActions && (
@@ -63,8 +69,40 @@ export function DataTableToolbar<T>({
           </div>
         )}
 
-        {/* Density Toggle */}
-        {showDensityToggle && (
+        {/* View Mode Toggle: Kartu vs Tabel */}
+        {showViewModeToggle && onChangeViewMode && (
+          <div className="flex items-center p-0.5 bg-[#141722] border border-[#272d3e] rounded-xl text-xs font-semibold text-[#8e96a8] shadow-xs">
+            <button
+              type="button"
+              onClick={() => onChangeViewMode('card')}
+              title="Tampilan Kartu (Ramah Mobile / HP)"
+              className={`px-2.5 py-1 rounded-lg transition-all flex items-center space-x-1.5 cursor-pointer ${
+                viewMode === 'card'
+                  ? 'bg-blue-600/25 text-blue-300 border border-blue-500/40 shadow-xs'
+                  : 'hover:text-[#c2c7d0] hover:bg-[#1f2433]'
+              }`}
+            >
+              <LayoutGrid className="h-3.5 w-3.5 text-blue-400" />
+              <span>Kartu</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => onChangeViewMode('table')}
+              title="Tampilan Tabel (Spreadsheet Lengkap)"
+              className={`px-2.5 py-1 rounded-lg transition-all flex items-center space-x-1.5 cursor-pointer ${
+                viewMode === 'table'
+                  ? 'bg-blue-600/25 text-blue-300 border border-blue-500/40 shadow-xs'
+                  : 'hover:text-[#c2c7d0] hover:bg-[#1f2433]'
+              }`}
+            >
+              <Table2 className="h-3.5 w-3.5 text-blue-400" />
+              <span>Tabel</span>
+            </button>
+          </div>
+        )}
+
+        {/* Density Toggle (Hanya ditampilkan saat mode Tabel) */}
+        {showDensityToggle && viewMode === 'table' && (
           <div className="flex items-center p-0.5 bg-[#141722] border border-[#272d3e] rounded-xl text-xs font-semibold text-[#8e96a8]">
             <button
               type="button"

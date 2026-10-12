@@ -1,70 +1,79 @@
-import { ReactNode } from 'react';
+import React from 'react';
 
-export type TableDensity = 'compact' | 'normal' | 'relaxed';
+export type TableDensity = 'compact' | 'normal';
+export type TableViewMode = 'table' | 'card';
 
-export interface Column<T> {
+export interface ColumnDef<T> {
   key: string;
-  header: string | ReactNode;
-  accessorKey?: string;
-  render?: (item: T, index: number) => ReactNode;
+  header: string | React.ReactNode;
+  accessorKey?: keyof T;
+  sticky?: 'left' | 'right';
   sortable?: boolean;
-  hideable?: boolean;
-  sticky?: 'left' | 'right' | boolean;
+  hideable?: boolean; // Default: true
+  width?: string;     // Tailwind width class or css min-width, e.g. "w-40" or "min-w-[150px]"
   align?: 'left' | 'center' | 'right';
-  width?: string | number;
-  truncate?: boolean;
-  className?: string;
-  headerClassName?: string;
+  truncate?: boolean; // If true, truncates text with tooltip
+  render?: (row: T, index: number) => React.ReactNode;
 }
-
-
-export type ColumnDef<T> = Column<T>;
 
 export interface PaginationState {
   currentPage: number;
   pageSize: number;
   totalCount?: number;
-  hasNextPage: boolean;
-  hasPrevPage: boolean;
-  onPageChange?: (page: number) => void;
-  onPageSizeChange?: (pageSize: number) => void;
+  hasNextPage?: boolean;
+  hasPrevPage?: boolean;
+  onPageChange?: (newPage: number) => void;
+  onPageSizeChange?: (newSize: number) => void;
   onNextPage?: () => void;
   onPrevPage?: () => void;
 }
 
-
-
 export interface DataTableProps<T> {
-  tableKey?: string;
+  tableKey: string;                          // Unique key for localStorage persistence (e.g., 'mediators-table')
   columns: ColumnDef<T>[];
   data: T[];
   keyExtractor?: (item: T, index: number) => string | number;
+  
+  // Loading & Empty States
   loading?: boolean;
-  emptyIcon?: ReactNode;
+  emptyIcon?: React.ReactNode;
   emptyTitle?: string;
   emptyDescription?: string;
-  emptyAction?: ReactNode;
+  emptyAction?: React.ReactNode;
+
+  // Sorting
   defaultSortKey?: string;
   defaultSortOrder?: 'asc' | 'desc';
   onSortChange?: (key: string, order: 'asc' | 'desc') => void;
+
+  // Pagination
+  // If provided, table operates in controlled/server-side pagination mode.
+  // If omitted or clientPagination is true, table paginates the passed `data` array automatically.
   pagination?: PaginationState;
   clientPagination?: boolean;
   initialPageSize?: number;
-  title?: string | ReactNode;
-  subtitle?: string | ReactNode;
-  showToolbar?: boolean;
-  toolbarActions?: ReactNode;
-  showColumnVisibility?: boolean;
-  showDensityToggle?: boolean;
+
+  // Toolbar & Customization
+  title?: React.ReactNode;
+  subtitle?: React.ReactNode;
+  showToolbar?: boolean;                     // Default: true
+  toolbarActions?: React.ReactNode;          // Right slot for export, search, or custom buttons
+  showColumnVisibility?: boolean;            // Default: true
+  showDensityToggle?: boolean;               // Default: true
+  showViewModeToggle?: boolean;              // Default: true
+  viewMode?: TableViewMode;
+  defaultViewMode?: TableViewMode;           // Default: 'card' on mobile, 'table' on desktop
+  onViewModeChange?: (mode: TableViewMode) => void;
+  renderCard?: (
+    row: T, 
+    index: number, 
+    helpers: { displayedColumns: ColumnDef<T>[]; visibleColumnKeys: Set<string> }
+  ) => React.ReactNode;
+  cardGridClassName?: string;
+  
+  // Styling
   containerClassName?: string;
   tableClassName?: string;
   headerClassName?: string;
-  rowClassName?: (item: T, index: number) => string;
-  searchPlaceholder?: string;
-  searchFilter?: (item: T, term: string) => boolean;
-  pageSize?: number;
-  initialSortKey?: string;
-  initialSortDirection?: 'asc' | 'desc';
-  headerActions?: ReactNode;
+  rowClassName?: (row: T, index: number) => string;
 }
-

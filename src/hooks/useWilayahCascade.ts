@@ -66,6 +66,17 @@ export function useWilayahCascade(options: UseWilayahCascadeOptions = {}): UseWi
 
   const [error, setError] = useState<string | null>(null);
 
+  // Stable callback & state refs to prevent executing setState during render phases
+  const onChangeRef = useRef(onChange);
+  useEffect(() => {
+    onChangeRef.current = onChange;
+  }, [onChange]);
+
+  const selectedStateRef = useRef(selectedState);
+  useEffect(() => {
+    selectedStateRef.current = selectedState;
+  }, [selectedState]);
+
   // Request sequence guards untuk mencegah race condition (out-of-order response)
   const reqSeqRef = useRef({
     provinsi: 0,
@@ -220,83 +231,106 @@ export function useWilayahCascade(options: UseWilayahCascadeOptions = {}): UseWi
     };
   }, [selectedState.kecamatanId]);
 
+  // Sync with initialValues if updated externally by parent component
+  const lastInitialRef = useRef(initialValues);
+  useEffect(() => {
+    if (!initialValues) return;
+    const prevInit = lastInitialRef.current;
+    if (
+      initialValues.provinsiId !== prevInit?.provinsiId ||
+      initialValues.kabupatenId !== prevInit?.kabupatenId ||
+      initialValues.kecamatanId !== prevInit?.kecamatanId ||
+      initialValues.desaId !== prevInit?.desaId
+    ) {
+      lastInitialRef.current = initialValues;
+      const synced: SelectedWilayahState = {
+        provinsiId: initialValues.provinsiId || '',
+        kabupatenId: initialValues.kabupatenId || '',
+        kecamatanId: initialValues.kecamatanId || '',
+        desaId: initialValues.desaId || '',
+        provinsiNama: initialValues.provinsiNama || '',
+        kabupatenNama: initialValues.kabupatenNama || '',
+        kecamatanNama: initialValues.kecamatanNama || '',
+        desaNama: initialValues.desaNama || '',
+      };
+      selectedStateRef.current = synced;
+      setSelectedState(synced);
+    }
+  }, [initialValues]);
+
   // Handler: Set Provinsi (Otomatis reset Kabupaten, Kecamatan, Desa)
   const setProvinsi = useCallback((id: string) => {
     const cleanId = String(id || '').trim();
     const item = provinsiList.find((p) => p.id === cleanId);
     
-    setSelectedState((prev) => {
-      const next: SelectedWilayahState = {
-        provinsiId: cleanId,
-        provinsiNama: item?.nama || '',
-        // Reset cascading children
-        kabupatenId: '',
-        kabupatenNama: '',
-        kecamatanId: '',
-        kecamatanNama: '',
-        desaId: '',
-        desaNama: '',
-      };
-      onChange?.(next);
-      return next;
-    });
-  }, [provinsiList, onChange]);
+    const next: SelectedWilayahState = {
+      provinsiId: cleanId,
+      provinsiNama: item?.nama || '',
+      // Reset cascading children
+      kabupatenId: '',
+      kabupatenNama: '',
+      kecamatanId: '',
+      kecamatanNama: '',
+      desaId: '',
+      desaNama: '',
+    };
+    selectedStateRef.current = next;
+    setSelectedState(next);
+    onChangeRef.current?.(next);
+  }, [provinsiList]);
 
   // Handler: Set Kabupaten (Otomatis reset Kecamatan & Desa)
   const setKabupaten = useCallback((id: string) => {
     const cleanId = String(id || '').trim();
     const item = kabupatenList.find((k) => k.id === cleanId);
 
-    setSelectedState((prev) => {
-      const next: SelectedWilayahState = {
-        ...prev,
-        kabupatenId: cleanId,
-        kabupatenNama: item?.nama || '',
-        // Reset cascading children
-        kecamatanId: '',
-        kecamatanNama: '',
-        desaId: '',
-        desaNama: '',
-      };
-      onChange?.(next);
-      return next;
-    });
-  }, [kabupatenList, onChange]);
+    const next: SelectedWilayahState = {
+      ...selectedStateRef.current,
+      kabupatenId: cleanId,
+      kabupatenNama: item?.nama || '',
+      // Reset cascading children
+      kecamatanId: '',
+      kecamatanNama: '',
+      desaId: '',
+      desaNama: '',
+    };
+    selectedStateRef.current = next;
+    setSelectedState(next);
+    onChangeRef.current?.(next);
+  }, [kabupatenList]);
 
   // Handler: Set Kecamatan (Otomatis reset Desa)
   const setKecamatan = useCallback((id: string) => {
     const cleanId = String(id || '').trim();
     const item = kecamatanList.find((kc) => kc.id === cleanId);
 
-    setSelectedState((prev) => {
-      const next: SelectedWilayahState = {
-        ...prev,
-        kecamatanId: cleanId,
-        kecamatanNama: item?.nama || '',
-        // Reset cascading child
-        desaId: '',
-        desaNama: '',
-      };
-      onChange?.(next);
-      return next;
-    });
-  }, [kecamatanList, onChange]);
+    const next: SelectedWilayahState = {
+      ...selectedStateRef.current,
+      kecamatanId: cleanId,
+      kecamatanNama: item?.nama || '',
+      // Reset cascading child
+      desaId: '',
+      desaNama: '',
+    };
+    selectedStateRef.current = next;
+    setSelectedState(next);
+    onChangeRef.current?.(next);
+  }, [kecamatanList]);
 
   // Handler: Set Desa
   const setDesa = useCallback((id: string) => {
     const cleanId = String(id || '').trim();
     const item = desaList.find((d) => d.id === cleanId);
 
-    setSelectedState((prev) => {
-      const next: SelectedWilayahState = {
-        ...prev,
-        desaId: cleanId,
-        desaNama: item?.nama || '',
-      };
-      onChange?.(next);
-      return next;
-    });
-  }, [desaList, onChange]);
+    const next: SelectedWilayahState = {
+      ...selectedStateRef.current,
+      desaId: cleanId,
+      desaNama: item?.nama || '',
+    };
+    selectedStateRef.current = next;
+    setSelectedState(next);
+    onChangeRef.current?.(next);
+  }, [desaList]);
 
   // Handler: Reset All
   const resetAll = useCallback(() => {
@@ -310,12 +344,13 @@ export function useWilayahCascade(options: UseWilayahCascadeOptions = {}): UseWi
       kecamatanNama: '',
       desaNama: '',
     };
+    selectedStateRef.current = empty;
     setSelectedState(empty);
     setKabupatenList([]);
     setKecamatanList([]);
     setDesaList([]);
-    onChange?.(empty);
-  }, [onChange]);
+    onChangeRef.current?.(empty);
+  }, []);
 
   return {
     provinsiList,

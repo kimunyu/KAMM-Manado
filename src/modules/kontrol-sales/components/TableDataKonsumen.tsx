@@ -822,6 +822,7 @@ export const TableDataKonsumen: React.FC<TableDataKonsumenProps> = ({
                   type="text"
                   value={editNama}
                   onChange={(e) => setEditNama(e.target.value)}
+                  onBlur={() => setEditNama(prev => prev.toUpperCase())}
                   maxLength={100}
                   required
                   className="w-full bg-[#181a24] border border-[#272d3e] rounded-xl px-3 py-2 text-xs text-white uppercase focus:outline-none focus:border-blue-500"

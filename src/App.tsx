@@ -13,6 +13,7 @@ import { UserControl } from './components/UserControl';
 import { ExCustomerControl } from './components/ExCustomerControl';
 import { KontrolSalesModule } from './modules/kontrol-sales';
 import { SalesAcquisitionModule } from './modules/sales-acquisition';
+import { HrdRekrutmenModule, PortalPelamar, HrdErrorBoundary } from './modules/hrd-rekrutmen';
 import { SalesService } from './modules/kontrol-sales/services/salesService';
 import { SalesControlRecord } from './modules/kontrol-sales/types';
 import { checkHoldDanaSla } from './modules/kontrol-sales/utils/slaUtils';
@@ -22,6 +23,23 @@ import { LoginModal } from './components/LoginModal';
 import { ChangePasswordModal } from './components/ChangePasswordModal';
 import { UserProfileModal } from './components/UserProfileModal';
 import { IdleTimeoutManager } from './components/IdleTimeoutManager';
+import { ErrorBoundary } from './components/ErrorBoundary';
+
+const getTabModuleName = (tab: ActiveTab): string => {
+  switch (tab) {
+    case 'sales-acquisition': return 'Sales Acquisition';
+    case 'kontrol-sales': return 'Kontrol Sales';
+    case 'dashboard': return 'Dashboard Kontrol Mediator';
+    case 'daftar-mediator': return 'Daftar Mediator';
+    case 'registrasi': return 'Registrasi Mediator';
+    case 'validasi': return 'Validasi KD MED';
+    case 'follow-up': return 'Follow Up Mediator';
+    case 'ex-customer': return 'Ex-Customer & BPKB';
+    case 'user-control': return 'Manajemen Pengguna';
+    case 'hrd-rekrutmen': return 'Rekrutmen & Pelamar Kerja';
+    default: return 'Aplikasi';
+  }
+};
 
 const TAB_TO_MODULE_MAP: Record<ActiveTab, ModuleId> = {
   'sales-acquisition': 'sales-acquisition',
@@ -33,6 +51,7 @@ const TAB_TO_MODULE_MAP: Record<ActiveTab, ModuleId> = {
   'follow-up': 'mediator',
   'ex-customer': 'ex-customer',
   'user-control': 'master-data',
+  'hrd-rekrutmen': 'hrd',
 };
 
 const MODULE_DEFAULT_TAB: Record<ModuleId, ActiveTab> = {
@@ -41,6 +60,7 @@ const MODULE_DEFAULT_TAB: Record<ModuleId, ActiveTab> = {
   'mediator': 'dashboard',
   'ex-customer': 'ex-customer',
   'master-data': 'user-control',
+  'hrd': 'hrd-rekrutmen',
 };
 
 function MainApp() {
@@ -119,6 +139,15 @@ function MainApp() {
 
   // Real-time synchronization for sales records & SLA hold status
   useEffect(() => {
+    const isSalesRole = !!currentUser && currentUser.status === 'AKTIF' && [
+      'SUPER_ADMIN', 'RM', 'ADM_DE', 'KACAB', 'KAOPS', 'ADM', 'KAPOS'
+    ].includes(currentUser.role);
+
+    if (!isSalesRole) {
+      setSalesRecords([]);
+      return;
+    }
+
     const unsubscribeSales = SalesService.subscribe(
       currentUser,
       (updated) => {
@@ -136,14 +165,15 @@ function MainApp() {
   // Safeguard tab switching when role changes and user loses access to current tab
   useEffect(() => {
     if (currentUser?.role === 'CMO') {
-      if (
-        activeTab !== 'sales-acquisition' &&
-        activeTab !== 'dashboard' &&
-        activeTab !== 'daftar-mediator' &&
-        activeTab !== 'registrasi' &&
-        activeTab !== 'follow-up' &&
-        activeTab !== 'ex-customer'
-      ) {
+      const allowedCmoTabs: ActiveTab[] = [
+        'sales-acquisition',
+        'dashboard',
+        'daftar-mediator',
+        'registrasi',
+        'follow-up',
+        'ex-customer'
+      ];
+      if (!allowedCmoTabs.includes(activeTab)) {
         setActiveTab('sales-acquisition');
       }
       return;
@@ -187,8 +217,8 @@ function MainApp() {
     setSelectedMedForEdit(med);
   };
 
-  const handleDeleteMediator = (kd_med: string) => {
-    DatabaseService.deleteMediator(kd_med);
+  const handleDeleteMediator = async (kd_med: string) => {
+    await DatabaseService.deleteMediator(kd_med);
     loadDatabase();
   };
 
@@ -265,83 +295,96 @@ function MainApp() {
 
         {/* Content Area */}
         <main className="flex-1 p-4 sm:p-6 lg:p-8 bg-[#0c0e12] min-w-0">
-          {activeTab === 'sales-acquisition' && (
-            <SalesAcquisitionModule
-              currentUser={currentUser}
-              allCabang={allCabang}
-              allPosko={allPosko}
-              allUsers={allUsers}
-              allMediators={mediators}
-              allExCustomers={exCustomers}
-            />
-          )}
+          <ErrorBoundary
+            key={activeTab}
+            moduleName={getTabModuleName(activeTab)}
+            onReset={() => loadDatabase()}
+            onNavigateHome={() => setActiveTab('sales-acquisition')}
+          >
+            {activeTab === 'sales-acquisition' && (
+              <SalesAcquisitionModule
+                currentUser={currentUser}
+                allCabang={allCabang}
+                allPosko={allPosko}
+                allUsers={allUsers}
+                allMediators={mediators}
+                allExCustomers={exCustomers}
+              />
+            )}
 
-          {activeTab === 'dashboard' && (
-            <Dashboard
-              mediators={mediators}
-              fuLogs={fuLogs}
-              onNavigate={setActiveTab}
-            />
-          )}
+            {activeTab === 'dashboard' && (
+              <Dashboard
+                mediators={mediators}
+                fuLogs={fuLogs}
+                onNavigate={setActiveTab}
+              />
+            )}
 
-          {activeTab === 'daftar-mediator' && (
-            <DaftarMediator
-              mediators={mediators}
-              onSelectMediatorForFU={handleSelectMediatorForFU}
-              onViewDetail={handleViewDetail}
-              onEditMediator={handleEditMediator}
-              onDeleteMediator={handleDeleteMediator}
-              onNavigate={setActiveTab}
-            />
-          )}
+            {activeTab === 'daftar-mediator' && (
+              <DaftarMediator
+                mediators={mediators}
+                onSelectMediatorForFU={handleSelectMediatorForFU}
+                onViewDetail={handleViewDetail}
+                onEditMediator={handleEditMediator}
+                onDeleteMediator={handleDeleteMediator}
+                onNavigate={setActiveTab}
+              />
+            )}
 
-          {activeTab === 'registrasi' && (
-            <RegistrasiMediator
-              onSuccess={loadDatabase}
-              onNavigate={setActiveTab}
-            />
-          )}
+            {activeTab === 'registrasi' && (
+              <RegistrasiMediator
+                onSuccess={loadDatabase}
+                onNavigate={setActiveTab}
+              />
+            )}
 
-          {activeTab === 'validasi' && (
-            <ValidasiKdMed
-              mediators={mediators}
-              onValidationSuccess={loadDatabase}
-              onNavigate={setActiveTab}
-              onEditMediator={handleEditMediator}
-            />
-          )}
+            {activeTab === 'validasi' && (
+              <ValidasiKdMed
+                mediators={mediators}
+                onValidationSuccess={loadDatabase}
+                onNavigate={setActiveTab}
+                onEditMediator={handleEditMediator}
+              />
+            )}
 
-          {activeTab === 'follow-up' && (
-            <FollowUpModule
-              mediators={mediators}
-              preSelectedKdMed={preSelectedKdMedForFU}
-              onFollowUpSuccess={loadDatabase}
-            />
-          )}
+            {activeTab === 'follow-up' && (
+              <FollowUpModule
+                mediators={mediators}
+                preSelectedKdMed={preSelectedKdMedForFU}
+                onFollowUpSuccess={loadDatabase}
+              />
+            )}
 
-          {activeTab === 'user-control' && (
-            <UserControl onRefresh={loadDatabase} />
-          )}
+            {activeTab === 'user-control' && (
+              <UserControl onRefresh={loadDatabase} />
+            )}
 
-          {activeTab === 'ex-customer' && (
-            <ExCustomerControl
-              currentUser={currentUser}
-              allCabang={allCabang}
-              allPosko={allPosko}
-              allUsers={allUsers}
-              allExCustomers={exCustomers}
-              allExCustomerLogs={exCustomerLogs}
-              onRefresh={loadDatabase}
-            />
-          )}
+            {activeTab === 'ex-customer' && (
+              <ExCustomerControl
+                currentUser={currentUser}
+                allCabang={allCabang}
+                allPosko={allPosko}
+                allUsers={allUsers}
+                allExCustomers={exCustomers}
+                allExCustomerLogs={exCustomerLogs}
+                onRefresh={loadDatabase}
+              />
+            )}
 
-          {activeTab === 'kontrol-sales' && (
-            <KontrolSalesModule
-              currentUser={currentUser}
-              allCabang={allCabang}
-              allPosko={allPosko}
-            />
-          )}
+            {activeTab === 'kontrol-sales' && (
+              <KontrolSalesModule
+                currentUser={currentUser}
+                allCabang={allCabang}
+                allPosko={allPosko}
+              />
+            )}
+
+            {activeTab === 'hrd-rekrutmen' && (
+              <HrdRekrutmenModule
+                currentUser={currentUser}
+              />
+            )}
+          </ErrorBoundary>
         </main>
       </div>
 
@@ -386,7 +429,48 @@ function MainApp() {
   );
 }
 
+const isApplicantRoute = (): boolean => {
+  if (typeof window === 'undefined') return false;
+  const search = window.location.search.toLowerCase();
+  const hash = window.location.hash.toLowerCase();
+  const path = window.location.pathname.toLowerCase();
+  return (
+    search.includes('page=karir') ||
+    search.includes('page=rekrutmen') ||
+    search.includes('page=pelamar') ||
+    hash.includes('/karir') ||
+    hash.includes('#karir') ||
+    hash.includes('/rekrutmen') ||
+    hash.includes('/apply') ||
+    path.endsWith('/karir') ||
+    path.endsWith('/rekrutmen')
+  );
+};
+
 export default function App() {
+  const [isPublicCareer, setIsPublicCareer] = useState(() => isApplicantRoute());
+
+  useEffect(() => {
+    const handleUrlChange = () => {
+      setIsPublicCareer(isApplicantRoute());
+    };
+    window.addEventListener('popstate', handleUrlChange);
+    window.addEventListener('hashchange', handleUrlChange);
+    return () => {
+      window.removeEventListener('popstate', handleUrlChange);
+      window.removeEventListener('hashchange', handleUrlChange);
+    };
+  }, []);
+
+  // Calon pelamar eksternal mendapatkan akses portal terisolasi tanpa pernah melihat LoginModal
+  if (isPublicCareer) {
+    return (
+      <HrdErrorBoundary>
+        <PortalPelamar />
+      </HrdErrorBoundary>
+    );
+  }
+
   return (
     <AuthProvider>
       <MainApp />

@@ -3,7 +3,7 @@ import { DataTable } from './DataTable';
 import { ColumnDef } from './DataTable/types';
 import { User, UserRole } from '../types';
 import { useAuth } from '../context/AuthContext';
-import { DatabaseService } from '../services/storage';
+import { DatabaseService, SystemFullBackup } from '../services/storage';
 import { UserProvisioningService, deriveUserAuthEmail, BulkProvisionSummary } from '../services/userProvisioning';
 import { CabangPoskoControl } from './CabangPoskoControl';
 import { ConfirmDeleteModal } from './ConfirmDeleteModal';
@@ -38,7 +38,12 @@ import {
   RefreshCw,
   Activity,
   Server,
-  Globe
+  Globe,
+  Download,
+  Upload,
+  Database,
+  FileJson,
+  ShieldCheck
 } from 'lucide-react';
 
 interface UserControlProps {
@@ -46,9 +51,12 @@ interface UserControlProps {
 }
 
 export const UserControl: React.FC<UserControlProps> = ({ onRefresh }) => {
-  const { allUsers, allCabang, allPosko, refreshData, currentUser, resetUserPassword } = useAuth();
+  const { allUsers, allCabang, allPosko, refreshData, currentUser, isSuperAdminSession, resetUserPassword } = useAuth();
 
-  const [activeSection, setActiveSection] = useState<'users' | 'master_cabang_posko' | 'master_wilayah' | 'audit_trail' | 'system_health'>('users');
+  const isSuperAdmin = currentUser?.role === 'SUPER_ADMIN' || isSuperAdminSession;
+
+  const [activeSection, setActiveSection] = useState<'users' | 'master_cabang_posko' | 'master_wilayah' | 'audit_trail' | 'system_health' | 'backup_restore'>('users');
+  const [backupStatusMsg, setBackupStatusMsg] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [userToDelete, setUserToDelete] = useState<User | null>(null);
@@ -330,6 +338,77 @@ export const UserControl: React.FC<UserControlProps> = ({ onRefresh }) => {
     }
   };
 
+  // Full System Backup JSON (Anti-Reset)
+  const handleDownloadBackup = () => {
+    try {
+      const backup = DatabaseService.getFullSystemBackup(currentUser?.nama || 'SUPER_ADMIN');
+      const jsonStr = JSON.stringify(backup, null, 2);
+      const blob = new Blob([jsonStr], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const dateStr = new Date().toISOString().slice(0, 10);
+      const timeStr = new Date().toTimeString().slice(0, 8).replace(/:/g, '-');
+      const filename = `MED_CONTROL_BACKUP_${dateStr}_${timeStr}.json`;
+
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      setBackupStatusMsg({
+        type: 'success',
+        message: 'File Backup database .JSON (Anti-Reset) berhasil diunduh!'
+      });
+      setTimeout(() => setBackupStatusMsg(null), 5000);
+    } catch (err: any) {
+      setBackupStatusMsg({
+        type: 'error',
+        message: `Gagal membuat backup database: ${err.message}`
+      });
+    }
+  };
+
+  // Restore Full System Backup JSON
+  const handleRestoreBackup = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      try {
+        const content = event.target?.result as string;
+        const parsed = JSON.parse(content) as SystemFullBackup;
+
+        if (window.confirm('Pulihkan seluruh database dari file .JSON ini? Semua akun pengguna, cabang, posko, mediator, dan log FU akan disinkronkan ke local storage dan Cloud Firestore.')) {
+          const res = await DatabaseService.restoreFullSystemBackup(parsed);
+          if (res.success) {
+            refreshData();
+            onRefresh();
+            setBackupStatusMsg({
+              type: 'success',
+              message: res.message
+            });
+            setTimeout(() => setBackupStatusMsg(null), 6000);
+          } else {
+            setBackupStatusMsg({
+              type: 'error',
+              message: res.message
+            });
+          }
+        }
+      } catch (err: any) {
+        setBackupStatusMsg({
+          type: 'error',
+          message: 'Format file JSON backup tidak valid atau rusak!'
+        });
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = '';
+  };
+
   // Universal DataTable Column Definitions for User Management
   const userTableColumns: ColumnDef<User>[] = useMemo(() => [
     {
@@ -543,7 +622,7 @@ export const UserControl: React.FC<UserControlProps> = ({ onRefresh }) => {
       hideable: false,
       width: 'min-w-[130px]',
       render: (u) => {
-        const isCurrent = u.id === currentUser?.id;
+        const isCurrent = u.id === currentUser?.id || (!!currentUser?.username && u.username.toLowerCase() === currentUser?.username.toLowerCase());
         return (
           <div className="flex items-center justify-end space-x-1.5">
             <button
@@ -562,12 +641,12 @@ export const UserControl: React.FC<UserControlProps> = ({ onRefresh }) => {
             >
               <Edit3 className="h-4 w-4" />
             </button>
-            {!isCurrent && (
+            {isSuperAdmin && !isCurrent && (
               <button
                 id={`btn-del-user-${u.id}`}
                 onClick={() => handleDeleteUser(u)}
                 className="p-1.5 text-rose-400 hover:bg-rose-950/50 border border-transparent hover:border-rose-800/50 rounded-xl transition-colors cursor-pointer"
-                title="Hapus Pengguna"
+                title="Drop / Hapus Pengguna (SUPER_ADMIN)"
               >
                 <Trash2 className="h-4 w-4" />
               </button>
@@ -576,7 +655,7 @@ export const UserControl: React.FC<UserControlProps> = ({ onRefresh }) => {
         );
       }
     }
-  ], [currentUser?.id, visiblePasswords, allUsers, provisioningUserId, isBulkProvisioning, copiedId]);
+  ], [currentUser?.id, currentUser?.username, currentUser?.role, isSuperAdmin, visiblePasswords, allUsers, provisioningUserId, isBulkProvisioning, copiedId]);
 
   return (
     <div className="space-y-6">
@@ -667,7 +746,56 @@ export const UserControl: React.FC<UserControlProps> = ({ onRefresh }) => {
               <Server className="h-3.5 w-3.5" />
               <span>Health Check</span>
             </button>
+
+            {isSuperAdmin && (
+              <button
+                id="tab-btn-user-control-backup"
+                type="button"
+                onClick={() => setActiveSection('backup_restore')}
+                className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer flex items-center space-x-1.5 ${
+                  activeSection === 'backup_restore'
+                    ? 'bg-amber-600 text-white shadow-md'
+                    : 'text-[#8e96a8] hover:text-[#f1f3f7]'
+                }`}
+              >
+                <Database className="h-3.5 w-3.5" />
+                <span>Backup & Restore (Anti-Reset)</span>
+              </button>
+            )}
           </div>
+
+          {/* Super Admin Action Buttons: Backup JSON (Anti-Reset) & Restore JSON */}
+          {isSuperAdmin && (
+            <div className="flex items-center space-x-2 shrink-0">
+              <button
+                id="btn-download-json-backup-master-data"
+                type="button"
+                onClick={handleDownloadBackup}
+                className="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl bg-indigo-900/70 hover:bg-indigo-800 text-indigo-200 hover:text-white border border-indigo-700/60 transition-colors cursor-pointer text-xs font-bold shadow-sm shadow-indigo-950/40"
+                title="Download seluruh database ke file .JSON (Anti-Reset)"
+              >
+                <Download className="h-3.5 w-3.5 text-indigo-300" />
+                <span className="hidden sm:inline">Backup JSON (Anti-Reset)</span>
+                <span className="sm:hidden">Backup</span>
+              </button>
+
+              <label
+                id="label-restore-json-backup-master-data"
+                className="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl bg-emerald-950/70 hover:bg-emerald-900/90 text-emerald-200 hover:text-white border border-emerald-800/70 transition-colors cursor-pointer text-xs font-bold shadow-sm shadow-emerald-950/40"
+                title="Pulihkan database dari file .JSON yang pernah di-download"
+              >
+                <Upload className="h-3.5 w-3.5 text-emerald-300" />
+                <span className="hidden sm:inline">Restore JSON</span>
+                <span className="sm:hidden">Restore</span>
+                <input
+                  type="file"
+                  accept=".json"
+                  onChange={handleRestoreBackup}
+                  className="hidden"
+                />
+              </label>
+            </div>
+          )}
 
           {activeSection === 'users' && (
             <button
@@ -681,6 +809,30 @@ export const UserControl: React.FC<UserControlProps> = ({ onRefresh }) => {
           )}
         </div>
       </div>
+
+      {/* Backup & Restore Notification */}
+      {backupStatusMsg && (
+        <div className={`p-3.5 rounded-xl border flex items-center justify-between text-xs animate-in fade-in slide-in-from-top-2 duration-200 ${
+          backupStatusMsg.type === 'success'
+            ? 'bg-emerald-950/80 border-emerald-700 text-emerald-200 shadow-md shadow-emerald-950/40'
+            : 'bg-rose-950/80 border-rose-700 text-rose-200 shadow-md shadow-rose-950/40'
+        }`}>
+          <div className="flex items-center space-x-2">
+            {backupStatusMsg.type === 'success' ? (
+              <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0" />
+            ) : (
+              <AlertCircle className="h-4 w-4 text-rose-400 shrink-0" />
+            )}
+            <span className="font-semibold">{backupStatusMsg.message}</span>
+          </div>
+          <button
+            onClick={() => setBackupStatusMsg(null)}
+            className="text-white/60 hover:text-white ml-2 p-1 rounded hover:bg-white/10 cursor-pointer"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      )}
 
       {/* Page Notification */}
       {pageNotification && (
@@ -782,6 +934,171 @@ export const UserControl: React.FC<UserControlProps> = ({ onRefresh }) => {
       {/* SYSTEM HEALTH MONITORING SECTION */}
       {activeSection === 'system_health' && (
         <SystemHealthPanel />
+      )}
+
+      {/* BACKUP & RESTORE JSON (ANTI-RESET) SECTION */}
+      {activeSection === 'backup_restore' && (
+        <div className="space-y-6">
+          {/* Header & Overview Card */}
+          <div className="p-5 bg-gradient-to-r from-indigo-950/50 via-[#13151c] to-emerald-950/40 border border-[#272d3e] rounded-2xl shadow-xl space-y-4">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div className="space-y-1">
+                <div className="flex items-center space-x-2.5">
+                  <div className="p-2 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400">
+                    <Database className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <h2 className="text-base font-bold text-[#f1f3f7]">
+                      Disaster Recovery: Anti-Reset Backup & Restore JSON
+                    </h2>
+                    <p className="text-xs text-[#8e96a8]">
+                      Fitur proteksi permanen database untuk mengantisipasi reset browser cache, pembersihan history, atau migrasi perangkat.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex items-center space-x-2">
+                <span className="px-3 py-1 rounded-full text-[11px] font-bold bg-purple-950/80 text-purple-300 border border-purple-800/60 flex items-center space-x-1.5">
+                  <ShieldCheck className="h-3.5 w-3.5 text-purple-400" />
+                  <span>Akses Super Admin Terproteksi</span>
+                </span>
+              </div>
+            </div>
+
+            {/* Current Database Metrics */}
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 pt-2 border-t border-[#232734]">
+              <div className="p-3 bg-[#0d0e12] border border-[#232734] rounded-xl">
+                <span className="text-[11px] text-[#8e96a8] block">Total Pengguna</span>
+                <span className="text-lg font-bold text-[#f1f3f7]">{allUsers.length}</span>
+              </div>
+              <div className="p-3 bg-[#0d0e12] border border-[#232734] rounded-xl">
+                <span className="text-[11px] text-[#8e96a8] block">Total Cabang</span>
+                <span className="text-lg font-bold text-[#f1f3f7]">{allCabang.length}</span>
+              </div>
+              <div className="p-3 bg-[#0d0e12] border border-[#232734] rounded-xl">
+                <span className="text-[11px] text-[#8e96a8] block">Total Posko</span>
+                <span className="text-lg font-bold text-[#f1f3f7]">{allPosko.length}</span>
+              </div>
+              <div className="p-3 bg-[#0d0e12] border border-[#232734] rounded-xl">
+                <span className="text-[11px] text-[#8e96a8] block">Mediator Terdaftar</span>
+                <span className="text-lg font-bold text-amber-400">{DatabaseService.getMediators().length}</span>
+              </div>
+              <div className="p-3 bg-[#0d0e12] border border-[#232734] rounded-xl col-span-2 sm:col-span-1">
+                <span className="text-[11px] text-[#8e96a8] block">Riwayat Log FU</span>
+                <span className="text-lg font-bold text-emerald-400">{DatabaseService.getFULogs().length}</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Action Cards: 2 Columns */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+            {/* 1. Download Backup JSON */}
+            <div className="p-6 bg-[#13151c] border border-indigo-900/50 rounded-2xl shadow-xl flex flex-col justify-between space-y-4 hover:border-indigo-700/60 transition-all">
+              <div className="space-y-3">
+                <div className="flex items-center space-x-3">
+                  <div className="p-2.5 rounded-xl bg-indigo-950/80 border border-indigo-700/60 text-indigo-400">
+                    <Download className="h-6 w-6" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-[#f1f3f7]">
+                      1. Unduh Backup JSON (Anti-Reset)
+                    </h3>
+                    <p className="text-[11px] text-[#8e96a8]">
+                      Ekspor snapshot data utuh ke format .JSON
+                    </p>
+                  </div>
+                </div>
+
+                <p className="text-xs text-[#c2c7d0] leading-relaxed">
+                  Menyimpan seluruh tabel dan catatan (Akun Petugas, Cabang, Posko, Mediator, Log Follow-Up) ke dalam satu file arsip terstruktur yang aman dan dapat disimpan di komputer/flashdisk.
+                </p>
+
+                <div className="p-3 bg-[#0d0e12] rounded-xl border border-[#232734] text-[11px] text-[#8e96a8] space-y-1">
+                  <div className="flex items-center space-x-1.5 text-indigo-300 font-semibold">
+                    <FileJson className="h-3.5 w-3.5" />
+                    <span>Format File: JSON Terstruktur Standar</span>
+                  </div>
+                  <p>Nama berkas otomatis: <code className="text-indigo-200 font-mono">MED_CONTROL_BACKUP_[TANGGAL]_[WAKTU].json</code></p>
+                </div>
+              </div>
+
+              <button
+                id="btn-section-download-backup"
+                type="button"
+                onClick={handleDownloadBackup}
+                className="w-full py-3 px-4 bg-gradient-to-r from-indigo-700 to-indigo-600 hover:from-indigo-600 hover:to-indigo-500 text-white rounded-xl font-bold text-xs shadow-lg shadow-indigo-950/50 flex items-center justify-center space-x-2 cursor-pointer transition-all"
+              >
+                <Download className="h-4 w-4" />
+                <span>Unduh File Backup Database (.JSON)</span>
+              </button>
+            </div>
+
+            {/* 2. Restore Backup JSON */}
+            <div className="p-6 bg-[#13151c] border border-emerald-900/50 rounded-2xl shadow-xl flex flex-col justify-between space-y-4 hover:border-emerald-700/60 transition-all">
+              <div className="space-y-3">
+                <div className="flex items-center space-x-3">
+                  <div className="p-2.5 rounded-xl bg-emerald-950/80 border border-emerald-700/60 text-emerald-400">
+                    <Upload className="h-6 w-6" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-[#f1f3f7]">
+                      2. Pulihkan / Restore JSON
+                    </h3>
+                    <p className="text-[11px] text-[#8e96a8]">
+                      Sinkronkan data kembali ke local storage & Cloud Firestore
+                    </p>
+                  </div>
+                </div>
+
+                <p className="text-xs text-[#c2c7d0] leading-relaxed">
+                  Gunakan file arsip .JSON yang telah diunduh sebelumnya untuk memulihkan seluruh akun dan data operasional seketika. Sistem akan meminta konfirmasi sebelum eksekusi pemulihan.
+                </p>
+
+                <div className="p-3 bg-[#0d0e12] rounded-xl border border-[#232734] text-[11px] text-[#8e96a8] space-y-1">
+                  <div className="flex items-center space-x-1.5 text-emerald-300 font-semibold">
+                    <Shield className="h-3.5 w-3.5" />
+                    <span>Proteksi Otomatis & Verifikasi Skema</span>
+                  </div>
+                  <p>Memvalidasi array dokumen sebelum melakukan sinkronisasi batch ke cloud.</p>
+                </div>
+              </div>
+
+              <label
+                id="label-section-restore-backup"
+                className="w-full py-3 px-4 bg-gradient-to-r from-emerald-700 to-teal-600 hover:from-emerald-600 hover:to-teal-500 text-white rounded-xl font-bold text-xs shadow-lg shadow-emerald-950/50 flex items-center justify-center space-x-2 cursor-pointer transition-all text-center"
+              >
+                <Upload className="h-4 w-4" />
+                <span>Pilih File .JSON untuk Restore Database</span>
+                <input
+                  type="file"
+                  accept=".json"
+                  onChange={handleRestoreBackup}
+                  className="hidden"
+                />
+              </label>
+            </div>
+          </div>
+
+          {/* Informasi & Petunjuk Anti-Reset */}
+          <div className="p-4 bg-[#181a24] border border-[#272d3e] rounded-2xl space-y-2.5 text-xs text-[#b3b9c7]">
+            <h4 className="font-bold text-[#f1f3f7] flex items-center space-x-2">
+              <Key className="h-4 w-4 text-amber-400" />
+              <span>Petunjuk & Rekomendasi Pemulihan Bencana (Disaster Recovery)</span>
+            </h4>
+            <ul className="space-y-1.5 list-disc list-inside text-[#8e96a8] leading-relaxed">
+              <li>
+                <strong className="text-[#c2c7d0]">Frekuensi Backup:</strong> Disarankan untuk mengunduh Backup JSON setidaknya 1x seminggu atau setiap kali selesai melakukan pendaftaran mediator / penambahan user dalam jumlah banyak.
+              </li>
+              <li>
+                <strong className="text-[#c2c7d0]">Anti-Reset Jaminan:</strong> Apabila browser mengalami pembersihan cache/cookies atau berganti komputer, Anda cukup login sebagai Super Admin, buka menu Master Data ini, lalu unggah file JSON backup terakhir untuk mengembalikan seluruh sistem.
+              </li>
+              <li>
+                <strong className="text-[#c2c7d0]">Sinkronisasi Cloud:</strong> Saat proses restore dijalankan, sistem secara otomatis memperbarui database lokal browser dan mengirim batch write ke Firebase Cloud Firestore.
+              </li>
+            </ul>
+          </div>
+        </div>
       )}
 
       {/* USERS TABLE SECTION */}
@@ -1001,6 +1318,7 @@ export const UserControl: React.FC<UserControlProps> = ({ onRefresh }) => {
                   required
                   value={nama}
                   onChange={(e) => setNama(e.target.value)}
+                  onBlur={() => setNama(prev => prev.toUpperCase())}
                   placeholder="Contoh: Rian Firmansyah"
                   className="w-full p-2.5 bg-[#0d0e12] border border-[#272d3e] text-[#e0e4eb] placeholder-[#6b7280] rounded-xl uppercase focus:outline-none focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500"
                 />
@@ -1239,17 +1557,27 @@ export const UserControl: React.FC<UserControlProps> = ({ onRefresh }) => {
         onClose={() => setUserToReset(null)}
       />
 
-      {/* Delete User Modal */}
+      {/* Delete / Drop User Modal */}
       <ConfirmDeleteModal
         isOpen={!!userToDelete}
-        title="Hapus Akun Pengguna"
+        title="Drop / Hapus Akun Pengguna"
         itemCode={userToDelete?.role}
         itemName={`${userToDelete?.nama} (@${userToDelete?.username})`}
-        description={`Apakah Anda yakin ingin menghapus akun ${userToDelete?.nama} (${userToDelete?.username})? Pengguna ini tidak akan bisa login lagi ke sistem.`}
-        confirmButtonText="Hapus Pengguna"
+        description={`Apakah Anda yakin ingin men-drop / menghapus akun ${userToDelete?.nama} (${userToDelete?.username})? Pengguna ini akan dihapus dari sistem dan tidak akan bisa login lagi.`}
+        confirmButtonText="Ya, Drop Pengguna"
         onConfirm={async () => {
-          if (userToDelete) {
-            await DatabaseService.deleteUser(userToDelete.id);
+          if (!userToDelete) return;
+          const target = { ...userToDelete };
+          try {
+            const res = await DatabaseService.deleteUser(target.id);
+            if (res.success) {
+              setFeedback({ type: 'success', message: `Pengguna ${target.nama} (@${target.username}) berhasil di-drop/dihapus.` });
+            } else {
+              setFeedback({ type: 'error', message: res.message || 'Gagal menghapus pengguna.' });
+            }
+          } catch (err: any) {
+            setFeedback({ type: 'error', message: `Terjadi kendala saat menghapus pengguna: ${err?.message || 'Error'}` });
+          } finally {
             refreshData();
             onRefresh();
             setUserToDelete(null);

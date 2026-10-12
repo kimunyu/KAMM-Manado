@@ -311,6 +311,7 @@ export const RegistrasiMediator: React.FC<RegistrasiMediatorProps> = ({ onSucces
                   placeholder="Masukkan nama lengkap mediator (maksimal 100 karakter)"
                   value={namaMediator}
                   onChange={(e) => setNamaMediator(e.target.value)}
+                  onBlur={() => setNamaMediator(prev => prev.toUpperCase())}
                   className="w-full p-2.5 bg-[#0d0e12] border border-[#272d3e] text-[#e0e4eb] placeholder-[#6b7280] rounded-xl text-xs uppercase focus:outline-none focus:ring-2 focus:ring-blue-500/50"
                 />
                 <span className="text-[11px] text-[#6b7280] mt-1 block">
@@ -415,7 +416,8 @@ export const RegistrasiMediator: React.FC<RegistrasiMediatorProps> = ({ onSucces
                   required
                   disabled={isAoLocked}
                   value={kdAo}
-                  onChange={(e) => setKdAo(e.target.value.toUpperCase())}
+                  onChange={(e) => setKdAo(e.target.value)}
+                  onBlur={() => setKdAo(prev => prev.toUpperCase())}
                   placeholder="Contoh: AO-01 / CMO-01"
                   className={`w-full p-2.5 bg-[#0d0e12] border border-[#272d3e] text-[#e0e4eb] rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/50 font-mono ${
                     isAoLocked ? 'opacity-75 cursor-not-allowed bg-[#181a24]' : ''

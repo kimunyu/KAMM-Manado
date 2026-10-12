@@ -13,7 +13,8 @@ import {
   Check, 
   X,
   AlertTriangle,
-  FileText
+  FileText,
+  Download
 } from 'lucide-react';
 import { SalesControlRecord } from '../types';
 import { User, Cabang, Posko } from '../../../types';
@@ -22,7 +23,9 @@ import {
   isUbahJt, 
   getWhatsAppUrl, 
   checkAcceptLockStatus, 
-  isDateInAllowedWindow 
+  isDateInAllowedWindow,
+  parseDDMMYYYY,
+  formatToDDMMYYYY 
 } from '../utils/slaUtils';
 import { DataTable, ColumnDef } from '../../../components/DataTable';
 import { SalesService } from '../services/salesService';
@@ -82,6 +85,72 @@ export const TableDataUbahJt: React.FC<TableDataUbahJtProps> = ({
       setSelectedPosko('');
     }
     setValidasiFilter('ALL');
+  };
+
+  // Export Data Ubah JT to CSV (Sesuai 6 kolom format instruksi pengguna)
+  const handleExportCSV = () => {
+    if (filteredRecords.length === 0) return;
+
+    const headers = [
+      'NO PSB',
+      'NAMA KONSUMEN',
+      'KODE CABANG & NAMA CABANG',
+      'KODE POSKO & NAMA POSKO',
+      'TANGGAL CAIR (DD/MM/YYYY)',
+      'TANGGAL JT (DD)'
+    ];
+
+    const escapeCsvField = (field: any): string => {
+      if (field === null || field === undefined) return '""';
+      let str = String(field).trim();
+      str = str.replace(/"/g, '""');
+      return `"${str}"`;
+    };
+
+    const rows = filteredRecords.map((item) => {
+      const cabangName = allCabang.find(c => c.kd_cabang === item.cabang_id)?.nama_cabang || item.cabang_id || '';
+      const cabangCombined = item.cabang_id && cabangName && item.cabang_id !== cabangName
+        ? `${item.cabang_id} - ${cabangName}`
+        : (cabangName || item.cabang_id || '');
+
+      const poskoName = allPosko.find(p => p.kd_posko === item.posko_id)?.nama_posko || item.posko_id || '';
+      const poskoCombined = item.posko_id && poskoName && item.posko_id !== poskoName
+        ? `${item.posko_id} - ${poskoName}`
+        : (poskoName || item.posko_id || '');
+
+      // Format TANGGAL CAIR (DD/MM/YYYY)
+      const cairDate = parseDDMMYYYY(item.tgl_cair);
+      let cairFormatted = '';
+      if (cairDate) {
+        cairFormatted = formatToDDMMYYYY(cairDate);
+      } else {
+        cairFormatted = (item.tgl_cair || '').trim();
+      }
+
+      // Format TANGGAL JT (DD)
+      const jtDD = extractDayDD(item.tgl_jt || item.tgl_cair) || '';
+
+      return [
+        `="${item.no_psb || ''}"`,
+        escapeCsvField((item.nama_konsumen || '').toUpperCase()),
+        escapeCsvField(cabangCombined),
+        escapeCsvField(poskoCombined),
+        escapeCsvField(cairFormatted),
+        `="${jtDD}"`
+      ].join(',');
+    });
+
+    const csvContent = '\uFEFF' + [headers.join(','), ...rows].join('\r\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    const dateStr = new Date().toISOString().slice(0, 10);
+    link.download = `data_ubah_jt_kamm_manado_${dateStr}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   };
 
   // 1. Data Mentah: Hanya Konsumen dengan Status ACCEPT dan UBAH JT (Hari Cair != Hari JT)
@@ -424,12 +493,25 @@ export const TableDataUbahJt: React.FC<TableDataUbahJtProps> = ({
           </div>
         </div>
 
-        {canValidate && (
-          <div className="px-3 py-1.5 bg-purple-950/60 border border-purple-800/50 rounded-xl text-purple-200 text-xs flex items-center space-x-2 shrink-0">
-            <ShieldCheck className="h-4 w-4 text-purple-400 shrink-0" />
-            <span>Hak Akses Verifikator: <strong>{currentUser.role}</strong></span>
-          </div>
-        )}
+        <div className="flex flex-wrap items-center gap-2.5 shrink-0">
+          <button
+            type="button"
+            onClick={handleExportCSV}
+            disabled={filteredRecords.length === 0}
+            className="px-3.5 py-1.5 bg-[#181a24] hover:bg-[#202534] disabled:opacity-40 disabled:cursor-not-allowed text-[#c2c7d0] hover:text-[#f1f3f7] text-xs font-semibold rounded-xl border border-[#272d3e] transition-colors flex items-center space-x-1.5 cursor-pointer shadow-sm"
+            title="Download Data Ubah JT format CSV"
+          >
+            <Download className="h-4 w-4 text-emerald-400" />
+            <span>Ekspor CSV ({filteredRecords.length})</span>
+          </button>
+
+          {canValidate && (
+            <div className="px-3 py-1.5 bg-purple-950/60 border border-purple-800/50 rounded-xl text-purple-200 text-xs flex items-center space-x-2">
+              <ShieldCheck className="h-4 w-4 text-purple-400 shrink-0" />
+              <span>Hak Akses Verifikator: <strong>{currentUser.role}</strong></span>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* KPI Cards */}
@@ -542,19 +624,32 @@ export const TableDataUbahJt: React.FC<TableDataUbahJtProps> = ({
           </div>
         </div>
 
-        <div className="flex items-center justify-between pt-2 border-t border-[#1e2330]">
+        <div className="flex flex-wrap items-center justify-between gap-2.5 pt-2 border-t border-[#1e2330]">
           <span className="text-xs text-[#8e96a8]">
             Menampilkan <strong className="text-white font-mono">{filteredRecords.length}</strong> data dari total <strong className="text-amber-400 font-mono">{baseUbahJtRecords.length}</strong> nasabah Ubah JT.
           </span>
 
-          <button
-            type="button"
-            onClick={handleResetFilters}
-            className="text-xs text-[#8e96a8] hover:text-white flex items-center space-x-1 cursor-pointer transition-colors"
-          >
-            <RotateCcw className="h-3 w-3" />
-            <span>Reset Filter</span>
-          </button>
+          <div className="flex items-center space-x-2.5">
+            <button
+              type="button"
+              onClick={handleExportCSV}
+              disabled={filteredRecords.length === 0}
+              className="text-xs text-[#c2c7d0] hover:text-white flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-[#181a24] hover:bg-[#222736] border border-[#272d3e] disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-colors"
+              title="Ekspor data hasil filter ke format CSV"
+            >
+              <Download className="h-3.5 w-3.5 text-emerald-400" />
+              <span>Ekspor CSV</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={handleResetFilters}
+              className="text-xs text-[#8e96a8] hover:text-white flex items-center space-x-1 px-2.5 py-1.5 rounded-lg hover:bg-[#181a24] border border-transparent hover:border-[#272d3e] cursor-pointer transition-colors"
+            >
+              <RotateCcw className="h-3 w-3" />
+              <span>Reset Filter</span>
+            </button>
+          </div>
         </div>
       </div>
 

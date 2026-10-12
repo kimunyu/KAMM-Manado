@@ -10,7 +10,7 @@ import {
   where,
   serverTimestamp 
 } from 'firebase/firestore';
-import { db } from '../../../services/firebase';
+import { db, auth } from '../../../services/firebase';
 import { SalesControlRecord } from '../types';
 import { User } from '../../../types';
 import { AuditService } from '../../../services/auditService';
@@ -33,7 +33,15 @@ class SalesServiceManager {
     try {
       const data = localStorage.getItem(LOCAL_STORAGE_KEY);
       if (data) {
-        this.recordsCache = JSON.parse(data);
+        const parsed = JSON.parse(data);
+        if (Array.isArray(parsed)) {
+          this.recordsCache = parsed.map(r => ({
+            ...r,
+            status: ((r.status as string) === 'PENDING' ? 'SUBMISS' : r.status) || 'SUBMISS'
+          }));
+        } else {
+          this.recordsCache = [];
+        }
       }
     } catch (e) {
       console.error('Gagal membaca cache lokal sales_control_records:', e);
@@ -108,7 +116,24 @@ class SalesServiceManager {
     // Kirim cached data awal terlebih dahulu
     callback(this.getRecords(user));
 
-    // Inisialisasi onSnapshot Firestore jika belum aktif atau jika user berganti
+    // Periksa otorisasi role untuk modul Kontrol Sales
+    const canAccessSales = !!user && user.status === 'AKTIF' && [
+      'SUPER_ADMIN', 'RM', 'ADM_DE', 'KACAB', 'KAOPS', 'ADM', 'KAPOS'
+    ].includes(user.role);
+
+    // Jika belum login, auth Firebase belum siap, atau role tidak memiliki izin Kontrol Sales,
+    // bersihkan listener aktif dan jangan jalankan onSnapshot agar tidak memicu permission denial.
+    if (!db || !auth?.currentUser || !canAccessSales) {
+      if (this.unsubSnapshot) {
+        this.unsubSnapshot();
+        this.unsubSnapshot = null;
+      }
+      return () => {
+        this.listeners.delete(callback);
+      };
+    }
+
+    // Inisialisasi onSnapshot Firestore untuk user yang terotentikasi dan memiliki hak akses
     if (db) {
       try {
         if (this.unsubSnapshot) {
@@ -140,10 +165,13 @@ class SalesServiceManager {
             const list: SalesControlRecord[] = [];
             snapshot.forEach((docSnap) => {
               const data = docSnap.data() as SalesControlRecord;
+              const rawStatus = String((data as any).status || '').toUpperCase();
+              const finalStatus = (rawStatus === 'PENDING' || !rawStatus) ? 'SUBMISS' : data.status;
               list.push({
                 ...data,
                 id: docSnap.id,
                 no_psb: data.no_psb || docSnap.id,
+                status: finalStatus,
                 cabang_id: data.cabang_id || (data as any).kd_cabang || '',
                 kd_cabang: data.cabang_id || (data as any).kd_cabang || '',
                 posko_id: data.posko_id || (data as any).kd_posko || '',
