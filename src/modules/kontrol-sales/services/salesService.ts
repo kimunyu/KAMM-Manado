@@ -680,6 +680,123 @@ class SalesServiceManager {
       message: `Konfirmasi tanggal JT untuk ${existing.nama_konsumen} berhasil dicatat sebagai [${status}]!` 
     };
   }
+
+  /**
+   * Mengambil record berdasarkan NO PSB dari memory cache atau Firestore
+   */
+  public async getRecordByNoPsb(noPsb: string): Promise<SalesControlRecord | null> {
+    const trimmed = noPsb.trim().toUpperCase();
+    const existing = this.recordsCache.find(r => r.no_psb.trim().toUpperCase() === trimmed);
+    if (existing) return existing;
+
+    if (db) {
+      try {
+        const docRef = doc(db, COLLECTION_NAME, trimmed);
+        const docSnap = await getDoc(docRef);
+        if (docSnap.exists()) {
+          const data = docSnap.data() as SalesControlRecord;
+          return {
+            ...data,
+            id: docSnap.id,
+            no_psb: data.no_psb || docSnap.id
+          };
+        }
+      } catch (err) {
+        console.warn('Gagal membaca record NO PSB dari Firestore:', err);
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Menemukan data pencairan yang mirip berdasarkan Nama atau No WA
+   */
+  public findMatchingDisbursements(nama?: string, phoneClean?: string): SalesControlRecord[] {
+    const cleanPhone = phoneClean?.trim() || '';
+    const cleanNama = nama?.trim().toUpperCase() || '';
+    if (!cleanPhone && (!cleanNama || cleanNama.length < 3)) return [];
+
+    return this.recordsCache.filter((r) => {
+      // 1. Cocok persis No WA (hanya periksa digit belakang jika beda format 08 / 62)
+      if (cleanPhone) {
+        const rPhone = (r.no_wa || '').replace(/\D/g, '');
+        const targetPhone = cleanPhone.replace(/\D/g, '');
+        if (rPhone && targetPhone) {
+          if (rPhone === targetPhone || rPhone.endsWith(targetPhone.slice(-8)) || targetPhone.endsWith(rPhone.slice(-8))) {
+            return true;
+          }
+        }
+      }
+      // 2. Cocok persis atau kemiripan nama kuat
+      if (cleanNama && cleanNama.length >= 4) {
+        const rNama = (r.nama_konsumen || '').toUpperCase();
+        if (rNama === cleanNama || rNama.includes(cleanNama) || cleanNama.includes(rNama)) {
+          return true;
+        }
+      }
+      return false;
+    });
+  }
+
+  /**
+   * Menautkan ID lead Prospek Sales ke data Kontrol Sales eksisting
+   * PENTING: Metode ini TIDAK MENGHAPUS atau MENIMPA data pencairan asli!
+   */
+  public async linkAcquisitionLead(
+    noPsb: string,
+    leadId: string,
+    user: User
+  ): Promise<{ success: boolean; message: string; record?: SalesControlRecord }> {
+    const trimmed = noPsb.trim().toUpperCase();
+    const existing = await this.getRecordByNoPsb(trimmed);
+    if (!existing) {
+      return { success: false, message: `Data pencairan NO PSB "${trimmed}" tidak ditemukan di Kontrol Sales.` };
+    }
+
+    const updates: Partial<SalesControlRecord> = {
+      acquisition_lead_id: leadId,
+      updated_at: new Date().toISOString(),
+      updated_by: `${user.id} - ${user.nama} (${user.role})`,
+      updated_by_uid: user.id,
+    };
+
+    if (db) {
+      try {
+        const docRef = doc(db, COLLECTION_NAME, existing.no_psb);
+        await updateDoc(docRef, {
+          ...updates,
+          updated_at_timestamp: serverTimestamp(),
+        });
+      } catch (err: any) {
+        console.error('Gagal menautkan lead ke sales_control_records:', err);
+        return { success: false, message: `Gagal memperbarui database Kontrol Sales: ${err.message || String(err)}` };
+      }
+    }
+
+    const updatedRecord: SalesControlRecord = {
+      ...existing,
+      ...updates
+    };
+
+    const updatedList = this.recordsCache.map(r => r.no_psb === existing.no_psb ? updatedRecord : r);
+    this.saveToLocalStorage(updatedList);
+    this.notify();
+
+    AuditService.record(
+      { id: user.id, nama: user.nama, role: user.role, kd_ao: user.kd_ao },
+      'KONTROL_SALES',
+      'LINK_SALES_ACQUISITION',
+      `Data pencairan "${existing.nama_konsumen}" (NO PSB: ${existing.no_psb}) ditautkan dengan Prospek Sales (Lead ID: ${leadId}) tanpa mengubah data pencairan asli.`,
+      existing.no_psb,
+      { no_psb: existing.no_psb, lead_id: leadId }
+    );
+
+    return {
+      success: true,
+      message: `Pencairan NO PSB "${trimmed}" berhasil ditautkan ke Prospek Sales!`,
+      record: updatedRecord
+    };
+  }
 }
 
 export const SalesService = new SalesServiceManager();

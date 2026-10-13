@@ -25,6 +25,9 @@ import { ProspekDetailModal } from './ProspekDetailModal';
 import { ConvertCairModal } from './ConvertCairModal';
 import { ReassignModal } from './ReassignModal';
 import { TolakBatalModal } from './TolakBatalModal';
+import { ModalValidasiCairPsb } from './ModalValidasiCairPsb';
+import { SalesService } from '../../kontrol-sales/services/salesService';
+import { SalesControlRecord } from '../../kontrol-sales/types';
 
 interface SalesAcquisitionModuleProps {
   currentUser: User;
@@ -62,6 +65,16 @@ export const SalesAcquisitionModule: React.FC<SalesAcquisitionModuleProps> = ({
     isOpen: false,
     record: null,
     targetStatus: 'DITOLAK'
+  });
+
+  const [validationModalState, setValidationModalState] = useState<{
+    isOpen: boolean;
+    record: SalesAcquisition | null;
+    matchedRecord: SalesControlRecord | null;
+  }>({
+    isOpen: false,
+    record: null,
+    matchedRecord: null
   });
 
   // Role permissions
@@ -130,6 +143,29 @@ export const SalesAcquisitionModule: React.FC<SalesAcquisitionModuleProps> = ({
       }
     } else {
       setFeedback({ type: 'error', message: res.message });
+    }
+  };
+
+  // Handler for KAOPS / Super Admin validation modal
+  const handleOpenValidation = async (rec: SalesAcquisition) => {
+    const targetPsb = rec.pending_cair_data?.no_psb || rec.no_psb;
+    let matched = targetPsb ? await SalesService.getRecordByNoPsb(targetPsb) : null;
+    if (!matched) {
+      const records = SalesService.getRecords();
+      matched = records.find(r => r.no_psb === targetPsb) || null;
+    }
+
+    if (matched) {
+      setValidationModalState({
+        isOpen: true,
+        record: rec,
+        matchedRecord: matched
+      });
+    } else {
+      setFeedback({
+        type: 'error',
+        message: `Data pencairan NO PSB "${targetPsb || ''}" tidak ditemukan di database Kontrol Sales.`
+      });
     }
   };
 
@@ -290,8 +326,10 @@ export const SalesAcquisitionModule: React.FC<SalesAcquisitionModuleProps> = ({
           <PipelineBoard
             records={records}
             currentUser={currentUser}
+            allUsers={allUsers}
             onSelectRecord={(rec) => setSelectedRecordForDetail(rec)}
             onOpenConvertCair={(rec) => setSelectedRecordForCair(rec)}
+            onOpenValidation={handleOpenValidation}
             onOpenQuickEntry={() => setIsQuickEntryOpen(true)}
           />
         ) : (
@@ -300,9 +338,11 @@ export const SalesAcquisitionModule: React.FC<SalesAcquisitionModuleProps> = ({
             currentUser={currentUser}
             allCabang={allCabang}
             allPosko={allPosko}
+            allUsers={allUsers}
             onSelectRecord={(rec) => setSelectedRecordForDetail(rec)}
             onOpenConvertCair={(rec) => setSelectedRecordForCair(rec)}
             onOpenReassign={(rec) => setSelectedRecordForReassign(rec)}
+            onOpenValidation={handleOpenValidation}
             onDeleteRecord={handleDeleteRecord}
           />
         )}
@@ -333,6 +373,7 @@ export const SalesAcquisitionModule: React.FC<SalesAcquisitionModuleProps> = ({
           currentUser={currentUser}
           allCabang={allCabang}
           allPosko={allPosko}
+          allUsers={allUsers}
           onOpenConvertCair={(rec) => {
             setSelectedRecordForDetail(null);
             setSelectedRecordForCair(rec);
@@ -340,6 +381,10 @@ export const SalesAcquisitionModule: React.FC<SalesAcquisitionModuleProps> = ({
           onOpenReassign={(rec) => {
             setSelectedRecordForDetail(null);
             setSelectedRecordForReassign(rec);
+          }}
+          onOpenValidation={(rec) => {
+            setSelectedRecordForDetail(null);
+            handleOpenValidation(rec);
           }}
           onOpenTolakBatal={(rec, st) => {
             setSelectedRecordForDetail(null);
@@ -361,7 +406,10 @@ export const SalesAcquisitionModule: React.FC<SalesAcquisitionModuleProps> = ({
           onClose={() => setSelectedRecordForCair(null)}
           record={selectedRecordForCair}
           currentUser={currentUser}
-          onSuccess={loadRecords}
+          onSuccess={(msg) => {
+            if (msg) setFeedback({ type: 'success', message: msg });
+            loadRecords();
+          }}
         />
       )}
 
@@ -388,6 +436,21 @@ export const SalesAcquisitionModule: React.FC<SalesAcquisitionModuleProps> = ({
           targetStatus={tolakBatalState.targetStatus}
           currentUser={currentUser}
           onSuccess={loadRecords}
+        />
+      )}
+
+      {/* 6. Modal Validasi Cair No PSB (KAOPS / Super Admin) */}
+      {validationModalState.isOpen && validationModalState.record && validationModalState.matchedRecord && (
+        <ModalValidasiCairPsb
+          isOpen={validationModalState.isOpen}
+          onClose={() => setValidationModalState({ isOpen: false, record: null, matchedRecord: null })}
+          record={validationModalState.record}
+          matchedRecord={validationModalState.matchedRecord}
+          currentUser={currentUser}
+          onSuccess={(msg) => {
+            setFeedback({ type: 'success', message: msg });
+            loadRecords();
+          }}
         />
       )}
     </div>

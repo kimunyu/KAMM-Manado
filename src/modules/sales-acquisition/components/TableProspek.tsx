@@ -25,15 +25,18 @@ import { SalesAcquisition, SalesAcquisitionStatus, SalesAcquisitionSourceLead, J
 import { User, Cabang, Posko } from '../../../types';
 import { cleanPhoneNumber } from '../services/salesAcquisitionService';
 import { ConfirmDeleteModal } from '../../../components/ConfirmDeleteModal';
+import { getAssignedOfficerDisplay, getCreatorDisplay } from '../utils/officerHelpers';
 
 interface TableProspekProps {
   records: SalesAcquisition[];
   currentUser: User;
   allCabang: Cabang[];
   allPosko: Posko[];
+  allUsers?: User[];
   onSelectRecord: (record: SalesAcquisition) => void;
   onOpenConvertCair: (record: SalesAcquisition) => void;
   onOpenReassign: (record: SalesAcquisition) => void;
+  onOpenValidation?: (record: SalesAcquisition) => void;
   onDeleteRecord: (leadId: string) => void;
 }
 
@@ -55,9 +58,11 @@ export const TableProspek: React.FC<TableProspekProps> = ({
   currentUser,
   allCabang,
   allPosko,
+  allUsers = [],
   onSelectRecord,
   onOpenConvertCair,
   onOpenReassign,
+  onOpenValidation,
   onDeleteRecord
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
@@ -101,11 +106,14 @@ export const TableProspek: React.FC<TableProspekProps> = ({
         const matchName = r.nama_calon_konsumen.toLowerCase().includes(q);
         const matchPhone = r.no_telepon_clean.includes(q) || r.no_telepon.includes(q);
         const matchAo = (r.kd_ao || '').toLowerCase().includes(q);
+        const matchAssignedNama = (r.assigned_user_nama || '').toLowerCase().includes(q);
+        const matchCreatorNama = (r.created_by_nama || '').toLowerCase().includes(q);
+        const matchCreatorAo = (r.created_by_kd_ao || '').toLowerCase().includes(q);
         const matchPsb = (r.no_psb || '').toLowerCase().includes(q);
         const matchMed = (r.kd_med || '').toLowerCase().includes(q);
         const matchJaminan = (r.jenis_jaminan || '').toLowerCase().includes(q);
         const matchAlamat = (r.alamat_detail || '').toLowerCase().includes(q);
-        if (!matchName && !matchPhone && !matchAo && !matchPsb && !matchMed && !matchJaminan && !matchAlamat) {
+        if (!matchName && !matchPhone && !matchAo && !matchAssignedNama && !matchCreatorNama && !matchCreatorAo && !matchPsb && !matchMed && !matchJaminan && !matchAlamat) {
           return false;
         }
       }
@@ -445,16 +453,29 @@ export const TableProspek: React.FC<TableProspekProps> = ({
                   </button>
                 </th>
 
-                {/* Petugas AO (Sortable) */}
+                {/* Ditugaskan Ke (Sortable) */}
                 <th className="py-3 px-4">
                   <button
                     type="button"
                     onClick={() => handleSort('kd_ao')}
                     className="flex items-center space-x-1.5 hover:text-white transition-colors cursor-pointer group"
-                    title="Urutkan berdasarkan Petugas AO"
+                    title="Urutkan berdasarkan Petugas AO Penugasan"
                   >
-                    <span>AO Ref</span>
+                    <span>Ditugaskan Ke</span>
                     {renderSortIndicator('kd_ao')}
+                  </button>
+                </th>
+
+                {/* Diinput Pertama Oleh (Sortable) */}
+                <th className="py-3 px-4">
+                  <button
+                    type="button"
+                    onClick={() => handleSort('created_at')}
+                    className="flex items-center space-x-1.5 hover:text-white transition-colors cursor-pointer group"
+                    title="Urutkan berdasarkan Penginput Pertama"
+                  >
+                    <span>Diinput Pertama Oleh</span>
+                    {renderSortIndicator('created_at')}
                   </button>
                 </th>
 
@@ -503,7 +524,7 @@ export const TableProspek: React.FC<TableProspekProps> = ({
             <tbody className="divide-y divide-[#1e2333] text-[#d6dae3]">
               {paginatedRecords.length === 0 ? (
                 <tr>
-                  <td colSpan={10} className="py-12 text-center text-[#5c6479]">
+                  <td colSpan={11} className="py-12 text-center text-[#5c6479]">
                     Tidak ada data prospek sales yang sesuai kriteria pencarian.
                   </td>
                 </tr>
@@ -511,6 +532,8 @@ export const TableProspek: React.FC<TableProspekProps> = ({
                 paginatedRecords.map((item, idx) => {
                   const rowNumber = (currentPage - 1) * itemsPerPage + idx + 1;
                   const isTerminal = ['CAIR', 'DITOLAK', 'BATAL'].includes(item.status);
+                  const assignedInfo = getAssignedOfficerDisplay(item, allUsers);
+                  const creatorInfo = getCreatorDisplay(item, allUsers);
 
                   return (
                     <tr
@@ -570,6 +593,12 @@ export const TableProspek: React.FC<TableProspekProps> = ({
                         <span className={`inline-block px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold border ${getStatusBadge(item.status)}`}>
                           {item.status}
                         </span>
+                        {item.is_pending_cair_validation && (
+                          <div className="mt-1 flex items-center space-x-1 text-[10px] text-amber-300 bg-amber-950/80 border border-amber-800 px-2 py-0.5 rounded font-medium">
+                            <ShieldAlert className="h-3 w-3 shrink-0 text-amber-400" />
+                            <span>Menunggu Validasi KAOPS</span>
+                          </div>
+                        )}
                         {item.no_psb && (
                           <div className="text-[10px] text-emerald-300 font-mono font-bold mt-0.5">
                             PSB: {item.no_psb}
@@ -577,11 +606,29 @@ export const TableProspek: React.FC<TableProspekProps> = ({
                         )}
                       </td>
 
-                      {/* Petugas AO */}
+                      {/* Ditugaskan Ke: Baris 1 [KD AO], Baris 2 [Nama AO] */}
                       <td className="py-3 px-4">
-                        <span className="font-semibold text-white">{item.kd_ao || '-'}</span>
-                        <div className="text-[10px] text-[#8e96a8] font-mono truncate max-w-[120px]">
-                          {item.assigned_user_id}
+                        <div className="font-bold text-white font-mono text-xs">
+                          {assignedInfo.kodeAo || '-'}
+                        </div>
+                        <div className="text-[11px] text-[#c2c9d6] font-medium truncate max-w-[130px]" title={assignedInfo.nama}>
+                          {assignedInfo.nama}
+                        </div>
+                      </td>
+
+                      {/* Diinput Pertama Oleh: Baris 1 [KD AO] - [Nama AO], Baris 2 Timestamp */}
+                      <td className="py-3 px-4">
+                        <div className="font-semibold text-indigo-300 text-xs">
+                          {creatorInfo.fullDisplay}
+                        </div>
+                        <div className="text-[10px] text-[#8e96a8] font-mono mt-0.5">
+                          {item.created_at ? new Date(item.created_at).toLocaleString('id-ID', {
+                            day: '2-digit',
+                            month: 'short',
+                            year: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit'
+                          }) : '-'}
                         </div>
                       </td>
 
@@ -617,8 +664,20 @@ export const TableProspek: React.FC<TableProspekProps> = ({
                       {/* Actions */}
                       <td className="py-3 px-4 text-center">
                         <div className="flex items-center justify-center space-x-1" onClick={(e) => e.stopPropagation()}>
-                          {/* Direct Cair button if DISETUJUI */}
-                          {item.status === 'DISETUJUI' && isKaposOrAbove && (
+                          {/* Tombol Validasi KAOPS jika pending */}
+                          {item.is_pending_cair_validation && (currentUser.role === 'KAOPS' || isSuperAdmin) && (
+                            <button
+                              type="button"
+                              onClick={() => onOpenValidation?.(item)}
+                              className="p-1.5 rounded-lg bg-amber-950 text-amber-300 hover:bg-amber-600 hover:text-white border border-amber-800 transition-colors cursor-pointer"
+                              title="Tinjau & Validasi Kecocokan No PSB (KAOPS)"
+                            >
+                              <ShieldCheck className="h-3.5 w-3.5" />
+                            </button>
+                          )}
+
+                          {/* Direct Cair button if DISETUJUI dan tidak pending validasi */}
+                          {item.status === 'DISETUJUI' && !item.is_pending_cair_validation && isKaposOrAbove && (
                             <button
                               type="button"
                               onClick={() => onOpenConvertCair(item)}

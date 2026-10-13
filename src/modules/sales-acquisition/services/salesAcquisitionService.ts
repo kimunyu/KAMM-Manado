@@ -23,6 +23,8 @@ import {
   NormalUpdateInput, 
   ReassignInput, 
   ConvertCairInput, 
+  RequestCairValidationInput,
+  ResolveCairValidationInput,
   TolakBatalInput,
   DuplicateCheckResult,
   AcquisitionMetrics
@@ -30,6 +32,8 @@ import {
 import { User } from '../../../types';
 import { AuditService } from '../../../services/auditService';
 import { sanitizeDocId } from '../../../services/storage';
+import { SalesService } from '../../kontrol-sales/services/salesService';
+import { SalesControlRecord } from '../../kontrol-sales/types';
 
 const COLLECTION_NAME = 'sales_acquisitions';
 const LOCAL_STORAGE_KEY = 'kamm_sales_acquisitions_v1';
@@ -314,26 +318,32 @@ class SalesAcquisitionServiceManager {
       return { success: false, message: 'Sumber lead Ex-Customer wajib menyertakan No. PSB Lama!' };
     }
 
-    // Context determination
-    const assignedUserId = input.assigned_user_id || currentUser.id;
-    const kdAo = input.kd_ao || currentUser.kd_ao || '';
+    // Context determination: Jika role adalah CMO, penugasan otomatis mengikuti diri sendiri
+    const isCmo = currentUser.role === 'CMO';
+    const assignedUserId = isCmo ? currentUser.id : (input.assigned_user_id || currentUser.id);
+    const assignedUserNama = isCmo ? currentUser.nama : (input.assigned_user_nama || (input.assigned_user_id === currentUser.id ? currentUser.nama : ''));
+    const kdAo = isCmo ? (currentUser.kd_ao || '') : (input.kd_ao || currentUser.kd_ao || '');
     const kdCabang = input.kd_cabang || currentUser.kd_cabang || 'C16';
     const kdPosko = input.kd_posko || currentUser.kd_posko || 'QJ0';
 
     const nowIso = new Date().toISOString();
     const docId = `ACQ_${Date.now()}_${Math.random().toString(36).substring(2, 7).toUpperCase()}`;
 
-    // Canonical 28 Fields Construction (with jenis_jaminan)
+    // Canonical Fields Construction dengan Creator & Assigned Info
     const newRecord: SalesAcquisition = {
-      // 1-5 Audit
+      // 1-5 Audit & Creator Information
       id: docId,
       created_at: nowIso,
       created_by_user_id: currentUser.id,
+      created_by_nama: currentUser.nama,
+      created_by_kd_ao: currentUser.kd_ao || '',
+      created_by_role: currentUser.role,
       updated_at: nowIso,
       updated_by_user_id: currentUser.id,
 
       // 6-9 Assignment
       assigned_user_id: assignedUserId,
+      assigned_user_nama: assignedUserNama,
       kd_ao: kdAo,
       kd_cabang: kdCabang,
       kd_posko: kdPosko,
@@ -648,16 +658,24 @@ class SalesAcquisitionServiceManager {
   }
 
   /**
-   * ATOMIC CONVERSION TO CAIR:
-   * 1. Updates sales_acquisitions with status = 'CAIR', no_psb, tgl_cair, sales_control_id
-   * 2. Creates sales_control_records doc atomically with clean PSB number
-   * 3. Records audit log
+   * ATOMIC CONVERSION TO CAIR DENGAN PERLINDUNGAN SINGLE SOURCE OF TRUTH KONTROL SALES:
+   * 1. Cek apakah No PSB sudah ada di Kontrol Sales.
+   * 2. Jika sudah ada:
+   *    - User non-KAOPS/Super Admin: Diwajibkan mengajukan validasi (tidak boleh overwrite!).
+   *    - KAOPS / Super Admin: Menautkan ID lead ke data pencairan eksisting TANPA MENGHAPUS / MENIMPA data Kontrol Sales.
+   * 3. Jika No PSB baru: Membuat record baru di sales_control_records dan mengupdate prospek ke status CAIR.
    */
   public async convertToCair(
     leadId: string,
     input: ConvertCairInput,
     currentUser: User
-  ): Promise<{ success: boolean; message: string; record?: SalesAcquisition }> {
+  ): Promise<{ 
+    success: boolean; 
+    message: string; 
+    record?: SalesAcquisition;
+    requireValidation?: boolean;
+    matchedControlRecord?: SalesControlRecord | null;
+  }> {
     const index = this.cache.findIndex((r) => r.id === leadId);
     if (index === -1) {
       return { success: false, message: 'Data prospek tidak ditemukan!' };
@@ -682,34 +700,127 @@ class SalesAcquisitionServiceManager {
     const nowIso = new Date().toISOString();
     const todayDate = input.tgl_cair || nowIso.split('T')[0];
 
-    // Check PSB duplication in cache
+    // Check PSB duplication di cache prospek lain
     const existingPsb = this.cache.find((r) => r.no_psb === cleanNoPsb && r.id !== leadId);
     if (existingPsb) {
       return {
         success: false,
-        message: `Nomor PSB "${cleanNoPsb}" sudah digunakan oleh nasabah lain (${existingPsb.nama_calon_konsumen})!`
+        message: `Nomor PSB "${cleanNoPsb}" sudah digunakan oleh prospek lain (${existingPsb.nama_calon_konsumen})!`
       };
     }
 
+    // =========================================================================
+    // PERLINDUNGAN KONTROL SALES (HAK TERTINGGI / SINGLE SOURCE OF TRUTH)
+    // =========================================================================
+    const existingControlRecord = await SalesService.getRecordByNoPsb(cleanNoPsb);
+    if (existingControlRecord) {
+      const isKaopsOrSuperAdmin = currentUser.role === 'KAOPS' || currentUser.role === 'SUPER_ADMIN';
+
+      // Jika user BUKAN KAOPS / Super Admin: Wajib diajukan validasi, TIDAK BISA langsung simpan!
+      if (!isKaopsOrSuperAdmin) {
+        return {
+          success: false,
+          requireValidation: true,
+          matchedControlRecord: existingControlRecord,
+          message: `Nomor PSB "${cleanNoPsb}" sudah tercatat di Kontrol Sales atas nama "${existingControlRecord.nama_konsumen}" (${existingControlRecord.cabang_id}). Pengajuan pencairan ini harus divalidasi oleh KAOPS atau Super Admin!`
+        };
+      }
+
+      // Jika user ADALAH KAOPS atau Super Admin dan mengonfirmasi penyatuan:
+      // PENTING: DILARANG MENIMPA ATAU MENGHAPUS DATA KONTROL SALES!
+      // Tautkan leadId ke data Kontrol Sales dan perbarui status prospek ke CAIR
+      const updatedLead: SalesAcquisition = {
+        ...current,
+        status: 'CAIR',
+        no_psb: cleanNoPsb,
+        tgl_cair: nowIso,
+        sales_control_id: existingControlRecord.id,
+        is_pending_cair_validation: false,
+        pending_cair_data: undefined,
+        status_updated_at: nowIso,
+        status_updated_by_user_id: currentUser.id,
+        updated_at: nowIso,
+        updated_by_user_id: currentUser.id
+      };
+
+      if (db) {
+        try {
+          const leadRef = doc(db, COLLECTION_NAME, leadId);
+          await updateDoc(leadRef, {
+            status: 'CAIR',
+            no_psb: cleanNoPsb,
+            tgl_cair: serverTimestamp(),
+            sales_control_id: existingControlRecord.id,
+            is_pending_cair_validation: false,
+            pending_cair_data: null,
+            status_updated_at: serverTimestamp(),
+            status_updated_by_user_id: currentUser.id,
+            updated_at: serverTimestamp(),
+            updated_by_user_id: currentUser.id
+          });
+        } catch (err: any) {
+          return {
+            success: false,
+            message: `Gagal memperbarui status prospek di database: ${err?.message || 'Akses ditolak'}`
+          };
+        }
+      }
+
+      // Tautkan leadId ke data Kontrol Sales tanpa mengubah field pencairan aslinya
+      await SalesService.linkAcquisitionLead(cleanNoPsb, leadId, currentUser);
+
+      this.cache[index] = updatedLead;
+      this.saveToLocalStorage(this.cache);
+      this.notify();
+
+      await AuditService.record(
+        {
+          id: currentUser.id,
+          nama: currentUser.nama,
+          role: currentUser.role,
+          kd_ao: currentUser.kd_ao
+        },
+        'SALES_ACQUISITION',
+        'CONVERT_TO_CAIR_LINKED',
+        `Pencairan prospek "${current.nama_calon_konsumen}" ditautkan ke data Kontrol Sales eksisting (No. PSB: ${cleanNoPsb}) oleh ${currentUser.role} tanpa merubah data pencairan asli.`,
+        leadId,
+        {
+          no_psb: cleanNoPsb,
+          sales_control_id: existingControlRecord.id,
+          is_linked_existing: true
+        }
+      );
+
+      return {
+        success: true,
+        message: `Prospek "${current.nama_calon_konsumen}" berhasil disahkan CAIR dan ditautkan ke data Kontrol Sales No. PSB ${cleanNoPsb}! Seluruh data prospek dan data pencairan tetap terjaga utuh.`,
+        record: updatedLead
+      };
+    }
+
+    // =========================================================================
+    // ALUR NORMAL: No PSB BELUM ADA di Kontrol Sales
+    // =========================================================================
     const updatedLead: SalesAcquisition = {
       ...current,
       status: 'CAIR',
       no_psb: cleanNoPsb,
       tgl_cair: nowIso,
       sales_control_id: salesControlDocId,
+      is_pending_cair_validation: false,
+      pending_cair_data: undefined,
       status_updated_at: nowIso,
       status_updated_by_user_id: currentUser.id,
       updated_at: nowIso,
       updated_by_user_id: currentUser.id
     };
 
-    // Calculate default JT day (same day of month) and canonical DD/MM/YYYY tgl_cair format
+    // Hitung format tanggal jatuh tempo dan DD/MM/YYYY
     let formattedTglCair = todayDate;
     let dayDD = '01';
     if (todayDate.includes('-')) {
       const parts = todayDate.split('-');
       if (parts[0].length === 4) {
-        // YYYY-MM-DD -> DD/MM/YYYY
         formattedTglCair = `${parts[2]}/${parts[1]}/${parts[0]}`;
         dayDD = parts[2];
       } else {
@@ -720,7 +831,6 @@ class SalesAcquisitionServiceManager {
       dayDD = todayDate.split('/')[0] || '01';
     }
 
-    // Sales Control Record payload (Status: SUBMISS canonical for Kontrol Sales)
     const salesControlPayload = {
       id: salesControlDocId,
       no_psb: cleanNoPsb,
@@ -746,7 +856,7 @@ class SalesAcquisitionServiceManager {
       validasi_ubah_jt_status: null
     };
 
-    // Atomic execution with Firestore writeBatch
+    // Eksekusi atomik dengan Firestore writeBatch
     if (db) {
       try {
         const batch = writeBatch(db);
@@ -758,6 +868,8 @@ class SalesAcquisitionServiceManager {
           no_psb: cleanNoPsb,
           tgl_cair: serverTimestamp(),
           sales_control_id: salesControlDocId,
+          is_pending_cair_validation: false,
+          pending_cair_data: null,
           status_updated_at: serverTimestamp(),
           status_updated_by_user_id: currentUser.id,
           updated_at: serverTimestamp(),
@@ -783,7 +895,6 @@ class SalesAcquisitionServiceManager {
     this.saveToLocalStorage(this.cache);
     this.notify();
 
-    // Also update sales control local storage if available
     try {
       const existingScData = localStorage.getItem('kamm_sales_control_records_v1');
       const scList = existingScData ? JSON.parse(existingScData) : [];
@@ -817,6 +928,264 @@ class SalesAcquisitionServiceManager {
   }
 
   /**
+   * Mengajukan validasi pencairan ke KAOPS / Super Admin saat No PSB sudah ada di Kontrol Sales
+   */
+  public async requestCairValidation(
+    leadId: string,
+    input: RequestCairValidationInput,
+    currentUser: User
+  ): Promise<{ success: boolean; message: string; record?: SalesAcquisition }> {
+    const index = this.cache.findIndex((r) => r.id === leadId);
+    if (index === -1) {
+      return { success: false, message: 'Data prospek tidak ditemukan!' };
+    }
+
+    const current = this.cache[index];
+    const nowIso = new Date().toISOString();
+    const cleanNoPsb = input.no_psb.trim().toUpperCase();
+
+    const pendingData = {
+      no_psb: cleanNoPsb,
+      tgl_cair: input.tgl_cair || nowIso.split('T')[0],
+      requested_by_user_id: currentUser.id,
+      requested_by_name: currentUser.nama,
+      requested_at: nowIso,
+      matched_control_id: input.matched_control_id,
+      keterangan: input.keterangan || ''
+    };
+
+    const updatedLead: SalesAcquisition = {
+      ...current,
+      is_pending_cair_validation: true,
+      pending_cair_data: pendingData,
+      updated_at: nowIso,
+      updated_by_user_id: currentUser.id
+    };
+
+    if (db) {
+      try {
+        const leadRef = doc(db, COLLECTION_NAME, leadId);
+        await updateDoc(leadRef, {
+          is_pending_cair_validation: true,
+          pending_cair_data: pendingData,
+          updated_at: serverTimestamp(),
+          updated_by_user_id: currentUser.id
+        });
+      } catch (err: any) {
+        return {
+          success: false,
+          message: `Gagal mengajukan validasi: ${err?.message || 'Akses ditolak'}`
+        };
+      }
+    }
+
+    this.cache[index] = updatedLead;
+    this.saveToLocalStorage(this.cache);
+    this.notify();
+
+    await AuditService.record(
+      {
+        id: currentUser.id,
+        nama: currentUser.nama,
+        role: currentUser.role,
+        kd_ao: currentUser.kd_ao
+      },
+      'SALES_ACQUISITION',
+      'REQUEST_CAIR_VALIDATION',
+      `Pengajuan validasi pencairan prospek "${current.nama_calon_konsumen}" dengan No. PSB ${cleanNoPsb} ke KAOPS / Super Admin (terdeteksi duplikat No PSB di Kontrol Sales).`,
+      leadId,
+      {
+        no_psb: cleanNoPsb,
+        matched_control_id: input.matched_control_id
+      }
+    );
+
+    return {
+      success: true,
+      message: `Permohonan validasi pencairan No. PSB ${cleanNoPsb} berhasil diajukan ke KAOPS / Super Admin.`,
+      record: updatedLead
+    };
+  }
+
+  /**
+   * KAOPS atau Super Admin memutuskan hasil validasi kecocokan pencairan
+   * PENTING: Jika disetujui, data Kontrol Sales TIDAK DIHAPUS dan TIDAK DITIMPA, serta data prospek tetap utuh!
+   */
+  public async resolveCairValidation(
+    leadId: string,
+    decision: 'APPROVED' | 'REJECTED',
+    currentUser: User,
+    catatan?: string
+  ): Promise<{ success: boolean; message: string; record?: SalesAcquisition }> {
+    if (currentUser.role !== 'KAOPS' && currentUser.role !== 'SUPER_ADMIN') {
+      return {
+        success: false,
+        message: 'Hanya KAOPS dan Super Admin yang berwenang memvalidasi pencairan!'
+      };
+    }
+
+    const index = this.cache.findIndex((r) => r.id === leadId);
+    if (index === -1) {
+      return { success: false, message: 'Data prospek tidak ditemukan!' };
+    }
+
+    const current = this.cache[index];
+    if (!current.is_pending_cair_validation || !current.pending_cair_data) {
+      return { success: false, message: 'Prospek ini tidak sedang menunggu validasi pencairan!' };
+    }
+
+    const pending = current.pending_cair_data;
+    const nowIso = new Date().toISOString();
+
+    const historyEntry = {
+      resolved_at: nowIso,
+      resolved_by_user_id: currentUser.id,
+      resolved_by_name: currentUser.nama,
+      action: decision,
+      matched_control_id: pending.matched_control_id,
+      catatan: catatan?.trim() || ''
+    };
+
+    const existingHistory = current.cair_validation_history || [];
+
+    if (decision === 'APPROVED') {
+      // 1. Sahkan sebagai konsumen sama & cairkan prospek
+      const updatedLead: SalesAcquisition = {
+        ...current,
+        status: 'CAIR',
+        no_psb: pending.no_psb,
+        tgl_cair: nowIso,
+        sales_control_id: pending.matched_control_id,
+        is_pending_cair_validation: false,
+        pending_cair_data: undefined,
+        cair_validation_history: [historyEntry, ...existingHistory],
+        status_updated_at: nowIso,
+        status_updated_by_user_id: currentUser.id,
+        updated_at: nowIso,
+        updated_by_user_id: currentUser.id
+      };
+
+      if (db) {
+        try {
+          const leadRef = doc(db, COLLECTION_NAME, leadId);
+          await updateDoc(leadRef, {
+            status: 'CAIR',
+            no_psb: pending.no_psb,
+            tgl_cair: serverTimestamp(),
+            sales_control_id: pending.matched_control_id,
+            is_pending_cair_validation: false,
+            pending_cair_data: null,
+            cair_validation_history: [historyEntry, ...existingHistory],
+            status_updated_at: serverTimestamp(),
+            status_updated_by_user_id: currentUser.id,
+            updated_at: serverTimestamp(),
+            updated_by_user_id: currentUser.id
+          });
+        } catch (err: any) {
+          return {
+            success: false,
+            message: `Gagal memperbarui database: ${err?.message || 'Akses ditolak'}`
+          };
+        }
+      }
+
+      // Tautkan leadId ke data Kontrol Sales tanpa merusak data pencairan aslinya
+      await SalesService.linkAcquisitionLead(pending.no_psb, leadId, currentUser);
+
+      this.cache[index] = updatedLead;
+      this.saveToLocalStorage(this.cache);
+      this.notify();
+
+      await AuditService.record(
+        {
+          id: currentUser.id,
+          nama: currentUser.nama,
+          role: currentUser.role,
+          kd_ao: currentUser.kd_ao
+        },
+        'SALES_ACQUISITION',
+        'APPROVE_CAIR_VALIDATION',
+        `KAOPS/Super Admin menyetujui validasi pencairan prospek "${current.nama_calon_konsumen}" sebagai konsumen sama dengan data Kontrol Sales No. PSB ${pending.no_psb}.`,
+        leadId,
+        {
+          no_psb: pending.no_psb,
+          matched_control_id: pending.matched_control_id,
+          catatan: catatan?.trim() || ''
+        }
+      );
+
+      return {
+        success: true,
+        message: `Validasi disetujui! Prospek "${current.nama_calon_konsumen}" disahkan CAIR dan ditautkan ke Kontrol Sales No. PSB ${pending.no_psb} tanpa mengubah data pencairan asli.`,
+        record: updatedLead
+      };
+    } else {
+      // 2. Tolak validasi (Data Berbeda / Nomor PSB salah input)
+      const updatedLead: SalesAcquisition = {
+        ...current,
+        is_pending_cair_validation: false,
+        pending_cair_data: undefined,
+        cair_validation_history: [historyEntry, ...existingHistory],
+        updated_at: nowIso,
+        updated_by_user_id: currentUser.id
+      };
+
+      if (db) {
+        try {
+          const leadRef = doc(db, COLLECTION_NAME, leadId);
+          await updateDoc(leadRef, {
+            is_pending_cair_validation: false,
+            pending_cair_data: null,
+            cair_validation_history: [historyEntry, ...existingHistory],
+            updated_at: serverTimestamp(),
+            updated_by_user_id: currentUser.id
+          });
+        } catch (err: any) {
+          return {
+            success: false,
+            message: `Gagal menolak validasi di server: ${err?.message || 'Akses ditolak'}`
+          };
+        }
+      }
+
+      this.cache[index] = updatedLead;
+      this.saveToLocalStorage(this.cache);
+      this.notify();
+
+      await AuditService.record(
+        {
+          id: currentUser.id,
+          nama: currentUser.nama,
+          role: currentUser.role,
+          kd_ao: currentUser.kd_ao
+        },
+        'SALES_ACQUISITION',
+        'REJECT_CAIR_VALIDATION',
+        `KAOPS/Super Admin menolak kecocokan data pencairan prospek "${current.nama_calon_konsumen}" untuk No. PSB ${pending.no_psb}. Catatan: ${catatan?.trim() || 'Data Berbeda'}.`,
+        leadId,
+        {
+          no_psb: pending.no_psb,
+          matched_control_id: pending.matched_control_id,
+          catatan: catatan?.trim() || ''
+        }
+      );
+
+      return {
+        success: true,
+        message: `Permohonan validasi ditolak. Prospek tetap berstatus "DISETUJUI" dan CMO dapat mengoreksi Nomor PSB yang benar.`,
+        record: updatedLead
+      };
+    }
+  }
+
+  /**
+   * Menemukan data Kontrol Sales yang mirip berdasarkan Nama atau No WA
+   */
+  public findMatchingSalesControl(nama?: string, phoneClean?: string): SalesControlRecord[] {
+    return SalesService.findMatchingDisbursements(nama, phoneClean);
+  }
+
+  /**
    * Reassignment of AO / CMO
    * KAPOS, KAOPS, KACAB, and SUPER_ADMIN only
    */
@@ -844,6 +1213,7 @@ class SalesAcquisitionServiceManager {
     const updatedRecord: SalesAcquisition = {
       ...current,
       assigned_user_id: input.new_assigned_user_id,
+      assigned_user_nama: input.new_assigned_user_nama || current.assigned_user_nama,
       kd_ao: input.new_kd_ao,
       kd_cabang: input.new_kd_cabang || current.kd_cabang,
       kd_posko: input.new_kd_posko || current.kd_posko,
@@ -856,6 +1226,7 @@ class SalesAcquisitionServiceManager {
         const docRef = doc(db, COLLECTION_NAME, leadId);
         await updateDoc(docRef, {
           assigned_user_id: updatedRecord.assigned_user_id,
+          assigned_user_nama: updatedRecord.assigned_user_nama || '',
           kd_ao: updatedRecord.kd_ao,
           kd_cabang: updatedRecord.kd_cabang,
           kd_posko: updatedRecord.kd_posko,

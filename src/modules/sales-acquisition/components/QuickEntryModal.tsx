@@ -75,6 +75,34 @@ export const QuickEntryModal: React.FC<QuickEntryModalProps> = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
+  // List of candidate AOs for assignment based on user role & territory
+  const availableAOs = useMemo(() => {
+    return allUsers.filter(u => {
+      if (u.status !== 'AKTIF') return false;
+      if (u.role !== 'CMO' && u.role !== 'KAPOS') return false;
+      if (currentUser.role === 'KAPOS' && currentUser.kd_posko) {
+        return u.kd_posko === currentUser.kd_posko;
+      }
+      if (currentUser.role === 'KAOPS' || currentUser.role === 'KACAB' || currentUser.role === 'ADM') {
+        return u.kd_cabang === currentUser.kd_cabang;
+      }
+      return true;
+    });
+  }, [allUsers, currentUser]);
+
+  const [selectedAssigneeId, setSelectedAssigneeId] = useState<string>(() => {
+    if (currentUser.role === 'CMO') return currentUser.id;
+    return '';
+  });
+
+  useEffect(() => {
+    if (currentUser.role === 'CMO') {
+      setSelectedAssigneeId(currentUser.id);
+    } else if (!selectedAssigneeId && availableAOs.length > 0) {
+      setSelectedAssigneeId(availableAOs[0].id);
+    }
+  }, [currentUser, availableAOs, selectedAssigneeId]);
+
   // Matched Mediator from Kontrol Mediator
   const selectedMediator = useMemo(() => {
     if (!kdMed.trim()) return null;
@@ -108,6 +136,14 @@ export const QuickEntryModal: React.FC<QuickEntryModalProps> = ({
   const duplicateResult = useMemo(() => {
     return SalesAcquisitionService.checkDuplicate(noTelepon);
   }, [noTelepon]);
+
+  // Deteksi Dini Konsumen Mirip di Kontrol Sales
+  const matchedControlSales = useMemo(() => {
+    if ((!noTelepon || noTelepon.trim().length < 8) && (!namaKonsumen || namaKonsumen.trim().length < 4)) {
+      return [];
+    }
+    return SalesAcquisitionService.findMatchingSalesControl(namaKonsumen, noTelepon);
+  }, [namaKonsumen, noTelepon]);
 
   useEffect(() => {
     if (isOpen) {
@@ -176,11 +212,19 @@ export const QuickEntryModal: React.FC<QuickEntryModalProps> = ({
 
     setIsSubmitting(true);
 
-    // AO Ref dikunci sesuai user yang menginput data:
-    // Jika CMO yang menginput, otomatis menjadi petugas survei awalnya
-    const aoCode = currentUser.kd_ao || '';
-    const userCabang = currentUser.kd_cabang || 'C16';
-    const userPosko = currentUser.kd_posko || 'QJ0';
+    // Aturan Penugasan:
+    // Jika input oleh CMO -> otomatis ditugaskan ke CMO tersebut.
+    // Jika non-CMO (KAPOS, KACAB, KAOPS, ADM, Super Admin) -> ditugaskan ke AO terpilih di wilayahnya.
+    const isCmo = currentUser.role === 'CMO';
+    const targetAssignee = isCmo
+      ? currentUser
+      : (allUsers.find(u => u.id === selectedAssigneeId) || currentUser);
+
+    const aoCode = targetAssignee.kd_ao || '';
+    const assignedUserId = targetAssignee.id;
+    const assignedUserNama = targetAssignee.nama;
+    const userCabang = targetAssignee.kd_cabang || currentUser.kd_cabang || 'C16';
+    const userPosko = targetAssignee.kd_posko || currentUser.kd_posko || 'QJ0';
 
     const res = await SalesAcquisitionService.createQuickEntryLead(
       {
@@ -190,7 +234,8 @@ export const QuickEntryModal: React.FC<QuickEntryModalProps> = ({
         jenis_jaminan: jenisJaminan,
         kd_med: sumberLead === 'MEDIATOR' ? kdMed.trim().toUpperCase() : '',
         ref_no_psb_lama: sumberLead === 'EX_CUSTOMER' ? refNoPsbLama.trim().toUpperCase() : '',
-        assigned_user_id: currentUser.id,
+        assigned_user_id: assignedUserId,
+        assigned_user_nama: assignedUserNama,
         kd_ao: aoCode,
         kd_cabang: userCabang,
         kd_posko: userPosko,
@@ -296,6 +341,19 @@ export const QuickEntryModal: React.FC<QuickEntryModalProps> = ({
                   </div>
                   <p>
                     Nomor sudah terdaftar aktif: <strong>{duplicateResult.duplicateInfo.nama_calon_konsumen}</strong> ({duplicateResult.duplicateInfo.status}, AO: {duplicateResult.duplicateInfo.kd_ao || '-'})
+                  </p>
+                </div>
+              )}
+
+              {/* Deteksi Dini Pencairan Eksisting di Kontrol Sales */}
+              {matchedControlSales.length > 0 && (
+                <div className="p-2.5 bg-amber-950/80 border border-amber-800 rounded-lg text-[11px] text-amber-200 space-y-1">
+                  <div className="flex items-center space-x-1.5 text-amber-300 font-bold">
+                    <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-amber-400" />
+                    <span>Terdeteksi di Kontrol Sales (Pencairan Aktif)</span>
+                  </div>
+                  <p className="leading-snug">
+                    Ditemukan data pencairan No. PSB <strong>{matchedControlSales[0].no_psb}</strong> atas nama <strong>{matchedControlSales[0].nama_konsumen}</strong> ({matchedControlSales[0].cabang_id} • Status: {matchedControlSales[0].status}). Pastikan pengajuan ini bukan duplikasi pencairan kas yang telah selesai.
                   </p>
                 </div>
               )}
@@ -572,47 +630,93 @@ export const QuickEntryModal: React.FC<QuickEntryModalProps> = ({
             </div>
           )}
 
-          {/* AO Ref (Locked automatically to user inputting data) */}
-          <div className="space-y-1.5 p-3.5 bg-[#151926] border border-[#262f45] rounded-2xl">
-            <div className="flex items-center justify-between">
-              <label className="text-xs font-bold text-[#e0e4eb] flex items-center space-x-1.5">
-                <ShieldCheck className="h-4 w-4 text-indigo-400" />
-                <span>AO Ref</span>
-              </label>
-              <span className="text-[10px] font-medium bg-indigo-950 text-indigo-300 border border-indigo-800 px-2 py-0.5 rounded-full flex items-center space-x-1">
-                <Lock className="h-3 w-3 mr-0.5 text-indigo-400" />
-                <span>Terkunci Otomatis</span>
-              </span>
-            </div>
-
-            <div className="flex items-center space-x-3 bg-[#10131c] border border-[#232938] rounded-xl p-3">
-              <div className="h-2.5 w-2.5 rounded-full bg-emerald-400 shrink-0"></div>
-              <div className="flex-1 text-xs">
-                <div className="flex items-center space-x-2">
-                  <span className="font-mono font-bold text-white text-sm">
-                    {currentUser.kd_ao ? `Kode AO: ${currentUser.kd_ao}` : `AO Ref: ${currentUser.username}`}
-                  </span>
-                  <span className="text-[11px] text-[#8e96a8]">
-                    ({currentUser.nama} • {currentUser.role})
-                  </span>
-                </div>
-                <div className="text-[11px] text-[#717b94] mt-0.5">
-                  Posko: <strong className="text-white">{currentUser.kd_posko || 'QJ0'}</strong> • Cabang: <strong className="text-white">{currentUser.kd_cabang || 'C16'}</strong>
-                </div>
+          {/* Dua Pilar Identitas Petugas: Diinput Pertama Oleh & Ditugaskan Ke */}
+          <div className="space-y-3 p-4 bg-[#151926] border border-[#262f45] rounded-2xl">
+            {/* Pilar 1: Diinput Pertama Oleh (Permanen) */}
+            <div className="p-3 bg-[#10131c] border border-[#232938] rounded-xl space-y-1.5">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-[#8e96a8] flex items-center space-x-1.5">
+                  <UserIcon className="h-3.5 w-3.5 text-blue-400" />
+                  <span>Diinput Pertama Oleh</span>
+                </span>
+                <span className="text-[10px] font-semibold bg-blue-950 text-blue-300 border border-blue-800 px-2 py-0.5 rounded-full">
+                  Pencatat Awal
+                </span>
               </div>
+              <div className="flex items-center space-x-2 text-xs">
+                <span className="font-mono font-bold text-white text-sm">
+                  {currentUser.kd_ao ? `${currentUser.kd_ao} - ${currentUser.nama}` : currentUser.nama}
+                </span>
+                <span className="text-[11px] text-[#8e96a8]">
+                  ({currentUser.role} • Posko {currentUser.kd_posko || '-'} • Cabang {currentUser.kd_cabang || '-'})
+                </span>
+              </div>
+              <p className="text-[10px] text-[#717b94]">
+                Data ini dicatat secara permanen sebagai sumber pencipta prospek (attribution creator).
+              </p>
             </div>
 
-            <p className="text-[11px] text-[#8e96a8] leading-relaxed">
+            {/* Pilar 2: Ditugaskan Ke (Action Assignee) */}
+            <div className="p-3 bg-[#10131c] border border-[#232938] rounded-xl space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="text-[11px] font-bold uppercase tracking-wider text-[#e0e4eb] flex items-center space-x-1.5">
+                  <ShieldCheck className="h-3.5 w-3.5 text-indigo-400" />
+                  <span>Ditugaskan Ke Petugas AO <strong className="text-rose-400">*</strong></span>
+                </label>
+                {currentUser.role === 'CMO' ? (
+                  <span className="text-[10px] font-medium bg-emerald-950 text-emerald-300 border border-emerald-800 px-2 py-0.5 rounded-full flex items-center space-x-1">
+                    <Lock className="h-3 w-3 mr-0.5 text-emerald-400" />
+                    <span>Otomatis (CMO Penginput)</span>
+                  </span>
+                ) : (
+                  <span className="text-[10px] font-medium bg-indigo-950 text-indigo-300 border border-indigo-800 px-2 py-0.5 rounded-full">
+                    Pilihan Wewenang
+                  </span>
+                )}
+              </div>
+
               {currentUser.role === 'CMO' ? (
-                <span>
-                  Sebagai <strong className="text-white">CMO</strong> yang menginput prospek ini, Anda otomatis menjadi petugas survei. Penugasan dapat dialihkan oleh <strong className="text-indigo-300">KACAB, RM, atau Super Admin</strong>.
-                </span>
+                <div>
+                  <div className="p-2.5 bg-[#181c28] border border-emerald-900/60 rounded-lg flex items-center space-x-2 text-xs">
+                    <div className="h-2 w-2 rounded-full bg-emerald-400"></div>
+                    <span className="font-mono font-bold text-white">
+                      {currentUser.kd_ao ? `${currentUser.kd_ao} - ${currentUser.nama}` : currentUser.nama}
+                    </span>
+                    <span className="text-[11px] text-emerald-300">
+                      (Ditugaskan ke Anda)
+                    </span>
+                  </div>
+                  <p className="text-[10px] text-[#8e96a8] mt-1.5 leading-relaxed">
+                    Sebagai <strong className="text-white">CMO</strong>, prospek otomatis ditugaskan ke Anda. Penugasan dapat dialihkan sewaktu-waktu oleh <strong className="text-indigo-300">KAPOS, KACAB, KAOPS, atau Super Admin</strong>.
+                  </p>
+                </div>
               ) : (
-                <span>
-                  Prospek dicatat dengan identitas AO Ref penginput. Penentuan petugas survei lapangan dilakukan oleh <strong className="text-indigo-300">KAPOS, KACAB, RM, atau Super Admin</strong> sesuai wewenangnya.
-                </span>
+                <div className="space-y-1.5">
+                  <select
+                    required
+                    value={selectedAssigneeId}
+                    onChange={(e) => setSelectedAssigneeId(e.target.value)}
+                    className="w-full bg-[#181c28] border border-[#2c3345] rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-indigo-500 transition-colors font-mono"
+                  >
+                    <option value="">-- Pilih Petugas AO Penugasan --</option>
+                    {availableAOs.map((ao) => (
+                      <option key={ao.id} value={ao.id}>
+                        {ao.kd_ao ? `[${ao.kd_ao}] ` : ''}{ao.nama} (Posko: {ao.kd_posko || '-'} • {ao.role})
+                      </option>
+                    ))}
+                    {/* Fallback to self if not in availableAOs */}
+                    {!availableAOs.some(u => u.id === currentUser.id) && (
+                      <option value={currentUser.id}>
+                        {currentUser.kd_ao ? `[${currentUser.kd_ao}] ` : ''}{currentUser.nama} (Diri Sendiri • {currentUser.role})
+                      </option>
+                    )}
+                  </select>
+                  <p className="text-[10px] text-[#8e96a8] leading-relaxed">
+                    Sebagai <strong className="text-white">{currentUser.role}</strong>, Anda dapat menentukan petugas CMO/AO penanggung jawab di wilayah Anda.
+                  </p>
+                </div>
               )}
-            </p>
+            </div>
           </div>
 
           {/* Wilayah Domisili Konsumen (Master Wilayah Berjenjang 4 Tingkat) */}

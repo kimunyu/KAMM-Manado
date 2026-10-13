@@ -1,0 +1,6 @@
+{
+  "summary": "Revisi rencana implementasi: penegasan struktur identitas 'Diinput Pertama Oleh [KD AO] - [Nama AO]' dan 'Ditugaskan Ke [KD AO] - [Nama AO]', aturan otomatis penugasan mandiri jika penginput adalah CMO, serta kewenangan pemindahan tugas (reassign) oleh KAPOS, KACAB, KAOPS, dan Super Admin sesuai cakupan wilayahnya.",
+  "updatedAt": "2026-10-12T15:35:28.952977334Z",
+  "requestFeedback": true,
+  "userFacing": true
+}

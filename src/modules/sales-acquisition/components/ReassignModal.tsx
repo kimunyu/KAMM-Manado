@@ -9,6 +9,7 @@ import {
 import { SalesAcquisition } from '../types';
 import { User, Cabang, Posko } from '../../../types';
 import { SalesAcquisitionService } from '../services/salesAcquisitionService';
+import { getAssignedOfficerDisplay, getCreatorDisplay } from '../utils/officerHelpers';
 
 interface ReassignModalProps {
   isOpen: boolean;
@@ -72,6 +73,7 @@ export const ReassignModal: React.FC<ReassignModalProps> = ({
       record.id,
       {
         new_assigned_user_id: targetUser.id,
+        new_assigned_user_nama: targetUser.nama,
         new_kd_ao: targetUser.kd_ao || '',
         new_kd_cabang: targetUser.kd_cabang || record.kd_cabang,
         new_kd_posko: targetUser.kd_posko || record.kd_posko
@@ -88,6 +90,9 @@ export const ReassignModal: React.FC<ReassignModalProps> = ({
       setErrorMessage(res.message);
     }
   };
+
+  const currentAssigned = getAssignedOfficerDisplay(record, allUsers);
+  const creatorInfo = getCreatorDisplay(record, allUsers);
 
   return (
     <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
@@ -135,9 +140,17 @@ export const ReassignModal: React.FC<ReassignModalProps> = ({
               <span>Status Saat Ini:</span>
               <span className="font-mono text-blue-400 font-semibold">{record.status}</span>
             </div>
-            <div className="flex justify-between items-center text-[#8e96a8]">
-              <span>AO Saat Ini:</span>
-              <span className="text-amber-300 font-bold">{record.kd_ao || '-'} (ID: {record.assigned_user_id})</span>
+            <div className="flex justify-between items-center text-[#8e96a8] border-t border-[#232734] pt-2">
+              <span>Ditugaskan Ke Saat Ini:</span>
+              <span className="text-amber-300 font-bold font-mono">
+                {currentAssigned.fullDisplay}
+              </span>
+            </div>
+            <div className="flex justify-between items-center text-[#6e7688]">
+              <span>Diinput Pertama Oleh:</span>
+              <span className="text-indigo-300 font-medium">
+                {creatorInfo.fullDisplay} (Tetap Utuh)
+              </span>
             </div>
           </div>
 

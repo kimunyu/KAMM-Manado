@@ -12,16 +12,21 @@ import {
   Share2,
   Bike,
   Car,
-  FileCheck2
+  FileCheck2,
+  ShieldAlert,
+  ShieldCheck
 } from 'lucide-react';
 import { SalesAcquisition, SalesAcquisitionStatus, JenisJaminan } from '../types';
 import { User } from '../../../types';
+import { getAssignedOfficerDisplay } from '../utils/officerHelpers';
 
 interface PipelineBoardProps {
   records: SalesAcquisition[];
   currentUser: User;
+  allUsers?: User[];
   onSelectRecord: (record: SalesAcquisition) => void;
   onOpenConvertCair: (record: SalesAcquisition) => void;
+  onOpenValidation?: (record: SalesAcquisition) => void;
   onOpenQuickEntry: () => void;
 }
 
@@ -81,8 +86,10 @@ const COLUMNS: ColumnConfig[] = [
 export const PipelineBoard: React.FC<PipelineBoardProps> = ({
   records,
   currentUser,
+  allUsers = [],
   onSelectRecord,
   onOpenConvertCair,
+  onOpenValidation,
   onOpenQuickEntry
 }) => {
   const isKaposOrAbove = currentUser.role === 'KAPOS' || currentUser.role === 'ADM' || currentUser.role === 'KAOPS' || currentUser.role === 'SUPER_ADMIN';
@@ -203,19 +210,52 @@ export const PipelineBoard: React.FC<PipelineBoardProps> = ({
                         </div>
                       )}
 
-                      {/* Bottom Row: AO & Location */}
-                      <div className="pt-2 border-t border-[#232734] flex items-center justify-between text-[10px] text-[#8e96a8]">
-                        <span className="flex items-center space-x-1 text-purple-300">
-                          <UserIcon className="h-3 w-3 shrink-0" />
-                          <span>AO: {item.kd_ao || '-'}</span>
-                        </span>
-                        <span className="text-[#677085]">
-                          Posko {item.kd_posko}
-                        </span>
-                      </div>
+                      {/* Bottom Row: Ditugaskan Ke & Location */}
+                      {(() => {
+                        const assignedInfo = getAssignedOfficerDisplay(item, allUsers);
+                        return (
+                          <div className="pt-2 border-t border-[#232734] flex items-center justify-between text-[10px] text-[#8e96a8]">
+                            <span className="flex items-center space-x-1 text-purple-300 font-medium truncate max-w-[170px]" title={`Ditugaskan: ${assignedInfo.fullDisplay}`}>
+                              <UserIcon className="h-3 w-3 shrink-0" />
+                              <span className="truncate">
+                                Ditugaskan: <strong className="text-white font-mono">{assignedInfo.kodeAo}</strong> • {assignedInfo.nama}
+                              </span>
+                            </span>
+                            <span className="text-[#677085] shrink-0 font-mono text-[9px]">
+                              Posko {item.kd_posko}
+                            </span>
+                          </div>
+                        );
+                      })()}
 
-                      {/* Direct CAIR Action button if DISETUJUI */}
-                      {item.status === 'DISETUJUI' && isKaposOrAbove && (
+                      {/* Indikator Pending Validasi KAOPS */}
+                      {item.is_pending_cair_validation && (
+                        <div className="p-2 rounded-lg bg-amber-950/60 border border-amber-800/80 space-y-1 text-[10px] text-amber-200">
+                          <div className="font-semibold flex items-center space-x-1 text-amber-300">
+                            <ShieldAlert className="h-3 w-3 shrink-0 text-amber-400" />
+                            <span>Menunggu Validasi No PSB</span>
+                          </div>
+                          <div className="text-[9px] text-amber-200/80 font-mono">
+                            No. PSB: {item.pending_cair_data?.no_psb || item.no_psb}
+                          </div>
+                          {(currentUser.role === 'KAOPS' || currentUser.role === 'SUPER_ADMIN') && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onOpenValidation?.(item);
+                              }}
+                              className="w-full mt-1 py-1 rounded bg-amber-600 hover:bg-amber-500 text-[10px] font-bold text-white shadow-sm flex items-center justify-center space-x-1 transition-all"
+                            >
+                              <ShieldCheck className="h-3 w-3" />
+                              <span>Validasi Sekarang</span>
+                            </button>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Direct CAIR Action button if DISETUJUI dan tidak pending validasi */}
+                      {item.status === 'DISETUJUI' && !item.is_pending_cair_validation && isKaposOrAbove && (
                         <button
                           type="button"
                           onClick={(e) => {

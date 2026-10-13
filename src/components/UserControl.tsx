@@ -764,39 +764,7 @@ export const UserControl: React.FC<UserControlProps> = ({ onRefresh }) => {
             )}
           </div>
 
-          {/* Super Admin Action Buttons: Backup JSON (Anti-Reset) & Restore JSON */}
-          {isSuperAdmin && (
-            <div className="flex items-center space-x-2 shrink-0">
-              <button
-                id="btn-download-json-backup-master-data"
-                type="button"
-                onClick={handleDownloadBackup}
-                className="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl bg-indigo-900/70 hover:bg-indigo-800 text-indigo-200 hover:text-white border border-indigo-700/60 transition-colors cursor-pointer text-xs font-bold shadow-sm shadow-indigo-950/40"
-                title="Download seluruh database ke file .JSON (Anti-Reset)"
-              >
-                <Download className="h-3.5 w-3.5 text-indigo-300" />
-                <span className="hidden sm:inline">Backup JSON (Anti-Reset)</span>
-                <span className="sm:hidden">Backup</span>
-              </button>
-
-              <label
-                id="label-restore-json-backup-master-data"
-                className="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl bg-emerald-950/70 hover:bg-emerald-900/90 text-emerald-200 hover:text-white border border-emerald-800/70 transition-colors cursor-pointer text-xs font-bold shadow-sm shadow-emerald-950/40"
-                title="Pulihkan database dari file .JSON yang pernah di-download"
-              >
-                <Upload className="h-3.5 w-3.5 text-emerald-300" />
-                <span className="hidden sm:inline">Restore JSON</span>
-                <span className="sm:hidden">Restore</span>
-                <input
-                  type="file"
-                  accept=".json"
-                  onChange={handleRestoreBackup}
-                  className="hidden"
-                />
-              </label>
-            </div>
-          )}
-
+          
           {activeSection === 'users' && (
             <button
               id="btn-add-new-user"

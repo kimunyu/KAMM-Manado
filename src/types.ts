@@ -306,9 +306,13 @@ export interface SalesAcquisition {
   created_by_user_id: string;         // 3. User ID Creator
   updated_at: any;                    // 4. Server Timestamp
   updated_by_user_id: string;         // 5. User ID Updater
+  created_by_nama?: string;           // Nama lengkap user penginput pertama kali
+  created_by_kd_ao?: string;          // Kode AO user penginput pertama kali
+  created_by_role?: UserRole;         // Role user saat menginput
 
   // 6-9 Assignment / Organization
   assigned_user_id: string;           // 6. User ID of assigned CMO / AO
+  assigned_user_nama?: string;        // Nama lengkap Petugas AO penugasan
   kd_ao: string;                      // 7. Kode AO of assigned CMO
   kd_cabang: string;                  // 8. Kode Cabang
   kd_posko: string;                   // 9. Kode Posko
@@ -343,6 +347,26 @@ export interface SalesAcquisition {
 
   // 28. Jenis Jaminan Pinjaman: R2 (Motor), R4 (Mobil), Sertifikat
   jenis_jaminan?: JenisJaminan;
+
+  // 29. Validasi CAIR jika No PSB telah terdaftar di Kontrol Sales
+  is_pending_cair_validation?: boolean;
+  pending_cair_data?: {
+    no_psb: string;
+    tgl_cair: string;
+    requested_by_user_id: string;
+    requested_by_name: string;
+    requested_at: string;
+    matched_control_id: string;
+    keterangan?: string;
+  };
+  cair_validation_history?: Array<{
+    resolved_at: string;
+    resolved_by_user_id: string;
+    resolved_by_name: string;
+    action: 'APPROVED' | 'REJECTED';
+    matched_control_id: string;
+    catatan?: string;
+  }>;
 }
 
 export interface DuplicateCheckResult {

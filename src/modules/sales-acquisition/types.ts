@@ -33,6 +33,7 @@ export interface QuickEntryInput {
   kd_med?: string;
   ref_no_psb_lama?: string;
   assigned_user_id?: string;
+  assigned_user_nama?: string;
   kd_ao?: string;
   kd_cabang?: string;
   kd_posko?: string;
@@ -59,6 +60,7 @@ export interface NormalUpdateInput {
 
 export interface ReassignInput {
   new_assigned_user_id: string;
+  new_assigned_user_nama?: string;
   new_kd_ao: string;
   new_kd_cabang?: string;
   new_kd_posko?: string;
@@ -68,6 +70,19 @@ export interface ConvertCairInput {
   no_psb: string;
   tgl_cair?: string; // Optional custom date, defaults to today
   keterangan?: string;
+  matched_control_id?: string;
+}
+
+export interface RequestCairValidationInput {
+  no_psb: string;
+  tgl_cair?: string;
+  keterangan?: string;
+  matched_control_id: string;
+}
+
+export interface ResolveCairValidationInput {
+  action: 'APPROVED' | 'REJECTED';
+  catatan?: string;
 }
 
 export interface TolakBatalInput {

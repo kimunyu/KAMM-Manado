@@ -70,7 +70,7 @@ export const Header: React.FC<HeaderProps> = ({
   const headerModules = [
     {
       id: 'sales-acquisition' as ModuleId,
-      label: 'Prospek Sales',
+      label: 'Prospek',
       icon: UserPlus,
       visible: canAccessAcquisition,
       activeStyle: 'bg-blue-600 text-white border-blue-500 shadow-md shadow-blue-950/50',
@@ -78,7 +78,7 @@ export const Header: React.FC<HeaderProps> = ({
     },
     {
       id: 'sales' as ModuleId,
-      label: 'Kontrol Sales',
+      label: 'Sales',
       icon: TrendingUp,
       counter: holdSalesCount > 0 ? holdSalesCount : undefined,
       counterActiveStyle: 'bg-white text-purple-700',
@@ -88,7 +88,7 @@ export const Header: React.FC<HeaderProps> = ({
     },
     {
       id: 'mediator' as ModuleId,
-      label: 'Kontrol Mediator',
+      label: 'Mediator',
       icon: Users,
       counter: pendingCount > 0 ? pendingCount : undefined,
       counterActiveStyle: 'bg-white text-blue-700',
@@ -105,20 +105,20 @@ export const Header: React.FC<HeaderProps> = ({
       hoverStyle: 'text-[#9ea6b8] hover:text-amber-300 hover:bg-[#1c202d] border-transparent',
     },
     {
-      id: 'master-data' as ModuleId,
-      label: 'Master Data',
-      icon: UserCog,
-      visible: canAccessMasterData,
-      activeStyle: 'bg-emerald-600 text-white border-emerald-500 shadow-md shadow-emerald-950/50',
-      hoverStyle: 'text-[#9ea6b8] hover:text-emerald-300 hover:bg-[#1c202d] border-transparent',
-    },
-    {
       id: 'hrd' as ModuleId,
-      label: 'Rekrutmen',
+      label: 'HRD',
       icon: Briefcase,
       visible: canAccessHrd,
       activeStyle: 'bg-rose-600 text-white border-rose-500 shadow-md shadow-rose-950/50',
       hoverStyle: 'text-[#9ea6b8] hover:text-rose-300 hover:bg-[#1c202d] border-transparent',
+    },
+    {
+      id: 'master-data' as ModuleId,
+      label: 'Master',
+      icon: UserCog,
+      visible: canAccessMasterData,
+      activeStyle: 'bg-emerald-600 text-white border-emerald-500 shadow-md shadow-emerald-950/50',
+      hoverStyle: 'text-[#9ea6b8] hover:text-emerald-300 hover:bg-[#1c202d] border-transparent',
     },
   ].filter(m => m.visible);
 
@@ -206,9 +206,6 @@ export const Header: React.FC<HeaderProps> = ({
         <div className="flex items-center justify-between h-16">
           {/* Brand */}
           <div className="flex items-center space-x-3">
-            <div className="h-10 w-10 rounded-xl bg-[#0d0f17] border border-[#2e3446] flex items-center justify-center p-1 shadow-md shadow-blue-950/40">
-              <KammLogo variant="icon" className="h-full w-full" />
-            </div>
             <div>
               <div className="flex items-center space-x-2">
                 <span className="font-bold text-[#f1f3f7] text-lg tracking-tight">Super App KAMM Manado</span>

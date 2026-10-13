@@ -8,3 +8,4 @@ export * from './components/ProspekDetailModal';
 export * from './components/ConvertCairModal';
 export * from './components/ReassignModal';
 export * from './components/TolakBatalModal';
+export * from './components/ModalValidasiCairPsb';

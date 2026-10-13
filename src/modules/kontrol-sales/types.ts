@@ -27,6 +27,7 @@ export interface SalesControlRecord {
   validasi_ubah_jt_at?: any;       // Timestamp validasi JT
   validasi_ubah_jt_by?: string | null; // Nama & Peran validator JT
   validasi_ubah_jt_catatan?: string | null;
+  acquisition_lead_id?: string;    // Referensi ID Prospek Sales jika ditautkan
 }
 
 export interface SalesFilterOptions {

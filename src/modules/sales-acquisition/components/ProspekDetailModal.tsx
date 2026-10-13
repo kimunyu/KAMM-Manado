@@ -29,6 +29,7 @@ import { SalesAcquisitionService, cleanPhoneNumber } from '../services/salesAcqu
 import { WilayahCascadeSelector } from '../../../components/WilayahCascadeSelector';
 import { ConfirmDeleteModal } from '../../../components/ConfirmDeleteModal';
 import { SelectedWilayahState } from '../../../types';
+import { getAssignedOfficerDisplay, getCreatorDisplay } from '../utils/officerHelpers';
 
 interface ProspekDetailModalProps {
   isOpen: boolean;
@@ -37,9 +38,11 @@ interface ProspekDetailModalProps {
   currentUser: User;
   allCabang: Cabang[];
   allPosko: Posko[];
+  allUsers?: User[];
   onOpenConvertCair: (rec: SalesAcquisition) => void;
   onOpenReassign: (rec: SalesAcquisition) => void;
   onOpenTolakBatal: (rec: SalesAcquisition, status: 'DITOLAK' | 'BATAL') => void;
+  onOpenValidation?: (rec: SalesAcquisition) => void;
   onDeleteRecord?: (leadId: string) => void;
   onSuccess: () => void;
 }
@@ -51,9 +54,11 @@ export const ProspekDetailModal: React.FC<ProspekDetailModalProps> = ({
   currentUser,
   allCabang,
   allPosko,
+  allUsers = [],
   onOpenConvertCair,
   onOpenReassign,
   onOpenTolakBatal,
+  onOpenValidation,
   onDeleteRecord,
   onSuccess
 }) => {
@@ -95,6 +100,9 @@ export const ProspekDetailModal: React.FC<ProspekDetailModalProps> = ({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   if (!isOpen) return null;
+
+  const assignedInfo = getAssignedOfficerDisplay(record, allUsers);
+  const creatorInfo = getCreatorDisplay(record, allUsers);
 
   // Format Helper
   const formatDate = (isoOrTimestamp: any) => {
@@ -205,7 +213,7 @@ export const ProspekDetailModal: React.FC<ProspekDetailModalProps> = ({
                 </span>
               </h2>
               <p className="text-xs text-[#8e96a8]">
-                ID: <span className="font-mono text-white">{record.id}</span> • Dibuat: {formatDate(record.created_at)}
+                ID: <span className="font-mono text-white">{record.id}</span> • Diinput oleh: <span className="text-indigo-300 font-semibold">{creatorInfo.fullDisplay}</span> ({formatDate(record.created_at)})
               </p>
             </div>
           </div>
@@ -324,6 +332,39 @@ export const ProspekDetailModal: React.FC<ProspekDetailModalProps> = ({
                   Batal
                 </button>
               </div>
+            </div>
+          )}
+
+          {/* Pending Cair Validation Banner */}
+          {record.is_pending_cair_validation && (
+            <div className="p-4 bg-amber-950/40 border border-amber-800/60 rounded-xl space-y-2.5">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-amber-400 uppercase tracking-wider flex items-center space-x-1.5">
+                  <ShieldCheck className="h-4 w-4" />
+                  <span>Menunggu Validasi No PSB (KAOPS / Super Admin)</span>
+                </span>
+                <span className="text-xs font-mono text-white font-bold bg-amber-900/60 px-2 py-0.5 rounded border border-amber-700">
+                  PSB Diajukan: {record.pending_cair_data?.no_psb}
+                </span>
+              </div>
+              <p className="text-xs text-amber-200/90 leading-relaxed">
+                Nomor PSB ini terdeteksi telah diinput terlebih dahulu pada modul Kontrol Sales. Pengajuan ditangguhkan untuk diverifikasi agar data Kontrol Sales tidak tertimpa.
+              </p>
+              <div className="text-[11px] text-[#8e96a8]">
+                Diajukan oleh: <span className="text-white font-medium">{record.pending_cair_data?.requested_by_name}</span> pada {formatDate(record.pending_cair_data?.requested_at)}
+              </div>
+              {(isKaops || isSuperAdmin) && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    onOpenValidation?.(record);
+                  }}
+                  className="mt-1 px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-xs font-bold text-white rounded-lg transition-colors flex items-center space-x-1.5 cursor-pointer shadow-sm w-fit"
+                >
+                  <ShieldCheck className="h-3.5 w-3.5" />
+                  <span>Tinjau &amp; Validasi Kecocokan Sekarang</span>
+                </button>
+              )}
             </div>
           )}
 
@@ -577,29 +618,67 @@ export const ProspekDetailModal: React.FC<ProspekDetailModalProps> = ({
             )}
           </div>
 
-          {/* Section 3: Assignment & Audit Info */}
+          {/* Section 3: Dua Pilar Identitas Petugas KAMM */}
           <div className="space-y-3">
             <h3 className="text-xs font-bold text-[#8e96a8] uppercase tracking-wider flex items-center space-x-2">
               <Building2 className="h-4 w-4 text-purple-400" />
-              <span>Petugas AO &amp; Unit Penempatan KAMM</span>
+              <span>Identitas Petugas (Penginput &amp; Penugasan)</span>
             </h3>
 
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-[#161a26] p-4 rounded-xl border border-[#272d3e] text-xs">
-              <div>
-                <span className="text-[#8e96a8] block">Kode AO</span>
-                <strong className="text-white font-mono">{record.kd_ao || '-'}</strong>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {/* Pilar 1: Diinput Pertama Oleh (Creator Attribution) */}
+              <div className="p-4 bg-[#141824] rounded-xl border border-blue-900/50 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-bold text-blue-400 uppercase tracking-wider flex items-center space-x-1.5">
+                    <UserIcon className="h-3.5 w-3.5" />
+                    <span>Diinput Pertama Oleh</span>
+                  </span>
+                  <span className="text-[10px] font-semibold bg-blue-950 text-blue-300 border border-blue-800 px-2 py-0.5 rounded-full">
+                    Pencatat Awal
+                  </span>
+                </div>
+                <div>
+                  <div className="text-sm font-bold text-white font-mono">
+                    {creatorInfo.fullDisplay}
+                  </div>
+                  <div className="text-[11px] text-[#8e96a8] mt-0.5">
+                    Role: <span className="text-white font-medium">{creatorInfo.role || record.created_by_role || '-'}</span> • Waktu Input: <span className="text-white">{formatDate(record.created_at)}</span>
+                  </div>
+                </div>
+                <div className="pt-2 border-t border-[#232938] text-[10px] text-[#6b7388]">
+                  Identitas pembuat ini tersimpan permanen sebagai hak atribusi perolehan lead.
+                </div>
               </div>
-              <div>
-                <span className="text-[#8e96a8] block">User ID Assigned</span>
-                <span className="font-mono text-purple-300">{record.assigned_user_id}</span>
-              </div>
-              <div>
-                <span className="text-[#8e96a8] block">Cabang</span>
-                <strong className="text-white font-mono">{record.kd_cabang}</strong>
-              </div>
-              <div>
-                <span className="text-[#8e96a8] block">Posko</span>
-                <strong className="text-white font-mono">{record.kd_posko}</strong>
+
+              {/* Pilar 2: Ditugaskan Ke (Action Assignee) */}
+              <div className="p-4 bg-[#141824] rounded-xl border border-purple-900/50 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-bold text-purple-400 uppercase tracking-wider flex items-center space-x-1.5">
+                    <ShieldCheck className="h-3.5 w-3.5" />
+                    <span>Ditugaskan Ke</span>
+                  </span>
+                  {canReassign && (
+                    <button
+                      type="button"
+                      onClick={() => onOpenReassign(record)}
+                      className="text-[10px] font-semibold bg-indigo-950 hover:bg-indigo-900 text-indigo-300 hover:text-white border border-indigo-800 px-2.5 py-0.5 rounded-full transition-colors flex items-center space-x-1 cursor-pointer"
+                    >
+                      <ArrowRightLeft className="h-2.5 w-2.5" />
+                      <span>Reassign AO</span>
+                    </button>
+                  )}
+                </div>
+                <div>
+                  <div className="text-sm font-bold text-white font-mono">
+                    {assignedInfo.fullDisplay}
+                  </div>
+                  <div className="text-[11px] text-[#8e96a8] mt-0.5">
+                    Posko: <strong className="text-white font-mono">{record.kd_posko}</strong> • Cabang: <strong className="text-white font-mono">{record.kd_cabang}</strong>
+                  </div>
+                </div>
+                <div className="pt-2 border-t border-[#232938] text-[10px] text-[#6b7388]">
+                  Petugas lapangan penanggung jawab proses survei dan tindak lanjut saat ini.
+                </div>
               </div>
             </div>
           </div>
